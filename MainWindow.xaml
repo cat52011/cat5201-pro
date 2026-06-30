@@ -1,0 +1,1834 @@
+﻿<Window x:Class="test.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:test"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="cat5201"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+
+        <SolidColorBrush x:Key="FileMenuBg" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="FileMenuBorder" Color="#D6D6D6"/>
+        <SolidColorBrush x:Key="FileMenuText" Color="#222222"/>
+        <SolidColorBrush x:Key="FileMenuDisabled" Color="#A0A0A0"/>
+
+        <Style x:Key="FileContextMenuStyle" TargetType="{x:Type ContextMenu}">
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Background" Value="{StaticResource FileMenuBg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource FileMenuBorder}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="MinWidth" Value="96"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ContextMenu}">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <StackPanel IsItemsHost="True"
+                                        KeyboardNavigation.DirectionalNavigation="Cycle"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FileMenuItemStyle" TargetType="{x:Type MenuItem}">
+            <Setter Property="Foreground" Value="{StaticResource FileMenuText}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type MenuItem}">
+                        <Border Background="Transparent"
+                                CornerRadius="8"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter x:Name="HeaderPresenter"
+                                              ContentSource="Header"
+                                              Margin="{TemplateBinding Padding}"
+                                              RecognizesAccessKey="True"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left"
+                                              TextElement.Foreground="{TemplateBinding Foreground}"
+                                              TextElement.FontSize="{TemplateBinding FontSize}"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="HeaderPresenter" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="HeaderPresenter" Property="Opacity" Value="0.70"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource FileMenuDisabled}"/>
+                                <Setter TargetName="HeaderPresenter" Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FileSeparatorStyle" TargetType="{x:Type Separator}">
+            <Setter Property="Margin" Value="6,4"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Separator}">
+                        <Border Height="1"
+                                Background="#EAEAEA"
+                                CornerRadius="0.5"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="AppleSwitchStyle" TargetType="CheckBox">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid Width="{TemplateBinding Width}" Height="{TemplateBinding Height}">
+
+                            <!-- 背景 -->
+                            <Border x:Name="SwitchTrack"
+                            CornerRadius="11"
+                            Background="#D1D1D6"
+                            BorderBrush="#D1D1D6"
+                            BorderThickness="1"/>
+
+                            <!-- 滑塊 -->
+                            <Border x:Name="SwitchThumb"
+                            Width="18"
+                            Height="18"
+                            CornerRadius="9"
+                            Background="White"
+                            HorizontalAlignment="Left"
+                            Margin="2,2,0,2">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="4"
+                                              ShadowDepth="1"
+                                              Opacity="0.2"/>
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+
+                        <ControlTemplate.Triggers>
+
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="SwitchTrack" Property="Background" Value="#34C759"/>
+                                <Setter TargetName="SwitchTrack" Property="BorderBrush" Value="#34C759"/>
+
+                                <Setter TargetName="SwitchThumb" Property="HorizontalAlignment" Value="Right"/>
+                                <Setter TargetName="SwitchThumb" Property="Margin" Value="0,2,2,2"/>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SwitchTrack" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 任務路由下拉選單：圓角 pill 風格，與記憶輸入框、開關同一套視覺 -->
+        <Style x:Key="RoutingComboItemStyle" TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBoxItem}">
+                        <Border x:Name="ib" Background="Transparent" CornerRadius="7"
+                                Padding="{TemplateBinding Padding}" Margin="0,1">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="ib" Property="Background" Value="#F0F1F8"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="ib" Property="Background" Value="#ECEEFB"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="RoutingComboBoxStyle" TargetType="{x:Type ComboBox}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Foreground" Value="#333"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ItemContainerStyle" Value="{StaticResource RoutingComboItemStyle}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ComboBox}">
+                        <Grid>
+                            <ToggleButton x:Name="ToggleButton"
+                                          Focusable="False"
+                                          ClickMode="Press"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border x:Name="bd"
+                                                Background="#F7F7F8"
+                                                BorderBrush="#E4E4E7"
+                                                BorderThickness="1"
+                                                CornerRadius="9">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <ContentPresenter Grid.Column="0"
+                                                                  Content="{Binding SelectionBoxItem, RelativeSource={RelativeSource AncestorType=ComboBox}}"
+                                                                  Margin="11,0,0,0"
+                                                                  VerticalAlignment="Center"
+                                                                  HorizontalAlignment="Left"/>
+                                                <Path Grid.Column="1"
+                                                      Data="M0,0 L4,4 L8,0"
+                                                      Stroke="#888"
+                                                      StrokeThickness="1.5"
+                                                      StrokeStartLineCap="Round"
+                                                      StrokeEndLineCap="Round"
+                                                      Margin="8,0,12,0"
+                                                      VerticalAlignment="Center"/>
+                                            </Grid>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="BorderBrush" Value="#C9CAD2"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+
+                            <Popup x:Name="Popup"
+                                   Placement="Bottom"
+                                   IsOpen="{TemplateBinding IsDropDownOpen}"
+                                   AllowsTransparency="True"
+                                   Focusable="False"
+                                   PopupAnimation="Slide">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="240"
+                                        Background="White"
+                                        BorderBrush="#E4E4E7"
+                                        BorderThickness="1"
+                                        CornerRadius="10"
+                                        Margin="0,4,0,0"
+                                        Padding="5">
+                                    <Border.Effect>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.16"/>
+                                    </Border.Effect>
+                                    <ScrollViewer>
+                                        <StackPanel IsItemsHost="True"
+                                                    KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid>
+        <!-- 側邊欄 -->
+        <Grid x:Name="Sidebar"
+              Width="280"
+              Background="#F0F0F0"
+              HorizontalAlignment="Left"
+              VerticalAlignment="Stretch"
+              Panel.ZIndex="100">
+            <Border Padding="12" Background="#F0F0F0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Button Grid.Row="0"
+        Width="22"
+        Height="22"
+        Margin="0,2,0,0"
+        Background="Transparent"
+        BorderThickness="0"
+        Padding="0"
+        HorizontalAlignment="Right"
+        VerticalAlignment="Top"
+        Cursor="Hand"
+        ToolTip="新增"
+        Click="NewFile_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Grid Background="Transparent">
+                                    <Viewbox x:Name="IconBox"
+                         Width="20"
+                         Height="20"
+                         Stretch="Fill"
+                         HorizontalAlignment="Center"
+                         VerticalAlignment="Center">
+                                        <Canvas Width="18" Height="18">
+                                            <Path Data="M9,3 L9,15"
+                              Stroke="Black"
+                              StrokeThickness="1.6"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"/>
+                                            <Path Data="M3,9 L15,9"
+                              Stroke="Black"
+                              StrokeThickness="1.6"
+                              StrokeStartLineCap="Round"
+                              StrokeEndLineCap="Round"/>
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="IconBox" Property="Opacity" Value="0.8"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="IconBox" Property="Opacity" Value="0.6"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <ListBox x:Name="FileList"
+                             Grid.Row="1"
+                             Margin="0,10,0,10"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             DisplayMemberPath="DisplayName"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             MouseDoubleClick="FileList_MouseDoubleClick"
+                             MouseRightButtonUp="FileList_MouseRightButtonUp">
+
+                        <ListBox.Resources>
+                            <Style TargetType="{x:Type ScrollViewer}">
+                                <Setter Property="Background" Value="Transparent"/>
+                            </Style>
+                        </ListBox.Resources>
+
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Padding" Value="14,12"/>
+                                <Setter Property="Margin" Value="0,2"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="Foreground" Value="#222"/>
+                                <Setter Property="FontSize" Value="16"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd"
+                                                    Background="{TemplateBinding Background}"
+                                                    CornerRadius="10">
+                                                <ContentPresenter VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#E6E6E6"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#DCDCDC"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                    </ListBox>
+
+                    <Grid Grid.Row="2" Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock x:Name="CurrentFileLabel"
+                                   Grid.Column="0"
+                                   Text="目前檔案：尚未建立"
+                                   FontSize="12"
+                                   Foreground="#555"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap" />
+
+                        <!-- 左下角：齒輪 → 個人化設定 -->
+                        <Button x:Name="SettingsGearButton"
+                                Grid.Column="1"
+                                Width="34" Height="34"
+                                Margin="8,0,0,0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="個人化設定"
+                                Click="OpenSettings_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="gbd"
+                                            Background="Transparent"
+                                            CornerRadius="9">
+                                        <Viewbox Width="20" Height="20"
+                                                 HorizontalAlignment="Center"
+                                                 VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Path x:Name="gearIcon"
+                                                      Fill="#5A5A5A"
+                                                      Data="M19.14,12.94a7.49,7.49,0,0,0,.05-1,7.49,7.49,0,0,0-.05-1l2.11-1.65a.5.5,0,0,0,.12-.64l-2-3.46a.5.5,0,0,0-.61-.22l-2.49,1a7.32,7.32,0,0,0-1.69-1l-.38-2.65A.49.49,0,0,0,13.8,1H9.8a.49.49,0,0,0-.49.42L8.93,4.07a7.32,7.32,0,0,0-1.69,1l-2.49-1a.5.5,0,0,0-.61.22l-2,3.46a.5.5,0,0,0,.12.64L4.5,11a7.49,7.49,0,0,0,0,2L2.39,14.65a.5.5,0,0,0-.12.64l2,3.46a.5.5,0,0,0,.61.22l2.49-1a7.32,7.32,0,0,0,1.69,1l.38,2.65a.49.49,0,0,0,.49.42h4a.49.49,0,0,0,.49-.42l.38-2.65a7.32,7.32,0,0,0,1.69-1l2.49,1a.5.5,0,0,0,.61-.22l2-3.46a.5.5,0,0,0-.12-.64ZM12,15.5A3.5,3.5,0,1,1,15.5,12,3.5,3.5,0,0,1,12,15.5Z"/>
+                                            </Canvas>
+                                        </Viewbox>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="gbd" Property="Background" Value="#E2E2E2"/>
+                                            <Setter TargetName="gearIcon" Property="Fill" Value="#222"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 起始畫面 -->
+        <Grid x:Name="StartUI"
+              Margin="280,0,0,0"
+              Background="White"
+              HorizontalAlignment="Stretch"
+              VerticalAlignment="Stretch">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock x:Name="StartMessage"
+                           Grid.Row="1"
+                           Text="讓我們有個新的開始！"
+                           FontSize="28"
+                           Foreground="#222"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,16"/>
+
+                <Button x:Name="StartButton"
+                        Grid.Row="2"
+                        Content="開始"
+                        Width="100"
+                        Height="36"
+                        Background="Black"
+                        Foreground="White"
+                        BorderBrush="Black"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="StartButton_Click"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        FontSize="16"
+                        Padding="6,0"
+                        Style="{x:Null}">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    CornerRadius="18"
+                                    SnapsToDevicePixels="True">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"
+                                                  TextElement.FontSize="16"
+                                                  TextElement.Foreground="White"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+
+                    <Button.Effect>
+                        <DropShadowEffect BlurRadius="6"
+                                          ShadowDepth="2"
+                                          Opacity="0.25"/>
+                    </Button.Effect>
+                </Button>
+            </Grid>
+        </Grid>
+
+        <!-- 主畫面 -->
+        <Grid x:Name="MainUI"
+              Visibility="Collapsed">
+
+            <Border x:Name="Viewport"
+                    ClipToBounds="True"
+                    MouseDown="Viewport_MouseDown"
+                    MouseWheel="Viewport_MouseWheel">
+                <Border.RenderTransform>
+                    <TranslateTransform x:Name="ViewportTranslate" X="140" Y="0"/>
+                </Border.RenderTransform>
+
+                <Border.Background>
+                    <DrawingBrush TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
+                        <DrawingBrush.Drawing>
+                            <GeometryDrawing Brush="White">
+                                <GeometryDrawing.Pen>
+                                    <Pen Brush="#DDD" Thickness="1"/>
+                                </GeometryDrawing.Pen>
+                                <GeometryDrawing.Geometry>
+                                    <GeometryGroup>
+                                        <LineGeometry StartPoint="0,0" EndPoint="20,0"/>
+                                        <LineGeometry StartPoint="0,0" EndPoint="0,20"/>
+                                    </GeometryGroup>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingBrush.Drawing>
+                    </DrawingBrush>
+                </Border.Background>
+
+                <Canvas x:Name="MainCanvas" Background="Transparent"/>
+            </Border>
+
+            <!-- 側邊熱區 -->
+            <Grid x:Name="HotZoneContainer"
+                  Width="50" Height="200"
+                  VerticalAlignment="Center"
+                  HorizontalAlignment="Left"
+                  Background="Transparent"
+                  Visibility="Collapsed"
+                  Panel.ZIndex="101"
+                  MouseEnter="HotZoneContainer_MouseEnter">
+
+                <Border x:Name="HotZoneHitArea"
+                        Width="20" Height="200"
+                        Background="Transparent"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center"
+                        MouseLeftButtonDown="ExpandSidebar">
+                    <Border.Triggers>
+                        <EventTrigger RoutedEvent="MouseEnter">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="HotZoneBackground"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="1.0"
+                                                     Duration="0:0:0.3"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                        <EventTrigger RoutedEvent="MouseLeave">
+                            <BeginStoryboard>
+                                <Storyboard>
+                                    <DoubleAnimation Storyboard.TargetName="HotZoneBackground"
+                                                     Storyboard.TargetProperty="Opacity"
+                                                     To="0.3"
+                                                     Duration="0:0:0.3"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </Border.Triggers>
+                </Border>
+
+                <Border x:Name="HotZoneBackground"
+                        Background="LightGray"
+                        Opacity="0.3"
+                        Width="5" Height="200"
+                        CornerRadius="2.5"
+                        Margin="15,0,0,0"
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Center">
+                    <Border.Effect>
+                        <DropShadowEffect Color="Black"
+                                          BlurRadius="8"
+                                          ShadowDepth="2"
+                                          Opacity="0.4"/>
+                    </Border.Effect>
+                </Border>
+            </Grid>
+
+            <!-- 右上角決策可視化視窗 -->
+
+            <Border
+    x:Name="DecisionPanel"
+    Width="340"
+    Height="260"
+    CornerRadius="18"
+    Background="White"
+    BorderBrush="#E6E6E6"
+    BorderThickness="1"
+    Padding="14"
+    SnapsToDevicePixels="True"
+                HorizontalAlignment="Right"
+VerticalAlignment="Top"
+Margin="0,20,20,0">
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="10"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 上方固定區：標題 + 狀態 -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Text="決策可視化"
+                       FontSize="15"
+                       FontWeight="SemiBold"
+                       Foreground="#303030"
+                       VerticalAlignment="Center"/>
+
+                        <Button x:Name="DecisionPanelToggleButton"
+                                Grid.Column="1"
+                                Width="26"
+                                Height="24"
+                                Margin="0,0,8,0"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="放大決策窗"
+                                Click="DecisionPanelToggleButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="Transparent">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <Viewbox Width="14" Height="14">
+                                <Path x:Name="DecisionPanelToggleIcon"
+                                      Data="M2,6 L2,2 L6,2 M8,2 L12,2 L12,6 M12,8 L12,12 L8,12 M6,12 L2,12 L2,8"
+                                      Stroke="#7A7A7A"
+                                      StrokeThickness="1.6"
+                                      StrokeStartLineCap="Round"
+                                      StrokeEndLineCap="Round"
+                                      StrokeLineJoin="Round"
+                                      Fill="Transparent"/>
+                            </Viewbox>
+                        </Button>
+
+                        <Border x:Name="DecisionStatusBadge"
+                    Grid.Column="2"
+                    Background="#EEF7EA"
+                    CornerRadius="999"
+                    Padding="10,4">
+                            <TextBlock x:Name="DecisionStatusText"
+                           Text="Rule Auto"
+                           FontSize="12"
+                           FontWeight="SemiBold"
+                           Foreground="#2E6A2E"/>
+                        </Border>
+                    </Grid>
+
+                    <!-- 中間分隔 -->
+                    <Border Grid.Row="1"
+                Margin="0,8,0,0"
+                Height="1"
+                Background="#ECECEC"/>
+
+                    <!-- 下方可上下捲動內容區 -->
+                    <ScrollViewer Grid.Row="2"
+              Margin="0,8,0,0"
+              VerticalScrollBarVisibility="Auto"
+              HorizontalScrollBarVisibility="Disabled"
+              CanContentScroll="False"
+              PanningMode="VerticalOnly">
+
+                        <StackPanel Margin="0,0,6,0">
+
+                            <!-- 模式 -->
+                            <TextBlock Text="模式"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionModeText"
+                   Text="-"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <TextBlock Text="Agent"
+           FontSize="12"
+           Foreground="#7A7A7A"
+           Margin="0,0,0,2"/>
+
+                            <TextBlock x:Name="DecisionAgentText"
+           Text="-"
+           FontSize="14"
+           FontWeight="SemiBold"
+           Foreground="#232323"
+           Margin="0,0,0,10"/>
+
+                            <!-- 策略 -->
+                            <TextBlock Text="策略"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionResolverText"
+                   Text="-"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <!-- 模型 -->
+                            <TextBlock Text="模型"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionModelText"
+                   Text="-"
+                   FontSize="13"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <!-- 任務 -->
+                            <TextBlock Text="任務"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionTaskText"
+                   Text="-"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <!-- Reason -->
+                            <TextBlock Text="Reason"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionReasonText"
+                   Text="-"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <!-- Keywords -->
+                            <TextBlock Text="Keywords"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionKeywordsText"
+                   Text="-"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
+                            <!-- Capability / Trace -->
+                            <TextBlock Text="Capability / Trace"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionExtraText"
+                   Text="-"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,14"/>
+
+                            <!-- Timeline -->
+                            <Border Height="1"
+                Background="#ECECEC"
+                Margin="0,0,0,12"/>
+
+                            <TextBlock Text="Decision Timeline"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,8"/>
+
+                            <StackPanel x:Name="DecisionTimelineHost"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- 右下角自動模型開關 -->
+            <Border x:Name="AutoModelSwitchPanel"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,65,18"
+                    Padding="10,7"
+                    CornerRadius="22"
+                    Background="#F7F7F7"
+                    BorderBrush="#D9D9D9"
+                    BorderThickness="1"
+                    Panel.ZIndex="9999">
+
+                <StackPanel Orientation="Horizontal"
+            VerticalAlignment="Center">
+
+                    <TextBlock Text="API"
+               VerticalAlignment="Center"
+               Margin="0,0,6,0"
+               FontSize="12.5"
+               FontWeight="SemiBold"
+               Foreground="#222"/>
+
+                    <CheckBox x:Name="AdvancedAutoResolverSwitch"
+              Style="{StaticResource AppleSwitchStyle}"
+              VerticalAlignment="Center"
+              Visibility="Collapsed"
+              Checked="AdvancedAutoResolverSwitch_Checked"
+              Unchecked="AdvancedAutoResolverSwitch_Unchecked"/>
+
+                    <Border Margin="8,0,0,0"
+            Width="1"
+            Height="16"
+            Background="#D9D9D9"
+            VerticalAlignment="Center"/>
+
+                    <TextBlock Text="Auto"
+               VerticalAlignment="Center"
+               Margin="8,0,6,0"
+               FontSize="12.5"
+               FontWeight="SemiBold"
+               Foreground="#222"/>
+
+                    <CheckBox x:Name="AutoModelSwitch"
+              Style="{StaticResource AppleSwitchStyle}"
+              VerticalAlignment="Center"
+              Checked="AutoModelSwitch_Checked"
+              Unchecked="AutoModelSwitch_Unchecked"/>
+
+                </StackPanel>
+            </Border>
+
+            <!-- 右下角定位按鈕 -->
+            <Button x:Name="CenterOnInitialButton"
+                    Width="38" Height="38"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="18"
+                    Background="#F5F5F5"
+                    BorderBrush="#CCCCCC"
+                    BorderThickness="1"
+                    Cursor="Hand"
+                    Click="CenterOnInitialButton_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse Fill="{TemplateBinding Background}"
+                                     Stroke="{TemplateBinding BorderBrush}"
+                                     StrokeThickness="1"/>
+                            <Path Data="M19,9 L19,29 M9,19 L29,19"
+                                  Stroke="#444"
+                                  StrokeThickness="2"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Button.Template>
+
+                <Button.Effect>
+                    <DropShadowEffect BlurRadius="6"
+                                      ShadowDepth="2"
+                                      Opacity="0.22"/>
+                </Button.Effect>
+            </Button>
+        </Grid>
+
+        <!-- 個人化設定對話框（齒輪點開） -->
+        <Grid x:Name="SettingsOverlay"
+              Visibility="Collapsed"
+              Panel.ZIndex="10000"
+              Background="#55000000"
+              MouseLeftButtonDown="SettingsOverlay_BackgroundClick">
+
+            <Border Width="440"
+                    Height="600"
+                    CornerRadius="18"
+                    Background="White"
+                    BorderBrush="#E6E6E6"
+                    BorderThickness="1"
+                    Padding="20"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    MouseLeftButtonDown="SettingsCard_Click">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="24" ShadowDepth="0" Opacity="0.22"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 標題列 -->
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="設定"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#303030"
+                                   VerticalAlignment="Center"/>
+
+                        <Button Grid.Column="2"
+                                Width="28" Height="28"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="關閉"
+                                Click="CloseSettings_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="cbd" Background="Transparent" CornerRadius="8">
+                                        <Path Data="M5,5 L15,15 M15,5 L5,15"
+                                              Stroke="#888"
+                                              StrokeThickness="1.8"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="cbd" Property="Background" Value="#EEEEEE"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+
+                    <Border Grid.Row="0" Height="1" Background="#ECECEC"
+                            VerticalAlignment="Bottom" Margin="0,0,0,0"/>
+
+                    <!-- 分頁切換：個人化 / API -->
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,2">
+                        <Button x:Name="TabPersonalizationBtn"
+                                Content="個人化"
+                                Height="32"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Cursor="Hand"
+                                Background="#111"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Margin="0,0,8,0"
+                                Click="ShowPersonalizationTab_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="18,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <Button x:Name="TabApiBtn"
+                                Content="API"
+                                Height="32"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Cursor="Hand"
+                                Background="#F1F1F3"
+                                Foreground="#444"
+                                BorderThickness="0"
+                                Click="ShowApiTab_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="18,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+
+                    <!-- 個人化分頁（可捲動） -->
+                    <ScrollViewer x:Name="PersonalizationScroll"
+                                  Grid.Row="2"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Margin="0,8,0,0">
+                    <StackPanel Margin="0,8,4,0">
+                        <TextBlock Text="記憶與偏好"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,0,0,2"/>
+                        <TextBlock Text="告訴它你的偏好，之後每次回答都會遵守。例如：回答用中文與韓文、以後簡潔一點、盡量用便宜的模型。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <Border CornerRadius="10"
+                                Background="#F7F7F8"
+                                BorderBrush="#E4E4E7"
+                                BorderThickness="1"
+                                Padding="10,8">
+                            <TextBox x:Name="MemoryInput"
+                                     Height="60"
+                                     FontSize="13"
+                                     Foreground="#222"
+                                     TextWrapping="Wrap"
+                                     AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="Transparent"
+                                     BorderThickness="0"/>
+                        </Border>
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Button x:Name="RememberButton"
+                                    Grid.Column="0"
+                                    Content="記住"
+                                    Height="34"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    Cursor="Hand"
+                                    Background="#111"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Click="RememberPreference_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="White"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#333"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="ClearMemoryButton"
+                                    Grid.Column="2"
+                                    Content="當前記憶"
+                                    Height="34"
+                                    FontSize="12.5"
+                                    Cursor="Hand"
+                                    Background="#F1F1F3"
+                                    Foreground="#444"
+                                    BorderThickness="0"
+                                    Click="ToggleMemoryList_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9" Padding="16,0">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#E4E4E7"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+
+                        <!-- 「當前記憶」展開區：點上面按鈕才顯示，逐條可刪、可一鍵清除 -->
+                        <StackPanel x:Name="MemoryListPanel" Visibility="Collapsed" Margin="0,10,0,0">
+                            <TextBlock x:Name="MemoryEmptyHint"
+                                       Text="目前沒有任何記憶。"
+                                       Visibility="Collapsed"
+                                       FontSize="12"
+                                       Foreground="#9A9A9E"
+                                       Margin="2,2,0,6"/>
+
+                            <ItemsControl x:Name="PreferenceList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#F4F5FB"
+                                                CornerRadius="10"
+                                                Padding="12,8"
+                                                Margin="0,0,0,6">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Border Grid.Column="0"
+                                                        Width="6" Height="6"
+                                                        CornerRadius="3"
+                                                        Background="#5B6CFF"
+                                                        VerticalAlignment="Top"
+                                                        Margin="0,6,9,0"/>
+
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding Display}"
+                                                           FontSize="12.5"
+                                                           Foreground="#3A3A40"
+                                                           TextWrapping="Wrap"
+                                                           VerticalAlignment="Center"/>
+
+                                                <Button Grid.Column="2"
+                                                        Width="22" Height="22"
+                                                        Margin="8,0,0,0"
+                                                        VerticalAlignment="Top"
+                                                        Background="Transparent"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand"
+                                                        ToolTip="刪除這條記憶"
+                                                        Tag="{Binding Key}"
+                                                        Click="DeletePreference_Click">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="dbd" Background="Transparent" CornerRadius="6">
+                                                                <Path Data="M4,4 L12,12 M12,4 L4,12"
+                                                                      Stroke="#9A9AA0"
+                                                                      StrokeThickness="1.6"
+                                                                      StrokeStartLineCap="Round"
+                                                                      StrokeEndLineCap="Round"
+                                                                      HorizontalAlignment="Center"
+                                                                      VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="dbd" Property="Background" Value="#E2E3EC"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <Button x:Name="ClearAllMemoryButton"
+                                    Content="一鍵清除全部"
+                                    Height="32"
+                                    Margin="0,2,0,0"
+                                    HorizontalAlignment="Left"
+                                    FontSize="12.5"
+                                    Cursor="Hand"
+                                    Background="#FBEAEA"
+                                    Foreground="#B23B3B"
+                                    BorderThickness="0"
+                                    Click="ClearMemory_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9" Padding="16,0">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#F5D9D9"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- §4 多階段任務自動展開 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="多階段任務自動展開"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="偵測到多階段任務（研究→撰寫→簡報／檔案等）時，要怎麼把它拆成下游節點並執行。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <StackPanel>
+                            <RadioButton x:Name="DownstreamModeOneClick"
+                                         GroupName="DownstreamAutoMode"
+                                         Content="一鍵展開並自動執行（建議）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="DownstreamMode_Checked"/>
+                            <RadioButton x:Name="DownstreamModeFullyAuto"
+                                         GroupName="DownstreamAutoMode"
+                                         Content="完全自動（送出後立即展開並執行）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="DownstreamMode_Checked"/>
+                            <RadioButton x:Name="DownstreamModeOff"
+                                         GroupName="DownstreamAutoMode"
+                                         Content="關閉（只用單一節點作答）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="DownstreamMode_Checked"/>
+                        </StackPanel>
+
+                        <!-- 簡報生成器 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="簡報生成器"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,8"/>
+
+                        <StackPanel>
+                            <RadioButton x:Name="PresentationEngineClaude"
+                                         GroupName="PresentationEngine"
+                                         Content="Claude（建議）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="PresentationEngine_Checked"/>
+                            <RadioButton x:Name="PresentationEngineGpt"
+                                         GroupName="PresentationEngine"
+                                         Content="GPT"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="PresentationEngine_Checked"/>
+                            <RadioButton x:Name="PresentationEngineGamma"
+                                         GroupName="PresentationEngine"
+                                         Content="Gamma（九月開放，暫停用）"
+                                         IsEnabled="False"
+                                         FontSize="12.5"
+                                         Foreground="#BBB"
+                                         Margin="0,3"
+                                         Checked="PresentationEngine_Checked"/>
+                        </StackPanel>
+
+                        <!-- 影片風格 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="影片設定"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+
+                        <TextBlock Text="模型"
+                                   FontSize="12"
+                                   Foreground="#666"
+                                   Margin="0,8,0,4"/>
+                        <ComboBox x:Name="VideoModelTierCombo"
+                                  Style="{StaticResource RoutingComboBoxStyle}"
+                                  Width="260"
+                                  HorizontalAlignment="Left"
+                                  SelectionChanged="VideoModelTierCombo_SelectionChanged">
+                            <ComboBoxItem Tag="Standard" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 標準版（約 US$0.40/秒）"/>
+                            <ComboBoxItem Tag="Fast" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Fast（約 US$0.15/秒）"/>
+                            <ComboBoxItem Tag="Lite" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Lite（約 US$0.05/秒）"/>
+                        </ComboBox>
+
+                        <TextBlock Text="風格"
+                                   FontSize="12"
+                                   Foreground="#666"
+                                   Margin="0,12,0,4"/>
+
+                        <Border CornerRadius="10"
+                                Background="#F7F7F8"
+                                BorderBrush="#E4E4E7"
+                                BorderThickness="1"
+                                Padding="10,8">
+                            <TextBox x:Name="VideoStyleInput"
+                                     MinHeight="120"
+                                     MaxHeight="220"
+                                     FontSize="12.5"
+                                     Foreground="#222"
+                                     TextWrapping="Wrap"
+                                     AcceptsReturn="True"
+                                     VerticalScrollBarVisibility="Auto"
+                                     Background="Transparent"
+                                     BorderThickness="0"
+                                     LostFocus="VideoStyleInput_LostFocus"/>
+                        </Border>
+
+                        <Button x:Name="ResetVideoStyleButton"
+                                Content="恢復原廠預設風格"
+                                Height="32"
+                                Margin="0,8,0,0"
+                                HorizontalAlignment="Left"
+                                FontSize="12.5"
+                                Cursor="Hand"
+                                Background="#F1F1F3"
+                                Foreground="#444"
+                                BorderThickness="0"
+                                Click="ResetVideoStyle_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9" Padding="16,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#E4E4E7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- 任務 → AI 自訂路由 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="任務指定模型"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,8"/>
+
+                        <StackPanel x:Name="TaskRoutingList"/>
+
+                        <!-- §15 成本控制：關閉高成本模型 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="成本控制"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="僅影響自動選模型（Auto）模式：關閉後，Auto 不會選用這些高成本模型，會降級為同公司的標準模型。手動模式不受影響，你選什麼就用什麼。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="關閉 Claude Opus（高成本）"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="降級為 Claude Sonnet"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="BlockOpusSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="BlockOpusSwitch_Changed"
+                                      Unchecked="BlockOpusSwitch_Changed"/>
+                        </Grid>
+
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="關閉 Perplexity Deep Research（高成本）"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="降級為 Perplexity Sonar"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="BlockDeepResearchSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="BlockDeepResearchSwitch_Changed"
+                                      Unchecked="BlockDeepResearchSwitch_Changed"/>
+                        </Grid>
+
+                        <!-- 上游附件繼承 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="上游附件"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="開啟後，下游節點執行時會一併讀取上游（母）節點掛的附件（圖片／PDF／HTML…），不只是上游的文字輸出。下游能看到原始檔案內容，但每次執行都會多送這些檔案，token 與費用較高。預設關閉。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="下游節點讀取上游附件"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="關閉時只讀上游的文字輸出（較省）"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="ReadUpstreamAttachmentsSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="ReadUpstreamAttachmentsSwitch_Changed"
+                                      Unchecked="ReadUpstreamAttachmentsSwitch_Changed"/>
+                        </Grid>
+
+                        <!-- §15 逾時上限 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="逾時上限"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="每個節點等待 AI 回應的最長秒數。留空＝自動（依任務類型，3～10 分鐘）。設定範圍 30～1800 秒；圖片／報告等較慢的任務請勿設太短。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <Border Background="#F7F7F8"
+                                    BorderBrush="#E4E4E7"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Width="96"
+                                    Height="34">
+                                <TextBox x:Name="TimeoutInput"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         VerticalContentAlignment="Center"
+                                         Padding="12,0"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         MaxLength="4"
+                                         TextChanged="TimeoutInput_Changed"/>
+                            </Border>
+                            <TextBlock Text="秒"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0"
+                                       FontSize="12.5"
+                                       Foreground="#666"/>
+                            <TextBlock Text="（留空＝自動）"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       FontSize="11.5"
+                                       Foreground="#A8A8AC"/>
+                        </StackPanel>
+                    </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- API 分頁（可捲動）：使用者可把自己的金鑰寫進程式，免設環境變數 -->
+                    <ScrollViewer x:Name="ApiScroll"
+                                  Grid.Row="2"
+                                  Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  Margin="0,8,0,0">
+                        <StackPanel Margin="0,8,4,0">
+                            <TextBlock Text="API 金鑰"
+                                       FontSize="13"
+                                       FontWeight="SemiBold"
+                                       Foreground="#444"
+                                       Margin="0,0,0,2"/>
+                            <TextBlock TextWrapping="Wrap"
+                                       FontSize="11.5"
+                                       Foreground="#9A9A9E"
+                                       Margin="0,0,0,4">
+                                <Run Text="解析順序：系統環境變數 → 這裡輸入的金鑰 → 都沒有就自動切換到其他可用模型（顯示於決策窗），全部不可用才回報失敗。"/>
+                            </TextBlock>
+                            <TextBlock TextWrapping="Wrap"
+                                       FontSize="11"
+                                       Foreground="#B0B0B6"
+                                       Margin="0,0,0,12">
+                                <Run Text="輸入的金鑰以 Windows DPAPI 加密後存在本機（只有你的帳號能解密），不會上傳。留空＝不變更；按各列「清除」可移除。"/>
+                            </TextBlock>
+
+                            <!-- OpenAI -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="OpenAI" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（GPT 文字、gpt-image 圖片）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_OpenAI" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_OpenAI" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="OPENAI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <!-- Claude -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Claude" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（Anthropic 文字 / 導演 / 程式碼）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_Anthropic" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_Anthropic" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="ANTHROPIC_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <!-- Gemini -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Gemini" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（Google 文字、Veo 影片）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_Gemini" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,14">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_Gemini" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="GEMINI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <!-- Perplexity -->
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Perplexity" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（即時聯網研究 / 來源查證）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_Perplexity" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_Perplexity" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="PERPLEXITY_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <!-- Gamma -->
+                            <Grid Margin="0,6,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Gamma" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（AI 簡報設計引擎，九月啟用）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_Gamma" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_Gamma" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="GAMMA_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <Button x:Name="SaveApiKeysButton"
+                                    Content="儲存 API 金鑰"
+                                    Height="36"
+                                    FontSize="13"
+                                    FontWeight="SemiBold"
+                                    Cursor="Hand"
+                                    Background="#111"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Click="SaveApiKeys_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="sbd" Background="{TemplateBinding Background}" CornerRadius="9">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" TextElement.Foreground="White"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="sbd" Property="Background" Value="#333"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <TextBlock x:Name="ApiSaveHint"
+                                       Text=""
+                                       FontSize="11.5"
+                                       Foreground="#1F9D55"
+                                       Margin="2,8,0,0"
+                                       Visibility="Collapsed"/>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Artifact 即時預覽 overlay（點檔案 chip 開啟）-->
+        <Grid x:Name="PreviewOverlay"
+              Visibility="Collapsed"
+              Panel.ZIndex="11000"
+              Background="#66000000"
+              MouseLeftButtonDown="PreviewOverlay_BackgroundClick">
+
+            <Border Margin="56"
+                    CornerRadius="16"
+                    Background="White"
+                    BorderBrush="#E6E6E6"
+                    BorderThickness="1"
+                    MouseLeftButtonDown="PreviewCard_Click">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="0" Opacity="0.25"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 標題列 -->
+                    <Grid Grid.Row="0" Margin="20,14,12,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0"
+                                   Text="預覽"
+                                   FontSize="16"
+                                   FontWeight="SemiBold"
+                                   Foreground="#303030"
+                                   VerticalAlignment="Center"/>
+
+                        <TextBlock Grid.Column="1"
+                                   x:Name="PreviewFileName"
+                                   Margin="12,0,12,0"
+                                   FontSize="13"
+                                   Foreground="#8A8A8E"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
+
+                        <Button Grid.Column="2"
+                                x:Name="PreviewOpenExternalButton"
+                                Content="用系統程式開啟"
+                                Height="30"
+                                FontSize="12.5"
+                                Foreground="#444"
+                                Background="#F1F1F3"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Margin="0,0,8,0"
+                                Click="PreviewOpenExternal_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="pob" Background="{TemplateBinding Background}" CornerRadius="8" Padding="14,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="pob" Property="Background" Value="#E4E4E7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <Button Grid.Column="3"
+                                Width="30" Height="30"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="關閉"
+                                Click="ClosePreview_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="pcb" Background="Transparent" CornerRadius="8">
+                                        <Path Data="M5,5 L15,15 M15,5 L5,15"
+                                              Stroke="#888"
+                                              StrokeThickness="1.8"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="pcb" Property="Background" Value="#EEEEEE"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+
+                    <!-- 內容區：依檔案類型只顯示其中一個渲染器 -->
+                    <Border Grid.Row="1" Background="#FAFAFA" CornerRadius="0,0,16,16" ClipToBounds="True">
+                        <Grid x:Name="PreviewContentHost">
+
+                            <ScrollViewer x:Name="PreviewImageScroll"
+                                          Visibility="Collapsed"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Auto">
+                                <Image x:Name="PreviewImage"
+                                       Margin="16"
+                                       Stretch="Uniform"
+                                       StretchDirection="DownOnly"
+                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </ScrollViewer>
+
+                            <MediaElement x:Name="PreviewMedia"
+                                          Visibility="Collapsed"
+                                          LoadedBehavior="Manual"
+                                          UnloadedBehavior="Stop"
+                                          Stretch="Uniform"
+                                          Margin="16"
+                                          Cursor="Hand"
+                                          MediaOpened="PreviewMedia_MediaOpened"
+                                          MediaEnded="PreviewMedia_MediaEnded"
+                                          MouseLeftButtonDown="PreviewMedia_Click"/>
+
+                            <wv2:WebView2 x:Name="PreviewWeb"
+                                          Visibility="Collapsed"/>
+
+                            <ScrollViewer x:Name="PreviewTextScroll"
+                                          Visibility="Collapsed"
+                                          VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          PreviewMouseWheel="PreviewTextScroll_PreviewMouseWheel">
+                                <TextBox x:Name="PreviewText"
+                                         Margin="28,22,28,22"
+                                         FontSize="15"
+                                         Foreground="#222"
+                                         TextWrapping="Wrap"
+                                         IsReadOnly="True"
+                                         Background="Transparent"
+                                         BorderThickness="0"
+                                         CaretBrush="Transparent"
+                                         IsReadOnlyCaretVisible="False"
+                                         VerticalScrollBarVisibility="Disabled"
+                                         HorizontalScrollBarVisibility="Disabled"/>
+                            </ScrollViewer>
+
+                            <StackPanel x:Name="PreviewFallback"
+                                        Visibility="Collapsed"
+                                        HorizontalAlignment="Center"
+                                        VerticalAlignment="Center">
+                                <TextBlock x:Name="PreviewFallbackText"
+                                           Text="這個檔案無法在這裡預覽。"
+                                           FontSize="14"
+                                           Foreground="#888"
+                                           HorizontalAlignment="Center"/>
+                            </StackPanel>
+
+                            <TextBlock x:Name="PreviewLoading"
+                                       Text="載入中…"
+                                       Visibility="Collapsed"
+                                       FontSize="14"
+                                       Foreground="#999"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>

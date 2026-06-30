@@ -1,0 +1,69 @@
+﻿using System;
+using System.Collections.Generic;
+
+namespace test
+{
+    public sealed class AiExecutionLogEntry
+    {
+        public string RequestedAgentId { get; init; } = "";
+        public string ActualAgentId { get; init; } = "";
+        public string NodeId { get; init; } = "";
+
+        public DateTime StartedAtUtc { get; init; }
+        public DateTime EndedAtUtc { get; init; }
+
+        public long DurationMs { get; init; }
+
+        public string SelectionMode { get; init; } = "";
+        public string Resolver { get; init; } = "";
+
+        public string RequestedModelId { get; init; } = "";
+        public string PlannedModelId { get; init; } = "";
+        public string ActualModelId { get; init; } = "";
+
+        public string TaskMode { get; init; } = "";
+        public double Confidence { get; init; }
+
+        public string ResolverReason { get; init; } = "";
+        public IReadOnlyList<string> ResolverKeywords { get; init; }
+            = Array.Empty<string>();
+
+        public bool CapabilityAdjusted { get; init; }
+        public string CapabilityReason { get; init; } = "";
+
+        public string CapabilityRequestedModelId { get; init; } = "";
+        public string CapabilityResolvedModelId { get; init; } = "";
+        public string CapabilityRequired { get; init; } = "";
+        public string CapabilityMissing { get; init; } = "";
+        public bool CapabilityStreamingAdjusted { get; init; }
+
+        public IReadOnlyList<AgentCapabilityTraceItem> CapabilityTrace { get; init; }
+            = Array.Empty<AgentCapabilityTraceItem>();
+
+        public bool RuntimeFallbackUsed { get; init; }
+        public string RuntimeFallbackSummary { get; init; } = "";
+
+        public bool Success { get; init; }
+        public string ErrorMessage { get; init; } = "";
+
+        public IReadOnlyList<AiFallbackAttempt> FallbackAttempts { get; init; }
+            = Array.Empty<AiFallbackAttempt>();
+
+        public string WorkspaceSummary { get; set; } = "";
+        public IReadOnlyList<string> WorkspaceArtifactDetails { get; init; }
+            = Array.Empty<string>();
+        public IReadOnlyList<AgentWorkspaceArtifactRecord> WorkspaceArtifacts { get; init; }
+            = Array.Empty<AgentWorkspaceArtifactRecord>();
+
+        // Memory v1 視覺化：本次召回的偏好 / 記憶統計。
+        public MemoryRecallStats MemoryRecall { get; init; } = MemoryRecallStats.Empty;
+
+        // §6 第一層輸出判斷的白話摘要（報告 / 表格 / 簡報 / 純文字）。
+        public string OutputIntentSummary { get; init; } = "";
+
+        // Product UX：Token / 成本估算，供決策窗顯示（與節點底部的成本估算同一來源）。
+        public int InputTokens { get; init; }
+        public int OutputTokens { get; init; }
+        public string CostDisplay { get; init; } = "";
+    }
+}

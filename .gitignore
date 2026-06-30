@@ -1,0 +1,11 @@
+.vs/
+bin/
+obj/
+*.user
+*.suo
+
+# pro 版的輸出/存檔/附件(SavesDir 指向此資料夾),不進版控
+file/
+
+# 機器本機的 Claude 權限設定,不進版控
+.claude/settings.local.json
