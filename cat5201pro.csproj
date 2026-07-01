@@ -13,8 +13,14 @@
     <None Remove="Assets\Perplexity_logo.png" />
   </ItemGroup>
 
+	
   <ItemGroup>
     <Content Include="ico_pack_256x256_1-Photoroom.ico" />
+  </ItemGroup>
+
+  <!-- 手機鏡像（§17 階段一）：WinExe 內嵌 Kestrel 開唯讀 web server，手機同區網瀏覽。 -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +29,7 @@
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
     <PackageReference Include="OpenAI" Version="2.8.0" />
     <PackageReference Include="PdfPig" Version="0.1.15" />
+    <PackageReference Include="QRCoder" Version="1.6.0" />
     <PackageReference Include="QuestPDF" Version="2026.6.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
   </ItemGroup>

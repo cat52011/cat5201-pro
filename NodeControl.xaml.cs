@@ -31,6 +31,8 @@ namespace test
 
         private bool _isTopLocked = false;
         private bool _isGenerating = false;
+        // 手機鏡像（§17 階段二）遠端「停止」用：每次執行建立、外部可 Cancel；手動停止與逾時要分開顯示。
+        private CancellationTokenSource? _activeManualStop;
         private bool _isShowingLoadingText = false;
 
         // 等待計時：讓使用者在長任務（特別是生成圖片）時看到已等待秒數，而不是空轉。
@@ -118,6 +120,50 @@ namespace test
 
         /// <summary>取本次執行累積的媒體生成費用（0 = 無圖片/影片生成）。</summary>
         public (double usd, string label) GetMediaCostUsd() => (_mediaGenerationCostUsd, _mediaGenerationCostLabel);
+
+        // ===== 手機鏡像（§17 階段一）唯讀狀態存取器：供 WorkspaceSnapshot 讀取，不依賴 UI。 =====
+
+        /// <summary>執行狀態鍵：idle / running / success / failed。</summary>
+        public string GetRunStatusKey() => _runStatus switch
+        {
+            NodeRunStatus.Running => "running",
+            NodeRunStatus.Success => "success",
+            NodeRunStatus.Failed => "failed",
+            _ => "idle",
+        };
+
+        /// <summary>中文狀態標籤。</summary>
+        public string GetRunStatusLabel() => _runStatus switch
+        {
+            NodeRunStatus.Running => "執行中",
+            NodeRunStatus.Success => "成功",
+            NodeRunStatus.Failed => "失敗",
+            _ => "閒置",
+        };
+
+        /// <summary>節點輸入的第一行（當標題），截斷到 maxLen 字。</summary>
+        public string GetInputTitle(int maxLen = 48)
+        {
+            string top = GetTopText() ?? "";
+            foreach (var raw in top.Split('\n'))
+            {
+                var line = raw.Trim();
+                if (line.Length == 0) continue;
+                return line.Length > maxLen ? line.Substring(0, maxLen) + "…" : line;
+            }
+            return "";
+        }
+
+        /// <summary>輸出文字預覽，截斷到 maxLen 字。</summary>
+        public string GetOutputPreview(int maxLen = 240)
+        {
+            string text = (GetBottomText() ?? "").Trim();
+            if (text.Length <= maxLen) return text;
+            return text.Substring(0, maxLen) + "…";
+        }
+
+        /// <summary>執行中的進度提示（例如「影片生成中 N%」）；非執行中回空字串。</summary>
+        public string GetLoadingHintText() => _loadingExtraHint ?? "";
 
         public event EventHandler? Moved;
         public event EventHandler? ContentChanged;
@@ -1552,8 +1598,10 @@ namespace test
                     return;
                 }
 
-                // 外部（工作流鏈「停止」）token 與本步逾時 token 連動：任一觸發都會取消這次執行。
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken);
+                // 外部（工作流鏈「停止」/ 手機遠端「停止」）token 與本步逾時 token 連動：任一觸發都會取消這次執行。
+                _activeManualStop?.Dispose();
+                _activeManualStop = new CancellationTokenSource();
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(externalToken, _activeManualStop.Token);
                 cts.CancelAfter(executionTimeout);
 
                 Action<string> deltaHandler = delta =>
@@ -1604,11 +1652,11 @@ namespace test
             {
                 StopBottomLoadingAnimation(clearIfLoading: true);
 
-                if (externalToken.IsCancellationRequested)
+                if (externalToken.IsCancellationRequested || _activeManualStop?.IsCancellationRequested == true)
                 {
-                    // 使用者主動「停止工作流」：不是逾時，給對應訊息與狀態。
+                    // 使用者主動「停止」（工作流鏈，或手機遠端停止）：不是逾時，給對應訊息與狀態。
                     BottomDisplay.Text =
-                        "已手動停止工作流。這一步尚未完成。\n" +
+                        "已手動停止。這一步尚未完成。\n" +
                         "可右鍵「執行此節點與下游」從這裡重跑，或「略過此步、從下一步續跑」。";
                     ApplyRunStatus(NodeRunStatus.Failed, "已停止");
                 }
@@ -1631,8 +1679,37 @@ namespace test
             {
                 StopBottomLoadingAnimation(clearIfLoading: false);
                 _isGenerating = false;
+                _activeManualStop?.Dispose();
+                _activeManualStop = null;
                 UpdateEditButtons();
             }
+        }
+
+        // ===== 手機鏡像（§17 階段二）遠端輕操控入口：皆須在 UI 執行緒呼叫（由 MainWindow 的 Dispatcher 保證）。 =====
+
+        /// <summary>此節點是否正在執行（供快照 CanStop / CanRerun 判斷）。</summary>
+        public bool IsGenerating => _isGenerating;
+
+        /// <summary>遠端「停止」：取消目前執行。回傳是否確實有在跑而送出取消。</summary>
+        public bool StopActiveRun()
+        {
+            if (!_isGenerating || _activeManualStop == null)
+                return false;
+            try { _activeManualStop.Cancel(); return true; }
+            catch { return false; }
+        }
+
+        /// <summary>遠端「重跑」：沿用上一次 prompt（或現有輸入）重新生成；fire-and-forget，不阻塞呼叫端。</summary>
+        public async Task RerunFromMirrorAsync()
+        {
+            if (_isGenerating)
+                return;
+            string prompt = string.IsNullOrWhiteSpace(_lastRunPrompt)
+                ? BuildPromptForCurrentRun(GetTopText())
+                : _lastRunPrompt;
+            if (string.IsNullOrWhiteSpace(prompt))
+                return;
+            await GenerateBottomReplyFromTopAsync(prompt);
         }
 
         // ===== Product UX：節點狀態（邊框顏色）+ 狀態列 =====

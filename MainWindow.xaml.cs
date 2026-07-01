@@ -442,7 +442,8 @@ namespace test
             int ManualTimeoutSeconds = 0,
             string VideoStyleOverride = "",
             string VideoModelTier = "Lite",
-            bool ReadUpstreamAttachments = false
+            bool ReadUpstreamAttachments = false,
+            bool MobileMirrorEnabled = false
         );
 
         // 全域個人化偏好放在子資料夾，永遠不會被 SavesDir 的 *.json 專案掃描列舉到（非遞迴），
@@ -1134,7 +1135,19 @@ namespace test
                 $"偵測到這次輸入可能要產生：\n\n　{what}\n\n要執行嗎？\n（選「否」就只會給你純文字回答，不產生任何檔案／媒體）",
                 this,
                 confirmText: "是",
-                cancelText: "否");
+                cancelText: "否",
+                onShown: dlg =>
+                {
+                    // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
+                    _pendingGenConfirmWindow = dlg;
+                    _pendingGenConfirmWhat = what;
+                    BuildAndPublishMirrorSnapshot();
+                });
+
+            // 對話框已關（桌面或手機任一回答）：清除待確認狀態並更新手機畫面。
+            _pendingGenConfirmWindow = null;
+            _pendingGenConfirmWhat = null;
+            BuildAndPublishMirrorSnapshot();
 
             return Task.FromResult(ok);
         }
@@ -2803,6 +2816,9 @@ namespace test
             LoadPreferences();
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
+
+            // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
+            _ = AutoStartMobileMirrorIfEnabledAsync();
 
             SetRandomStartMessage();
             RefreshFileList();
@@ -5244,7 +5260,8 @@ namespace test
                     ManualTimeoutSeconds: _manualTimeoutSeconds,
                     VideoStyleOverride: _videoStyleOverride ?? "",
                     VideoModelTier: VeoModels.ToStorageValue(_videoModelTier),
-                    ReadUpstreamAttachments: _readUpstreamAttachments
+                    ReadUpstreamAttachments: _readUpstreamAttachments,
+                    MobileMirrorEnabled: _mobileMirrorEnabled
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -5309,6 +5326,7 @@ namespace test
                 _videoStyleOverride = prefs.VideoStyleOverride ?? "";
                 _videoModelTier = VeoModels.ParseTier(prefs.VideoModelTier);
                 _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
+                _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
             }
             catch
             {
@@ -7163,6 +7181,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                         : "";
                 if (ReadUpstreamAttachmentsSwitch != null)
                     ReadUpstreamAttachmentsSwitch.IsChecked = _readUpstreamAttachments;
+                if (MobileMirrorSwitch != null)
+                    MobileMirrorSwitch.IsChecked = _mobileMirrorEnabled;
             }
             finally
             {
@@ -7192,6 +7212,218 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 return;
             AiAutoCostPolicy.BlockDeepResearch = BlockDeepResearchSwitch?.IsChecked == true;
             SaveState();
+        }
+
+        // ===== 手機鏡像（§17 階段一）：開關 → 啟停內嵌唯讀 web server + 每 1.5 秒推快照 =====
+        private MobileMirrorServer? _mirrorServer;
+        private DispatcherTimer? _mirrorPump;
+        private bool _mobileMirrorEnabled; // 個人化偏好：是否啟用手機鏡像（存 _preferences.json，啟動自動開）
+        // §17 階段二遠端二次確認：目前開著的「要不要產生」對話框 + 內容；手機回答時設其 DialogResult 即可關閉。
+        private Window? _pendingGenConfirmWindow;
+        private string? _pendingGenConfirmWhat;
+
+        private static readonly JsonSerializerOptions MirrorJsonOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        };
+
+        private async void MobileMirrorSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            bool on = MobileMirrorSwitch?.IsChecked == true;
+            _mobileMirrorEnabled = on;      // 尊重個人化：使用者的明確選擇立即落地
+            SavePreferences();
+            if (on)
+                await StartMobileMirrorAsync();
+            else
+                await StopMobileMirrorAsync();
+        }
+
+        // 啟動時若個人化已開啟手機鏡像，自動把 server 拉起來（開關同步是 gated 的、不會觸發，故明確呼叫）。
+        private async Task AutoStartMobileMirrorIfEnabledAsync()
+        {
+            if (!_mobileMirrorEnabled) return;
+            await StartMobileMirrorAsync();
+        }
+
+        private async Task StartMobileMirrorAsync()
+        {
+            try
+            {
+                _mirrorServer ??= new MobileMirrorServer();
+                _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
+                if (!_mirrorServer.IsRunning)
+                    await _mirrorServer.StartAsync(MobileMirrorServer.DefaultPort);
+
+                BuildAndPublishMirrorSnapshot(); // 先推一次，畫面不空白
+
+                _mirrorPump ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
+                _mirrorPump.Tick -= MirrorPump_Tick;
+                _mirrorPump.Tick += MirrorPump_Tick;
+                _mirrorPump.Start();
+
+                string url = _mirrorServer.GetLanUrl();
+                if (MobileMirrorUrlText != null) MobileMirrorUrlText.Text = url;
+                if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Visible;
+                UpdateMirrorQrImage(url);
+            }
+            catch (Exception ex)
+            {
+                _mirrorPump?.Stop();
+                if (MobileMirrorSwitch != null) MobileMirrorSwitch.IsChecked = false;
+                if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
+                MessageBox.Show(
+                    "無法啟動手機鏡像伺服器（可能是 " + MobileMirrorServer.DefaultPort + " 埠被占用，或防火牆阻擋）。\n\n" + ex.Message,
+                    "手機鏡像", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async Task StopMobileMirrorAsync()
+        {
+            _mirrorPump?.Stop();
+            if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
+            if (MobileMirrorQr != null) MobileMirrorQr.Source = null;
+            if (_mirrorServer != null) await _mirrorServer.StopAsync();
+        }
+
+        // 用 QRCoder 產生 URL 的 QR 碼（PngByteQRCode 免 System.Drawing），手機掃描即連，免手打 IP。
+        private void UpdateMirrorQrImage(string url)
+        {
+            if (MobileMirrorQr == null) return;
+            try
+            {
+                using var gen = new QRCoder.QRCodeGenerator();
+                using var data = gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
+                var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
+                var bmp = new BitmapImage();
+                using (var ms = new MemoryStream(png))
+                {
+                    bmp.BeginInit();
+                    bmp.CacheOption = BitmapCacheOption.OnLoad;
+                    bmp.StreamSource = ms;
+                    bmp.EndInit();
+                }
+                bmp.Freeze();
+                MobileMirrorQr.Source = bmp;
+            }
+            catch
+            {
+                MobileMirrorQr.Source = null; // QR 失敗不影響鏡像本身，使用者仍可手打 URL
+            }
+        }
+
+        private void MirrorPump_Tick(object? sender, EventArgs e) => BuildAndPublishMirrorSnapshot();
+
+        /// <summary>從畫布節點建 UI 無關快照並推給 server。失敗絕不可影響主程式。</summary>
+        private void BuildAndPublishMirrorSnapshot()
+        {
+            if (_mirrorServer == null || !_mirrorServer.IsRunning)
+                return;
+            try
+            {
+                var now = DateTime.Now;
+                var snap = new WorkspaceSnapshot
+                {
+                    Version = now.Ticks,
+                    GeneratedAtUtc = DateTime.UtcNow.ToString("o"),
+                    GeneratedAtLocal = now.ToString("HH:mm:ss"),
+                };
+
+                foreach (var node in MainCanvas.Children.OfType<NodeControl>())
+                {
+                    bool hasReal = node.TryGetRealTokenUsage(out int inTok, out int outTok);
+                    var (mediaUsd, _) = node.GetMediaCostUsd();
+                    var files = node.GetOutputFilePaths()
+                        .Select(p => Path.GetFileName(p))
+                        .Where(n => !string.IsNullOrWhiteSpace(n))
+                        .ToList();
+
+                    // 參與模型：顯示本次執行「所有」參與的模型（主 + 各產出物），與決策窗同一來源；
+                    // 尚未執行過（無 log）才退回目前選的單一模型。
+                    var modelLabels = NodeDecisionViewBuilder.GetParticipantModelLabels(GetLatestExecutionLog(node));
+                    string modelText = modelLabels.Count > 0
+                        ? string.Join(" + ", modelLabels)
+                        : node.GetCommittedModelId();
+
+                    snap.Nodes.Add(new NodeSnapshot
+                    {
+                        Id = node.Id.ToString(),
+                        Title = node.GetInputTitle(),
+                        Status = node.GetRunStatusKey(),
+                        StatusLabel = node.GetRunStatusLabel(),
+                        Model = modelText,
+                        InputTokens = inTok,
+                        OutputTokens = outTok,
+                        HasRealTokens = hasReal,
+                        MediaCostUsd = mediaUsd,
+                        LoadingHint = node.GetLoadingHintText(),
+                        OutputPreview = node.GetOutputPreview(),
+                        Files = files,
+                        CanStop = node.IsGenerating,
+                        CanRerun = !node.IsGenerating && !string.IsNullOrWhiteSpace(node.GetInputTitle()),
+                    });
+                }
+
+                snap.NodeCount = snap.Nodes.Count;
+                snap.AnyRunning = snap.Nodes.Any(n => n.Status == "running");
+                if (_pendingGenConfirmWhat != null)
+                    snap.Pending = new PendingConfirmationSnapshot { What = _pendingGenConfirmWhat };
+
+                _mirrorServer.Publish(JsonSerializer.Serialize(snap, MirrorJsonOptions));
+            }
+            catch { /* 鏡像推送失敗不影響主程式 */ }
+        }
+
+        // 手機端指令（§17 階段二）：Kestrel 執行緒呼叫進來，一律用 Dispatcher 丟回 WPF UI 執行緒執行，
+        // 因為底下要碰 NodeControl（碰 UI 物件必須在 UI 執行緒——技術地雷）。
+        private Task<MirrorCommandResult> HandleMirrorCommandAsync(MirrorCommand cmd)
+            => Dispatcher.InvokeAsync(() => ExecuteMirrorCommand(cmd)).Task.Unwrap();
+
+        private Task<MirrorCommandResult> ExecuteMirrorCommand(MirrorCommand cmd)
+        {
+            string action = (cmd.Action ?? "").Trim().ToLowerInvariant();
+
+            // 二次確認的回答不綁定節點：直接設對話框的 DialogResult（此方法已在 UI 執行緒），即會關閉 modal。
+            if (action == "confirm" || action == "reject")
+            {
+                var win = _pendingGenConfirmWindow;
+                if (win == null)
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "目前沒有待確認的項目" });
+                try { win.DialogResult = (action == "confirm"); }
+                catch { return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "回覆失敗（可能已由電腦回答）" }); }
+                return Task.FromResult(new MirrorCommandResult
+                {
+                    Ok = true,
+                    Message = action == "confirm" ? "已確認執行" : "已取消，只給文字",
+                });
+            }
+
+            var node = MainCanvas.Children.OfType<NodeControl>()
+                .FirstOrDefault(n => n.Id.ToString() == cmd.NodeId);
+            if (node == null)
+                return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "找不到節點" });
+
+            switch (action)
+            {
+                case "stop":
+                    bool stopped = node.StopActiveRun();
+                    return Task.FromResult(new MirrorCommandResult
+                    {
+                        Ok = stopped,
+                        Message = stopped ? "已送出停止" : "節點不在執行中",
+                    });
+
+                case "rerun":
+                    if (node.IsGenerating)
+                        return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "節點執行中，無法重跑" });
+                    _ = node.RerunFromMirrorAsync();  // 不等它跑完，立即回應手機
+                    BuildAndPublishMirrorSnapshot();  // 立刻把「執行中」推給手機
+                    return Task.FromResult(new MirrorCommandResult { Ok = true, Message = "已開始重跑" });
+
+                default:
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "未知指令" });
+            }
         }
 
         // 逾時輸入：空白 = 自動；否則限制在 30～1800 秒（30 分鐘）的合理範圍。
@@ -7833,9 +8065,14 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             // 通用確認框（兩顆鈕）。回傳 true = 按下確認鈕。取代原生 MessageBox 的 Yes/No、OKCancel。
             public static bool ShowConfirm(
                 Window owner, string title, string message, FrameworkElement resourceHost,
-                string confirmText = "確定", string cancelText = "取消", bool danger = false)
+                string confirmText = "確定", string cancelText = "取消", bool danger = false,
+                Action<Window>? onShown = null)
             {
                 var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, confirmText, cancelText, danger);
+                // 手機鏡像（§17 階段二）遠端回答用：把視窗參照交給呼叫端，讓手機也能設 DialogResult 關閉此框。
+                // 其他呼叫者不傳 onShown，行為完全不變。
+                if (onShown != null)
+                    dlg.Loaded += (_, __) => onShown(dlg);
                 return dlg.ShowDialog() == true;
             }
 

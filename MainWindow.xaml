@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:test"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="cat5201"
+        Title="cat5201pro"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         ResizeMode="CanResize">
@@ -1469,6 +1469,72 @@ Margin="0,20,20,0">
                                        FontSize="11.5"
                                        Foreground="#A8A8AC"/>
                         </StackPanel>
+
+                        <!-- 手機鏡像（§17 階段一）：開啟後手機同區網可唯讀看到畫布即時狀態 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="手機鏡像"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="開啟後，在本機開一個唯讀網頁伺服器。手機連同一個 Wi-Fi，用瀏覽器打開下方網址，即可即時看到畫布上各節點的執行狀態、token／成本與產出物。純唯讀，手機不能操控。首次開啟若 Windows 防火牆跳出，請允許。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="啟用手機唯讀鏡像"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="關閉時不開任何對外連線埠"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="MobileMirrorSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="MobileMirrorSwitch_Changed"
+                                      Unchecked="MobileMirrorSwitch_Changed"/>
+                        </Grid>
+
+                        <Border x:Name="MobileMirrorUrlBox"
+                                Visibility="Collapsed"
+                                Background="#F4F5FB"
+                                CornerRadius="10"
+                                Padding="12,10"
+                                Margin="0,8,0,0">
+                            <StackPanel>
+                                <TextBlock Text="手機相機掃這個 QR 直接進，或手打下方網址："
+                                           FontSize="11.5" Foreground="#777" Margin="0,0,0,8"/>
+                                <Border HorizontalAlignment="Center"
+                                        Background="White"
+                                        CornerRadius="8"
+                                        Padding="8"
+                                        Margin="0,0,0,8">
+                                    <Image x:Name="MobileMirrorQr"
+                                           Width="150" Height="150"
+                                           RenderOptions.BitmapScalingMode="NearestNeighbor"
+                                           SnapsToDevicePixels="True"/>
+                                </Border>
+                                <TextBox x:Name="MobileMirrorUrlText"
+                                         Text=""
+                                         IsReadOnly="True"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         FontSize="14"
+                                         FontWeight="SemiBold"
+                                         Foreground="#3B54FF"
+                                         TextWrapping="Wrap"
+                                         HorizontalAlignment="Center"
+                                         TextAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                     </ScrollViewer>
 

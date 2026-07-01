@@ -251,6 +251,17 @@ namespace test
             return ids;
         }
 
+        // 手機鏡像（§17）用：回本次執行「實際參與的模型」顯示標籤清單（主模型 + 各產出物模型，去重）。
+        // 與決策窗頂部「模型」欄同一來源，避免手機只顯示單一 committed 模型。
+        public static IReadOnlyList<string> GetParticipantModelLabels(AiExecutionLogEntry? log)
+        {
+            if (log == null)
+                return Array.Empty<string>();
+            string primary = GetModelLabel(
+                string.IsNullOrWhiteSpace(log.ActualModelId) ? log.PlannedModelId : log.ActualModelId);
+            return CollectParticipantModels(log, primary);
+        }
+
         // 頂部「模型」欄用：實際參與的模型（主模型 + 各產出物的模型），去重後回顯示標籤清單。
         private static List<string> CollectParticipantModels(AiExecutionLogEntry log, string primaryModelLabel)
         {
