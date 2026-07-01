@@ -3,6 +3,8 @@ bin/
 obj/
 *.user
 *.suo
+docs/
+docs_bak
 
 # pro 版的輸出/存檔/附件(SavesDir 指向此資料夾),不進版控
 file/
