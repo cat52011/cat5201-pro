@@ -19,7 +19,7 @@ using System.Windows.Threading;
 
 namespace test
 {
-    public partial class NodeControl : UserControl
+    public partial class NodeControl : UserControl, INodeContext
     {
         private Path? _tempPath;
         private Point _startPoint;
@@ -116,6 +116,9 @@ namespace test
             _mediaGenerationCostUsd += usd;
             if (!string.IsNullOrWhiteSpace(label))
                 _mediaGenerationCostLabel += (string.IsNullOrEmpty(_mediaGenerationCostLabel) ? "" : " + ") + label;
+
+            // 花錢安全：媒體成本也進全域帳本（LLM 文字成本在 MainWindow.AddExecutionLog 記）。
+            SpendLedger.Add(usd, string.IsNullOrWhiteSpace(label) ? "media" : label);
         }
 
         /// <summary>取本次執行累積的媒體生成費用（0 = 無圖片/影片生成）。</summary>
@@ -1421,7 +1424,6 @@ namespace test
                 StatusText.Text = "已略過此步（沿用上一步結果）";
                 StatusText.Foreground = amber;
             }
-            if (RerunButton != null) RerunButton.Visibility = Visibility.Collapsed;
             if (StatusFooter != null) StatusFooter.Visibility = Visibility.Visible;
         }
 
@@ -1598,6 +1600,15 @@ namespace test
                     return;
                 }
 
+                // 花錢安全：已達每日花費上限 → 不執行（所有執行路徑都經過這裡：送出/重跑/工作流/手機指令）。
+                if (!_parent.CheckDailyBudgetAllows(out string budgetMessage))
+                {
+                    StopBottomLoadingAnimation(clearIfLoading: true);
+                    BottomDisplay.Text = budgetMessage;
+                    ApplyRunStatus(NodeRunStatus.Failed, "已達每日花費上限");
+                    return;
+                }
+
                 // 外部（工作流鏈「停止」/ 手機遠端「停止」）token 與本步逾時 token 連動：任一觸發都會取消這次執行。
                 _activeManualStop?.Dispose();
                 _activeManualStop = new CancellationTokenSource();
@@ -1734,13 +1745,11 @@ namespace test
             switch (status)
             {
                 case NodeRunStatus.Running:
-                    if (RerunButton != null) RerunButton.Visibility = Visibility.Collapsed;
                     if (StatusText != null) StatusText.Text = "";
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
                     break;
 
                 case NodeRunStatus.Success:
-                    if (RerunButton != null) RerunButton.Visibility = Visibility.Collapsed;
                     // §3：成功後可從右鍵選單「重新生成答案」(沿用 research)。footer 已無內容，收起避免空白條。
                     if (StatusText != null)
                     {
@@ -1753,7 +1762,6 @@ namespace test
                     break;
 
                 case NodeRunStatus.Failed:
-                    if (RerunButton != null) RerunButton.Visibility = Visibility.Visible;
                     if (StatusText != null)
                     {
                         StatusText.Text = string.IsNullOrWhiteSpace(detail) ? "執行失敗" : detail;
@@ -1763,7 +1771,6 @@ namespace test
                     break;
 
                 default: // Idle
-                    if (RerunButton != null) RerunButton.Visibility = Visibility.Collapsed;
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
                     break;
             }
@@ -1824,21 +1831,6 @@ namespace test
             return string.IsNullOrWhiteSpace(trimmed)
                 ? "發生未預期的錯誤，請重試一次。"
                 : $"執行時發生錯誤：{trimmed}";
-        }
-
-        private async void RerunButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (_isGenerating)
-                return;
-
-            string prompt = string.IsNullOrWhiteSpace(_lastRunPrompt)
-                ? BuildPromptForCurrentRun(GetTopText())
-                : _lastRunPrompt;
-
-            if (string.IsNullOrWhiteSpace(prompt))
-                return;
-
-            await GenerateBottomReplyFromTopAsync(prompt);
         }
 
         // §3：只重新生成最終答案，沿用上一次的 research / capability 成果（較快、不重跑搜尋）。
@@ -2127,7 +2119,6 @@ namespace test
         public void RestoreRegenerateAffordance()
         {
             _runStatus = NodeRunStatus.Idle;
-            if (RerunButton != null) RerunButton.Visibility = Visibility.Collapsed;
             if (StatusText != null) StatusText.Text = "";
             if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
         }

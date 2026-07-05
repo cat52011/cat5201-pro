@@ -3,15 +3,15 @@
     public sealed class AgentRuntimeFactory
     {
         private readonly MainWindow _main;
-        private readonly NodeExecutionDecisionResolver _decisionResolver;
-        private readonly NodeExecutionFinalizer _executionFinalizer;
-        private readonly System.Func<NodeControl, string, NodeExecutionDecision, System.Action<string>?, bool, System.Threading.CancellationToken, System.Threading.Tasks.Task<AiFallbackExecutionResult>> _executeWithFallbackAsync;
+        private readonly IExecutionDecisionResolver _decisionResolver;
+        private readonly IDecisionFinalizer _executionFinalizer;
+        private readonly System.Func<INodeContext, string, NodeExecutionDecision, System.Action<string>?, bool, System.Threading.CancellationToken, System.Threading.Tasks.Task<AiFallbackExecutionResult>> _executeWithFallbackAsync;
 
         public AgentRuntimeFactory(
             MainWindow main,
-            NodeExecutionDecisionResolver decisionResolver,
-            NodeExecutionFinalizer executionFinalizer,
-            System.Func<NodeControl, string, NodeExecutionDecision, System.Action<string>?, bool, System.Threading.CancellationToken, System.Threading.Tasks.Task<AiFallbackExecutionResult>> executeWithFallbackAsync)
+            IExecutionDecisionResolver decisionResolver,
+            IDecisionFinalizer executionFinalizer,
+            System.Func<INodeContext, string, NodeExecutionDecision, System.Action<string>?, bool, System.Threading.CancellationToken, System.Threading.Tasks.Task<AiFallbackExecutionResult>> executeWithFallbackAsync)
         {
             _main = main;
             _decisionResolver = decisionResolver;

@@ -25,6 +25,16 @@ namespace test
 
         /// <summary>目前有一個「要不要產生檔案／媒體」的二次確認在等回答（§17 階段二）；null = 沒有。</summary>
         public PendingConfirmationSnapshot? Pending { get; set; }
+
+        /// <summary>可選模型清單（§17 階段三：手機下指令時可指定模型）。</summary>
+        public List<MirrorModelOption> Models { get; set; } = new();
+    }
+
+    /// <summary>手機端模型選項。</summary>
+    public sealed class MirrorModelOption
+    {
+        public string Id { get; set; } = "";
+        public string Name { get; set; } = "";
     }
 
     /// <summary>待回答的二次確認（手機端顯示橫幅 + 是/否）。</summary>
@@ -32,6 +42,9 @@ namespace test
     {
         /// <summary>偵測到即將產生的東西（例如「簡報 PPTX、圖片」）。</summary>
         public string What { get; set; } = "";
+
+        /// <summary>距離自動同意的剩餘秒數；-1 = 沒有自動同意倒數。手機每次輪詢會拿到更新值＝近似倒數。</summary>
+        public int RemainingSeconds { get; set; } = -1;
     }
 
     /// <summary>單一節點的唯讀鏡像狀態。</summary>
@@ -81,11 +94,20 @@ namespace test
     /// </summary>
     public sealed class MirrorCommand
     {
-        /// <summary>目標節點 Id（NodeControl.Id 的字串）。</summary>
+        /// <summary>目標節點 Id（NodeControl.Id 的字串）；newnode / confirm / reject 等不綁節點的動作可留空。</summary>
         public string NodeId { get; set; } = "";
 
-        /// <summary>動作：stop / rerun。</summary>
+        /// <summary>動作：stop / rerun / confirm / reject / newnode（§17 階段三：手機直接下指令）。</summary>
         public string Action { get; set; } = "";
+
+        /// <summary>newnode 用：要執行的指令文字。</summary>
+        public string Text { get; set; } = "";
+
+        /// <summary>newnode 用：要連接的上游節點。空字串＝自動（最後執行節點）；"none"＝不連接；其他＝節點 Id。</summary>
+        public string ParentNodeId { get; set; } = "";
+
+        /// <summary>newnode 用：指定模型 Id；空字串＝預設。</summary>
+        public string ModelId { get; set; } = "";
     }
 
     /// <summary>指令執行結果，回給手機顯示。</summary>

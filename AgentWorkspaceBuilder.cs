@@ -6,7 +6,8 @@ namespace test
     {
         public static AgentWorkspaceItem FromCapabilityData(
             AgentWorkspace workspace,
-            NodeControl node,
+            INodeContext node,   // Slice B1：只用 node?.Id，收抽象即可
+
             string agentId,
             string key,
             object value,

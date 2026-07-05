@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -19,7 +20,7 @@ using PathShape = System.Windows.Shapes.Path;
 
 namespace test
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Window, IAgentHost
     {
         private double _scale = 1.0;
         private ScaleTransform _scaleTransform = null!;
@@ -173,7 +174,7 @@ namespace test
         private string SavesDir => @"D:\desk\college\cat5201-pro\file";
         private string AttachmentsRootDir => System.IO.Path.Combine(SavesDir, "_attachments");
         private string GeneratedFilesDir => System.IO.Path.Combine(SavesDir, "_generated");
-        internal string GetGeneratedFilesDir() => GeneratedFilesDir;
+        public string GetGeneratedFilesDir() => GeneratedFilesDir;
 
         private string? _currentFilePath;
         private bool _hasStarted = false;
@@ -431,7 +432,7 @@ namespace test
 
         // 全域個人化偏好：與「專案檔」分離，存成單一檔案，跨專案、跨重啟一致。
         // 開新專案或開啟舊專案都不會覆蓋這些設定——它們是「使用者的」，不是「某個檔案的」。
-        private record UserPreferencesState(
+        internal record UserPreferencesState(
             bool AutoModelSelectionEnabled = false,
             bool AdvancedAutoResolverEnabled = false,
             string DownstreamAutoMode = "OneClick",
@@ -443,7 +444,11 @@ namespace test
             string VideoStyleOverride = "",
             string VideoModelTier = "Lite",
             bool ReadUpstreamAttachments = false,
-            bool MobileMirrorEnabled = false
+            bool MobileMirrorEnabled = false,
+            List<SkillDefinition>? Skills = null,
+            int DailyBudgetTwd = 0,
+            int AutoConfirmSeconds = 10,
+            bool GoogleAutoUploadDrive = false
         );
 
         // 全域個人化偏好放在子資料夾，永遠不會被 SavesDir 的 *.json 專案掃描列舉到（非遞迴），
@@ -1034,6 +1039,13 @@ namespace test
         public void AddExecutionLog(AiExecutionLogEntry entry)
         {
             _executionLogService.Add(entry);
+
+            // 花錢安全：每次執行的 LLM 文字成本進全域帳本（與決策窗同一 tokens×價目表）。
+            if (entry != null && (entry.InputTokens > 0 || entry.OutputTokens > 0))
+            {
+                var est = ModelCostEstimator.FromUsage(entry.ActualModelId, entry.InputTokens, entry.OutputTokens);
+                SpendLedger.Add(est.UsdCost, "llm");
+            }
         }
 
         public IReadOnlyList<AiExecutionLogEntry> GetExecutionLogs(NodeControl node)
@@ -1091,62 +1103,67 @@ namespace test
         // 在 UI 執行緒上同步彈窗（AgentRuntime.ExecuteAsync 本就跑在 UI 執行緒），故回傳已完成的 Task。
         public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent)
         {
-            var targets = new List<string>();
+            // 逐項（圖示 / 名稱 / 成本徽章）——成本一律取自 ModelCostEstimator 同一價目表。
+            var items = new List<(string Icon, string Name, string Detail)>();
 
-            void AddTarget(string label)
+            void AddTarget(string icon, string name, string detail)
             {
-                if (!string.IsNullOrEmpty(label) && !targets.Contains(label))
-                    targets.Add(label);
+                if (!items.Exists(x => x.Name == name))
+                    items.Add((icon, name, detail));
             }
 
             switch (taskType)
             {
                 case OrchestrationTaskType.VideoGeneration:
-                    AddTarget("影片（Veo，需較長時間且依秒計費）");
+                    AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
                     break;
                 case OrchestrationTaskType.ImageGeneration:
-                    AddTarget("圖片（gpt-image，約 NT$55/張）");
+                    AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
                     break;
                 case OrchestrationTaskType.ImageEdit:
-                    AddTarget("修改後的圖片");
+                    AddTarget("🖌️", "圖片編輯", "gpt-image");
                     break;
                 case OrchestrationTaskType.Presentation:
-                    AddTarget("簡報 PPTX");
+                    AddTarget("📊", "簡報", "PPTX＋PDF 對照");
                     break;
                 case OrchestrationTaskType.GenerateFile:
-                    AddTarget("檔案");
+                    AddTarget("📁", "檔案", "");
                     break;
             }
 
             if (outputIntent != null)
             {
-                if (outputIntent.WantsPresentation) AddTarget("簡報 PPTX");
-                if (outputIntent.WantsReport) AddTarget("書面報告（Word／PDF）");
-                if (outputIntent.WantsTable) AddTarget("表格（Excel）");
-                if (outputIntent.WantsImage) AddTarget("圖片（gpt-image，約 NT$55/張）");
-                if (outputIntent.WantsVideo) AddTarget("影片（Veo，需較長時間且依秒計費）");
+                if (outputIntent.WantsPresentation) AddTarget("📊", "簡報", "PPTX＋PDF 對照");
+                if (outputIntent.WantsReport) AddTarget("📄", "書面報告", "Word／PDF");
+                if (outputIntent.WantsTable) AddTarget("📑", "表格", "Excel");
+                if (outputIntent.WantsImage) AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
+                if (outputIntent.WantsVideo) AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
             }
 
-            string what = targets.Count > 0 ? string.Join("、", targets) : "檔案／媒體";
+            if (items.Count == 0)
+                AddTarget("📁", "檔案／媒體", "");
 
-            bool ok = MenuConfirmDialog.ShowConfirm(
-                this,
-                "要產生檔案／媒體嗎？",
-                $"偵測到這次輸入可能要產生：\n\n　{what}\n\n要執行嗎？\n（選「否」就只會給你純文字回答，不產生任何檔案／媒體）",
-                this,
-                confirmText: "是",
-                cancelText: "否",
-                onShown: dlg =>
-                {
-                    // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
-                    _pendingGenConfirmWindow = dlg;
-                    _pendingGenConfirmWhat = what;
-                    BuildAndPublishMirrorSnapshot();
-                });
+            // 手機端橫幅文字（名稱＋徽章合併成一行）。
+            string what = string.Join("、", items.ConvertAll(x =>
+                string.IsNullOrWhiteSpace(x.Detail) ? x.Name : $"{x.Name}（{x.Detail}）"));
+
+            var dlg = new GenerationConfirmDialog(this, items, autoConfirmSeconds: _autoConfirmSeconds);
+            dlg.Loaded += (_, __) =>
+            {
+                // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
+                _pendingGenConfirmWindow = dlg;
+                _pendingGenConfirmWhat = what;
+                _pendingGenConfirmDeadlineUtc = _autoConfirmSeconds > 0
+                    ? DateTime.UtcNow.AddSeconds(_autoConfirmSeconds)
+                    : null;
+                BuildAndPublishMirrorSnapshot();
+            };
+            bool ok = dlg.ShowDialog() == true;
 
             // 對話框已關（桌面或手機任一回答）：清除待確認狀態並更新手機畫面。
             _pendingGenConfirmWindow = null;
             _pendingGenConfirmWhat = null;
+            _pendingGenConfirmDeadlineUtc = null;
             BuildAndPublishMirrorSnapshot();
 
             return Task.FromResult(ok);
@@ -2804,6 +2821,11 @@ namespace test
 
         private void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            // 商品級門面：標題列顯示版本（版本號單一真相＝csproj <Version>）。
+            var ver = typeof(MainWindow).Assembly.GetName().Version;
+            if (ver != null)
+                Title = $"cat5201-pro v{ver.Major}.{ver.Minor}.{ver.Build}";
+
             Sidebar.Visibility = Visibility.Visible;
             StartUI.Visibility = Visibility.Visible;
             MainUI.Visibility = Visibility.Collapsed;
@@ -2812,6 +2834,9 @@ namespace test
             // API 金鑰來源先初始化（在任何 AI 服務建構 / WarmupSafely 之前），讓使用者輸入的金鑰可被解析。
             ApiKeyStore.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
 
+            // 花費帳本（花錢安全）：在任何執行之前載入，之後每筆 LLM/媒體成本都會累計。
+            SpendLedger.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
+
             // 全域個人化偏好先載入（在同步開關之前），確保所有設定一律以個人化為準，跨專案、跨重啟一致。
             LoadPreferences();
             SyncDownstreamAutoModeRadios();
@@ -2819,6 +2844,8 @@ namespace test
 
             // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
             _ = AutoStartMobileMirrorIfEnabledAsync();
+
+            WireDrivePostWriteHook(); // §18：依偏好與憑證狀態掛上 Drive 自動上傳
 
             SetRandomStartMessage();
             RefreshFileList();
@@ -3032,7 +3059,8 @@ namespace test
                 var folder = GetAttachmentFolderForFile(path);
                 if (Directory.Exists(folder))
                 {
-                    try { Directory.Delete(folder, recursive: true); } catch { }
+                    try { Directory.Delete(folder, recursive: true); }
+                    catch (Exception ex) { AppLog.Warn("Project", "刪除專案資料夾失敗（可能有檔案被占用）", ex); }
                 }
 
                 if (!string.IsNullOrEmpty(_currentFilePath) &&
@@ -3113,7 +3141,7 @@ namespace test
                         if (File.Exists(newPath) && !File.Exists(oldPath))
                             File.Move(newPath, oldPath);
                     }
-                    catch { }
+                    catch (Exception ex) { AppLog.Warn("Project", "改名失敗後回滾檔名也失敗（檔名可能不一致）", ex); }
 
                     MenuConfirmDialog.ShowMessage(this, "錯誤",
                         $"重新命名失敗：附件資料夾無法同步搬移。\n{folderMoveError}", this);
@@ -3279,7 +3307,7 @@ namespace test
             return node.GetThumbCenterIgnoringHoverTransform(thumbName);
         }
 
-        public void AddNode(double x, double y)
+        public NodeControl AddNode(double x, double y, bool beginEdit = true)
         {
             var node = new NodeControl();
 
@@ -3297,15 +3325,19 @@ namespace test
 
             MainCanvas.Children.Add(node);
 
-            Dispatcher.BeginInvoke(new Action(() =>
+            if (beginEdit)
             {
-                if (MainCanvas.Children.Contains(node))
+                Dispatcher.BeginInvoke(new Action(() =>
                 {
-                    RequestBeginEdit(node, EditReason.NewNode);
-                }
-            }), DispatcherPriority.Loaded);
+                    if (MainCanvas.Children.Contains(node))
+                    {
+                        RequestBeginEdit(node, EditReason.NewNode);
+                    }
+                }), DispatcherPriority.Loaded);
+            }
 
             SaveState();
+            return node;
         }
 
         public void CreateCurve(NodeControl startNode, string startThumbName, NodeControl endNode, string endThumbName, bool flowMode = false)
@@ -4634,13 +4666,13 @@ namespace test
                         Kind = kind
                     });
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("Attachments", "附件複製進專案失敗（該附件被略過）", ex); }
             }
 
             SaveState();
         }
 
-        public IReadOnlyList<AttachmentInfo> GetAttachmentsForNode(NodeControl node)
+        public IReadOnlyList<AttachmentInfo> GetAttachmentsForNode(INodeContext node)
         {
             if (node == null)
                 return Array.Empty<AttachmentInfo>();
@@ -4655,8 +4687,10 @@ namespace test
         // 為什麼：附件按 node.Id 隔離儲存，使用者通常只在源頭節點掛檔案；下游節點（{{input}} 只帶上游
         // 輸出文字）原本拿不到上游附件。工作流鏈執行時，下游應「繼承」上游掛的檔案，才看得到原始輸入。
         // 順序：最遠祖先在前、自己在最後，讓 LLM 把上游附件當輸入材料。visited 防環、多層鏈安全。
-        public IReadOnlyList<AttachmentInfo> GetEffectiveAttachmentsForNode(NodeControl node)
+        public IReadOnlyList<AttachmentInfo> GetEffectiveAttachmentsForNode(INodeContext nodeContext)
         {
+            // Slice B1 cast 橋：介面契約收 INodeContext，但上游鏈走訪需要具體控制項（runtime 流動的本來就是 NodeControl）。
+            var node = nodeContext as NodeControl;
             if (node == null)
                 return Array.Empty<AttachmentInfo>();
 
@@ -5076,7 +5110,7 @@ namespace test
                     File.Delete(abs);
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("Attachments", "附件實體檔刪除失敗（清單已移除，檔案殘留）", ex); }
 
             list.Remove(hit);
             if (list.Count == 0)
@@ -5137,9 +5171,9 @@ namespace test
 
                 var rewritten = state with { Attachments = newAttachments };
                 var newJson = JsonSerializer.Serialize(rewritten, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, newJson);
+                AtomicFile.WriteAllText(filePath, newJson);
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("Project", "改名後改寫專案附件路徑失敗", ex); }
         }
 
         private void SaveState()
@@ -5236,7 +5270,7 @@ namespace test
                 _currentFilePath = System.IO.Path.Combine(SavesDir, DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".json");
 
             var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(_currentFilePath!, json);
+            AtomicFile.WriteAllText(_currentFilePath!, json); // 原子寫入：專案檔（使用者的畫布）絕不因崩潰毀損
 
             // 個人化偏好與專案檔分離，但任何一次存檔都順手把全域偏好也寫回，確保隨時最新。
             SavePreferences();
@@ -5261,18 +5295,23 @@ namespace test
                     VideoStyleOverride: _videoStyleOverride ?? "",
                     VideoModelTier: VeoModels.ToStorageValue(_videoModelTier),
                     ReadUpstreamAttachments: _readUpstreamAttachments,
-                    MobileMirrorEnabled: _mobileMirrorEnabled
+                    MobileMirrorEnabled: _mobileMirrorEnabled,
+                    Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
+                    DailyBudgetTwd: _dailyBudgetTwd,
+                    AutoConfirmSeconds: _autoConfirmSeconds,
+                    GoogleAutoUploadDrive: _googleAutoUploadDrive
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
                 if (!string.IsNullOrEmpty(dir))
                     Directory.CreateDirectory(dir);
                 var json = JsonSerializer.Serialize(prefs, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(PreferencesPath, json);
+                AtomicFile.WriteAllText(PreferencesPath, json); // 原子寫入：斷電/崩潰不毀個人化，舊檔留 .bak
             }
-            catch
+            catch (Exception ex)
             {
-                // 偏好寫檔失敗不應中斷主流程；下次變更會再試。
+                // 偏好寫檔失敗不應中斷主流程；下次變更會再試。留痕以便診斷「設定沒存到」。
+                AppLog.Warn("Preferences", "SavePreferences 寫檔失敗", ex);
             }
         }
 
@@ -5327,10 +5366,15 @@ namespace test
                 _videoModelTier = VeoModels.ParseTier(prefs.VideoModelTier);
                 _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
+                SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
+                _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
+                _autoConfirmSeconds = Math.Clamp(prefs.AutoConfirmSeconds, 0, 300);
+                _googleAutoUploadDrive = prefs.GoogleAutoUploadDrive;
             }
-            catch
+            catch (Exception ex)
             {
-                // 偏好檔毀損時忽略，沿用預設值。
+                // 偏好檔毀損時忽略，沿用預設值。留痕以便診斷「個人化被重置」。
+                AppLog.Warn("Preferences", "LoadPreferences 讀取失敗，沿用預設值", ex);
             }
         }
 
@@ -5663,7 +5707,7 @@ namespace test
                         if (File.Exists(newPath) && !File.Exists(originalPath))
                             File.Move(newPath, originalPath);
                     }
-                    catch { }
+                    catch (Exception ex) { AppLog.Warn("Project", "自動改名失敗後回滾也失敗（檔名可能不一致）", ex); }
 
                     Debug.WriteLine("Auto rename aborted because attachment folder move failed: " + folderMoveError);
                     return;
@@ -5681,7 +5725,7 @@ namespace test
                 RefreshFileList();
                 SelectFileInList(newPath);
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("Project", "自動改名流程失敗（沿用原檔名）", ex); }
         }
 
         private async Task<string> GenerateFileKeywordByAIAsync(NodeControl node, string topText, CancellationToken ct)
@@ -5809,9 +5853,9 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
                 var locked = state with { FileNameLocked = true };
                 var newJson = JsonSerializer.Serialize(locked, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(filePath, newJson);
+                AtomicFile.WriteAllText(filePath, newJson);
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("Project", "寫入檔名鎖定旗標失敗", ex); }
         }
 
         private void CenterOnInitialButton_Click(object sender, RoutedEventArgs e)
@@ -6069,7 +6113,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
         internal Canvas GetMainCanvasRef() => MainCanvas;
 
-        internal string GetAttachmentsRootDir() => AttachmentsRootDir;
+        public string GetAttachmentsRootDir() => AttachmentsRootDir;
 
         internal IEnumerable<NodeControl> GetAllNodesInCanvas()
             => MainCanvas.Children.OfType<NodeControl>();
@@ -6080,10 +6124,15 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 yield return (c.StartNode, c.StartThumb, c.EndNode, c.EndThumb);
         }
 
-        public void SetLiveDecisionResolving(NodeControl node, NodeExecutionDecision decision)
+        public void SetLiveDecisionResolving(INodeContext nodeContext, NodeExecutionDecision decision)
         {
+            // Slice B1 cast 橋：決策窗 UI 需要具體控制項。
+            var node = nodeContext as NodeControl;
             if (node == null || decision == null)
                 return;
+
+            // §17-3：記住「最後執行的節點」——手機下的新指令會自動接在它的下游。
+            _lastRunNode = node;
 
             string requestedLabel = GetDecisionModelLabel(
                 string.IsNullOrWhiteSpace(decision.RequestedModelId) ? decision.ModelId : decision.RequestedModelId);
@@ -6932,23 +6981,38 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             MemoryInput?.Focus();
         }
 
-        // ===== 設定分頁切換：個人化 / API =====
+        // ===== 設定分頁切換：個人化 / API / 技能 =====
 
         private void ShowPersonalizationTab_Click(object sender, RoutedEventArgs e)
         {
             if (PersonalizationScroll != null) PersonalizationScroll.Visibility = Visibility.Visible;
             if (ApiScroll != null) ApiScroll.Visibility = Visibility.Collapsed;
+            if (SkillsScroll != null) SkillsScroll.Visibility = Visibility.Collapsed;
             SetTabSelected(TabPersonalizationBtn, true);
             SetTabSelected(TabApiBtn, false);
+            SetTabSelected(TabSkillsBtn, false);
         }
 
         private void ShowApiTab_Click(object sender, RoutedEventArgs e)
         {
             if (PersonalizationScroll != null) PersonalizationScroll.Visibility = Visibility.Collapsed;
             if (ApiScroll != null) ApiScroll.Visibility = Visibility.Visible;
+            if (SkillsScroll != null) SkillsScroll.Visibility = Visibility.Collapsed;
             SetTabSelected(TabPersonalizationBtn, false);
             SetTabSelected(TabApiBtn, true);
+            SetTabSelected(TabSkillsBtn, false);
             RefreshApiPanel();
+        }
+
+        private void ShowSkillsTab_Click(object sender, RoutedEventArgs e)
+        {
+            if (PersonalizationScroll != null) PersonalizationScroll.Visibility = Visibility.Collapsed;
+            if (ApiScroll != null) ApiScroll.Visibility = Visibility.Collapsed;
+            if (SkillsScroll != null) SkillsScroll.Visibility = Visibility.Visible;
+            SetTabSelected(TabPersonalizationBtn, false);
+            SetTabSelected(TabApiBtn, false);
+            SetTabSelected(TabSkillsBtn, true);
+            RefreshSkillsList();
         }
 
         private static void SetTabSelected(System.Windows.Controls.Button? btn, bool selected)
@@ -6973,11 +7037,14 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             ("GEMINI_API_KEY",     ApiStatus_Gemini,     ApiKeyBox_Gemini),
             ("PERPLEXITY_API_KEY", ApiStatus_Perplexity, ApiKeyBox_Perplexity),
             ("GAMMA_API_KEY",      ApiStatus_Gamma,      ApiKeyBox_Gamma),
+            ("GOOGLE_OAUTH_CLIENT_ID",     ApiStatus_GoogleClientId,     ApiKeyBox_GoogleClientId),
+            ("GOOGLE_OAUTH_CLIENT_SECRET", ApiStatus_GoogleClientSecret, ApiKeyBox_GoogleClientSecret),
         };
 
         // 更新各列狀態徽章；密碼框一律清空（不回填祕密），留空＝不變更。
         private void RefreshApiPanel()
         {
+            RefreshGoogleStatus(); // §18：Google 連結狀態
             foreach (var row in ApiKeyRows())
             {
                 if (row.Box != null) row.Box.Password = "";
@@ -7183,6 +7250,15 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     ReadUpstreamAttachmentsSwitch.IsChecked = _readUpstreamAttachments;
                 if (MobileMirrorSwitch != null)
                     MobileMirrorSwitch.IsChecked = _mobileMirrorEnabled;
+                if (DailyBudgetInput != null)
+                    DailyBudgetInput.Text = _dailyBudgetTwd > 0 ? _dailyBudgetTwd.ToString() : "";
+                if (AutoConfirmSecondsInput != null)
+                    AutoConfirmSecondsInput.Text = _autoConfirmSeconds > 0 ? _autoConfirmSeconds.ToString() : "0";
+                if (GoogleAutoUploadSwitch != null)
+                    GoogleAutoUploadSwitch.IsChecked = _googleAutoUploadDrive;
+                if (SpendTodayText != null)
+                    SpendTodayText.Text = $"今日已花：{SpendLedger.TodayDisplay()}";
+                RefreshSkillsList();   // §19：開設定面板時同步技能清單
             }
             finally
             {
@@ -7217,10 +7293,160 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
         // ===== 手機鏡像（§17 階段一）：開關 → 啟停內嵌唯讀 web server + 每 1.5 秒推快照 =====
         private MobileMirrorServer? _mirrorServer;
         private DispatcherTimer? _mirrorPump;
+        private string? _lastMirrorContentKey; // 快照去重：內容沒變就不重新序列化推送
         private bool _mobileMirrorEnabled; // 個人化偏好：是否啟用手機鏡像（存 _preferences.json，啟動自動開）
         // §17 階段二遠端二次確認：目前開著的「要不要產生」對話框 + 內容；手機回答時設其 DialogResult 即可關閉。
         private Window? _pendingGenConfirmWindow;
         private string? _pendingGenConfirmWhat;
+        private DateTime? _pendingGenConfirmDeadlineUtc; // 自動同意期限（手機顯示近似倒數用）
+        // §17-3：最後執行的節點（SetLiveDecisionResolving 時更新）；手機新指令接它的下游。
+        private NodeControl? _lastRunNode;
+
+        // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
+        private int _dailyBudgetTwd;
+
+        // 產檔確認框自動同意秒數（0 = 不自動，等使用者手動選擇）。存個人化偏好——
+        // 「可稽查」產品該讓使用者自己決定要不要自動同意，不寫死。
+        private int _autoConfirmSeconds = 10;
+
+        // ===== §18 Google Drive 整合 =====
+        private bool _googleAutoUploadDrive; // 個人化：產出檔案自動上傳 Drive（預設關）
+        private GoogleDriveService? _googleDrive;
+
+        private GoogleDriveService GoogleDrive =>
+            _googleDrive ??= new GoogleDriveService(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
+
+        // 依開關與憑證狀態掛/卸產檔後鉤子。上傳走背景執行緒 fire-and-forget，成敗都留診斷日誌。
+        private void WireDrivePostWriteHook()
+        {
+            // 必須「已連結」才掛鉤子——避免背景上傳觸發互動式授權（從背景執行緒彈瀏覽器）。
+            if (_googleAutoUploadDrive && GoogleDrive.IsConfigured && GoogleDrive.IsAuthorized)
+            {
+                GeneratedFileWriter.PostWriteHook = path =>
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var (id, link) = await GoogleDrive.UploadFileAsync(path, CancellationToken.None);
+                            AppLog.Info("GoogleDrive", $"已自動上傳：{System.IO.Path.GetFileName(path)} → {link}");
+                        }
+                        catch (Exception ex)
+                        {
+                            AppLog.Warn("GoogleDrive", $"自動上傳失敗：{System.IO.Path.GetFileName(path)}", ex);
+                        }
+                    });
+                };
+            }
+            else
+            {
+                GeneratedFileWriter.PostWriteHook = null;
+            }
+        }
+
+        private async void GoogleAuth_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                if (!GoogleDrive.IsConfigured)
+                {
+                    MenuConfirmDialog.ShowMessage(this, "Google 整合",
+                        "尚未設定憑證。請先到 Google Cloud Console 建立「桌面應用程式」OAuth 用戶端，\n" +
+                        "然後設定環境變數 GOOGLE_OAUTH_CLIENT_ID 與 GOOGLE_OAUTH_CLIENT_SECRET，重啟本程式。", this);
+                    return;
+                }
+                await GoogleDrive.AuthorizeAsync(CancellationToken.None);
+                string linkedEmail = "";
+                try { linkedEmail = await GoogleDrive.GetUserEmailAsync(CancellationToken.None); } catch { }
+                RefreshGoogleStatus();
+                WireDrivePostWriteHook();
+                MenuConfirmDialog.ShowMessage(this, "Google 整合",
+                    string.IsNullOrWhiteSpace(linkedEmail) ? "✓ 已連結 Google 帳戶。" : $"✓ 已連結 {linkedEmail}。", this);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("GoogleDrive", "授權失敗", ex);
+                MenuConfirmDialog.ShowMessage(this, "Google 整合", "連結失敗：" + ex.Message, this);
+            }
+        }
+
+        private void GoogleUnlink_Click(object sender, RoutedEventArgs e)
+        {
+            GoogleDrive.Unlink();
+            RefreshGoogleStatus();
+            WireDrivePostWriteHook();
+        }
+
+        private void GoogleAutoUploadSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            _googleAutoUploadDrive = GoogleAutoUploadSwitch?.IsChecked == true;
+            SavePreferences();
+            WireDrivePostWriteHook();
+        }
+
+        private bool _fetchingGoogleEmail;
+
+        private void RefreshGoogleStatus()
+        {
+            if (GoogleStatusText == null) return;
+
+            if (!GoogleDrive.IsConfigured)
+            {
+                GoogleStatusText.Text = "狀態：未設定憑證（App 內 API 分頁或環境變數 GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）";
+                return;
+            }
+            if (!GoogleDrive.IsAuthorized)
+            {
+                GoogleStatusText.Text = "狀態：已設定憑證，尚未連結（按「連結 Google」完成授權）";
+                return;
+            }
+
+            // 已連結：顯示帳戶信箱。沒快取先顯示通用文字，背景抓一次再更新。
+            string? email = GoogleDrive.CachedEmail;
+            GoogleStatusText.Text = string.IsNullOrWhiteSpace(email)
+                ? "狀態：✓ 已連結 Google 帳戶"
+                : $"狀態：✓ 已連結 {email}";
+
+            if (string.IsNullOrWhiteSpace(email) && !_fetchingGoogleEmail)
+            {
+                _fetchingGoogleEmail = true;
+                _ = FetchGoogleEmailAsync();
+            }
+        }
+
+        private async Task FetchGoogleEmailAsync()
+        {
+            try
+            {
+                string email = await GoogleDrive.GetUserEmailAsync(CancellationToken.None);
+                if (!string.IsNullOrWhiteSpace(email) && GoogleStatusText != null)
+                    GoogleStatusText.Text = $"狀態：✓ 已連結 {email}"; // await 後回到 UI 執行緒（無 ConfigureAwait(false)）
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("GoogleDrive", "取帳戶信箱失敗（顯示通用文字）", ex);
+            }
+            finally
+            {
+                _fetchingGoogleEmail = false;
+            }
+        }
+
+        /// <summary>執行前檢查每日預算；超標回 false 並給使用者看的訊息。</summary>
+        public bool CheckDailyBudgetAllows(out string message)
+        {
+            if (SpendLedger.IsOverDailyBudget(_dailyBudgetTwd))
+            {
+                message =
+                    $"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.TodayDisplay()}）。\n" +
+                    "今天不再執行新任務。可到 設定 → 個人化 → 花費 調高或清除上限。";
+                return false;
+            }
+            message = "";
+            return true;
+        }
 
         private static readonly JsonSerializerOptions MirrorJsonOptions = new()
         {
@@ -7253,6 +7479,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             {
                 _mirrorServer ??= new MobileMirrorServer();
                 _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
+                _lastMirrorContentKey = null; // 重啟 server 後第一份快照一定要推
                 if (!_mirrorServer.IsRunning)
                     await _mirrorServer.StartAsync(MobileMirrorServer.DefaultPort);
 
@@ -7270,6 +7497,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             }
             catch (Exception ex)
             {
+                AppLog.Error("MobileMirror", "手機鏡像伺服器啟動失敗", ex);
                 _mirrorPump?.Stop();
                 if (MobileMirrorSwitch != null) MobileMirrorSwitch.IsChecked = false;
                 if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
@@ -7367,12 +7595,229 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
                 snap.NodeCount = snap.Nodes.Count;
                 snap.AnyRunning = snap.Nodes.Any(n => n.Status == "running");
+                snap.Models = AiModelRegistry.Available
+                    .Select(m => new MirrorModelOption { Id = m.Id, Name = m.DisplayName })
+                    .ToList();
                 if (_pendingGenConfirmWhat != null)
-                    snap.Pending = new PendingConfirmationSnapshot { What = _pendingGenConfirmWhat };
+                    snap.Pending = new PendingConfirmationSnapshot
+                    {
+                        What = _pendingGenConfirmWhat,
+                        RemainingSeconds = _pendingGenConfirmDeadlineUtc.HasValue
+                            ? Math.Max(0, (int)(_pendingGenConfirmDeadlineUtc.Value - DateTime.UtcNow).TotalSeconds)
+                            : -1,
+                    };
+
+                // 去重：內容（節點+待確認）沒變就不推送——畫布閒置時省序列化與手機流量。
+                string contentKey = JsonSerializer.Serialize(new { snap.Nodes, snap.Pending }, MirrorJsonOptions);
+                if (contentKey == _lastMirrorContentKey)
+                    return;
+                _lastMirrorContentKey = contentKey;
 
                 _mirrorServer.Publish(JsonSerializer.Serialize(snap, MirrorJsonOptions));
             }
-            catch { /* 鏡像推送失敗不影響主程式 */ }
+            catch (Exception ex) { AppLog.Warn("MobileMirror", "快照推送失敗（不影響主程式）", ex); }
+        }
+
+        // ===== §19 技能注入：設定面板「技能」區的新增/開關/刪除；存個人化、餵 SkillsRegistry =====
+
+        // 就地編輯：點清單裡的技能名稱 → 帶回輸入框，按鈕變「儲存修改」。
+        private SkillDefinition? _editingSkill;
+
+        private void AddSkill_Click(object sender, RoutedEventArgs e)
+        {
+            string name = (SkillNameInput?.Text ?? "").Trim();
+            string content = (SkillContentInput?.Text ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(content))
+                return; // 內容是技能的本體，沒內容不收
+
+            var list = new List<SkillDefinition>(SkillsRegistry.GetAll());
+            if (_editingSkill != null && list.Contains(_editingSkill))
+            {
+                _editingSkill.Name = name;      // 就地更新，保留啟用狀態與排序
+                _editingSkill.Content = content;
+            }
+            else
+            {
+                list.Add(new SkillDefinition { Name = name, Content = content, Enabled = true });
+            }
+            SkillsRegistry.SetAll(list);
+            SavePreferences();
+            ExitSkillEditMode();
+            RefreshSkillsList();
+        }
+
+        private void EnterSkillEditMode(SkillDefinition skill)
+        {
+            _editingSkill = skill;
+            if (SkillNameInput != null) SkillNameInput.Text = skill.Name;
+            if (SkillContentInput != null) SkillContentInput.Text = skill.Content;
+            if (AddSkillButton != null) AddSkillButton.Content = "✓ 儲存修改";
+            if (SkillImportHint != null)
+            {
+                SkillImportHint.Text = $"編輯中：「{(string.IsNullOrWhiteSpace(skill.Name) ? "(未命名)" : skill.Name)}」——改完按「儲存修改」。";
+                SkillImportHint.Foreground = new SolidColorBrush(Color.FromRgb(0x3B, 0x54, 0xFF));
+            }
+        }
+
+        private void ExitSkillEditMode()
+        {
+            _editingSkill = null;
+            if (SkillNameInput != null) SkillNameInput.Text = "";
+            if (SkillContentInput != null) SkillContentInput.Text = "";
+            if (AddSkillButton != null) AddSkillButton.Content = "＋ 新增技能";
+            if (SkillImportHint != null) SkillImportHint.Text = "";
+        }
+
+        // §19：從 GitHub 匯入技能檔（SKILL.md / 任意 .md / 純文字）。blob 連結自動轉 raw。
+        private static readonly HttpClient _skillImportHttp = new() { Timeout = TimeSpan.FromSeconds(20) };
+
+        private async void ImportSkillFromGitHub_Click(object sender, RoutedEventArgs e)
+        {
+            string url = (SkillImportUrlInput?.Text ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(url))
+                return;
+
+            void Hint(string msg, bool error = false)
+            {
+                if (SkillImportHint == null) return;
+                SkillImportHint.Text = msg;
+                SkillImportHint.Foreground = new SolidColorBrush(
+                    error ? Color.FromRgb(0xC0, 0x3A, 0x4B) : Color.FromRgb(0x2E, 0x7D, 0x4F));
+            }
+
+            try
+            {
+                // github.com/{owner}/{repo}/blob/{branch}/{path} → raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
+                string fetchUrl = url;
+                var m = Regex.Match(url, @"^https://github\.com/([^/]+)/([^/]+)/blob/(.+)$");
+                if (m.Success)
+                    fetchUrl = $"https://raw.githubusercontent.com/{m.Groups[1].Value}/{m.Groups[2].Value}/{m.Groups[3].Value}";
+
+                Hint("下載中…");
+                string text = await _skillImportHttp.GetStringAsync(fetchUrl);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    Hint("檔案是空的。", error: true);
+                    return;
+                }
+                if (text.Length > 20_000)
+                    text = text[..20_000]; // 防超大檔把 prompt 撐爆
+
+                // 解析 SKILL.md 式 frontmatter（--- name: … ---）；沒有就用檔名當名稱、全文當內容。
+                string name = "";
+                string content = text.Trim();
+                var fm = Regex.Match(text, @"^\s*---\s*\r?\n(.*?)\r?\n---\s*\r?\n?", RegexOptions.Singleline);
+                if (fm.Success)
+                {
+                    var nameMatch = Regex.Match(fm.Groups[1].Value, @"(?m)^name\s*:\s*(.+)$");
+                    if (nameMatch.Success)
+                        name = nameMatch.Groups[1].Value.Trim().Trim('"', '\'');
+                    content = text[(fm.Index + fm.Length)..].Trim();
+                    if (content.Length == 0)
+                        content = text.Trim(); // frontmatter-only 的怪檔：退回全文
+                }
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    try { name = System.IO.Path.GetFileNameWithoutExtension(new Uri(fetchUrl).AbsolutePath); }
+                    catch { name = "匯入的技能"; }
+                }
+
+                var list = new List<SkillDefinition>(SkillsRegistry.GetAll())
+                {
+                    new SkillDefinition { Name = name, Content = content, Enabled = true }
+                };
+                SkillsRegistry.SetAll(list);
+                SavePreferences();
+                RefreshSkillsList();
+                if (SkillImportUrlInput != null) SkillImportUrlInput.Text = "";
+                Hint($"✓ 已匯入「{name}」（{content.Length} 字）");
+                AppLog.Info("Skills", $"GitHub 匯入技能：{name} ← {fetchUrl}");
+            }
+            catch (Exception ex)
+            {
+                Hint("匯入失敗：" + ex.Message, error: true);
+                AppLog.Warn("Skills", "GitHub 匯入失敗：" + url, ex);
+            }
+        }
+
+        // 以程式生成列（與記憶清單同慣例），避免 DataTemplate 綁定複雜度。
+        private void RefreshSkillsList()
+        {
+            if (SkillsListPanel == null)
+                return;
+
+            SkillsListPanel.Children.Clear();
+            var skills = SkillsRegistry.GetAll();
+
+            foreach (var skill in skills)
+            {
+                var row = new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0xF4, 0xF5, 0xFB)),
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(12, 8, 12, 8),
+                    Margin = new Thickness(0, 0, 0, 6),
+                };
+                var grid = new Grid();
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                var s = skill; // 閉包固定
+
+                var toggle = new CheckBox
+                {
+                    IsChecked = s.Enabled,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 8, 0),
+                    ToolTip = "啟用/停用此技能（停用＝保留但不注入）",
+                };
+                toggle.Checked += (_, __) => { s.Enabled = true; SavePreferences(); };
+                toggle.Unchecked += (_, __) => { s.Enabled = false; SavePreferences(); };
+                Grid.SetColumn(toggle, 0);
+
+                var nameText = new TextBlock
+                {
+                    Text = string.IsNullOrWhiteSpace(s.Name) ? "(未命名技能)" : s.Name,
+                    FontSize = 12.5,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    ToolTip = s.Content + "\n（點一下編輯）",
+                    Cursor = Cursors.Hand,
+                };
+                nameText.MouseLeftButtonUp += (_, __) => EnterSkillEditMode(s); // 就地編輯
+                Grid.SetColumn(nameText, 1);
+
+                var del = new Button
+                {
+                    Content = "✕",
+                    FontSize = 12,
+                    Width = 24,
+                    Height = 24,
+                    Cursor = Cursors.Hand,
+                    Background = Brushes.Transparent,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
+                    BorderThickness = new Thickness(0),
+                    ToolTip = "刪除此技能",
+                };
+                del.Click += (_, __) =>
+                {
+                    var remaining = new List<SkillDefinition>(SkillsRegistry.GetAll());
+                    remaining.Remove(s);
+                    SkillsRegistry.SetAll(remaining);
+                    SavePreferences();
+                    if (ReferenceEquals(_editingSkill, s)) ExitSkillEditMode(); // 刪掉正在編輯的 → 退出編輯
+                    RefreshSkillsList();
+                };
+                Grid.SetColumn(del, 2);
+
+                grid.Children.Add(toggle);
+                grid.Children.Add(nameText);
+                grid.Children.Add(del);
+                row.Child = grid;
+                SkillsListPanel.Children.Add(row);
+            }
         }
 
         // 手機端指令（§17 階段二）：Kestrel 執行緒呼叫進來，一律用 Dispatcher 丟回 WPF UI 執行緒執行，
@@ -7383,6 +7828,59 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
         private Task<MirrorCommandResult> ExecuteMirrorCommand(MirrorCommand cmd)
         {
             string action = (cmd.Action ?? "").Trim().ToLowerInvariant();
+
+            // §17 階段三：手機直接下指令 → 在畫布建新節點並執行（不綁定既有節點）。
+            if (action == "newnode")
+            {
+                string text = (cmd.Text ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(text))
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "指令是空的" });
+
+                // 放置 + 連線（§17-3）：手機可指定連接節點——
+                // ""＝自動（最後執行節點）；節點 Id＝連指定節點。找不到退回自動。
+                // 使用者要求：手機不提供「獨立節點」選項——一律接上游（只有空畫布時不得已才獨立）。
+                string parentChoice = (cmd.ParentNodeId ?? "").Trim();
+                NodeControl? anchor = !string.IsNullOrEmpty(parentChoice)
+                    ? MainCanvas.Children.OfType<NodeControl>()
+                        .FirstOrDefault(n => n.Id.ToString() == parentChoice)
+                    : null;
+                anchor ??= (_lastRunNode != null && MainCanvas.Children.Contains(_lastRunNode))
+                    ? _lastRunNode
+                    : MainCanvas.Children.OfType<NodeControl>().LastOrDefault(); // 沒跑過任何節點就接最後一個節點
+
+                double x, y;
+                if (anchor != null)
+                {
+                    x = Canvas.GetLeft(anchor) + anchor.Width + 220;   // AddNode 以中心點定位
+                    y = Canvas.GetTop(anchor) + anchor.Height / 2;
+                }
+                else
+                {
+                    int count = MainCanvas.Children.OfType<NodeControl>().Count();
+                    x = 260 + (count % 4) * 90;
+                    y = 180 + (count % 6) * 70;
+                }
+
+                var created = AddNode(x, y, beginEdit: false); // 遠端建點不開編輯器（正在跑時開編輯器會干擾）
+                created.SetTopText(text);
+
+                // §17-3：手機指定模型（空＝預設；未知 id 忽略）。Auto 模式下仍由自動選模覆寫——與桌面行為一致。
+                string requestedModel = (cmd.ModelId ?? "").Trim();
+                if (!string.IsNullOrEmpty(requestedModel) && AiModelRegistry.IsAvailable(requestedModel))
+                    created.SetCommittedModelId(requestedModel);
+
+                if (anchor != null)
+                    CreateCurve(anchor, "ThumbTR", created, "ThumbTL", flowMode: false); // 灰色實線（使用者要求）；上游注入不依賴 FlowMode
+                _ = created.RunCurrentTopTextAsync();          // fire-and-forget，立即回應手機（會自動注入上游輸出）
+                BuildAndPublishMirrorSnapshot();
+                AppLog.Info("MobileMirror", $"手機下指令建節點：{(text.Length > 40 ? text[..40] + "…" : text)}" +
+                                            (anchor != null ? "（已接為下游）" : ""));
+                return Task.FromResult(new MirrorCommandResult
+                {
+                    Ok = true,
+                    Message = anchor != null ? "已建立節點（接在最後執行節點下游）並開始執行" : "已建立節點並開始執行",
+                });
+            }
 
             // 二次確認的回答不綁定節點：直接設對話框的 DialogResult（此方法已在 UI 執行緒），即會關閉 modal。
             if (action == "confirm" || action == "reject")
@@ -7424,6 +7922,28 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 default:
                     return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "未知指令" });
             }
+        }
+
+        // 每日花費上限：空白/0 = 不限制；上限 999999。
+        private void DailyBudgetInput_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_syncingCostControls || DailyBudgetInput == null)
+                return;
+
+            string raw = (DailyBudgetInput.Text ?? "").Trim();
+            _dailyBudgetTwd = int.TryParse(raw, out int twd) && twd > 0 ? twd : 0;
+            SavePreferences();
+        }
+
+        // 產檔確認框自動同意秒數：空白/0 = 不自動；上限 300 秒。
+        private void AutoConfirmSecondsInput_Changed(object sender, TextChangedEventArgs e)
+        {
+            if (_syncingCostControls || AutoConfirmSecondsInput == null)
+                return;
+
+            string raw = (AutoConfirmSecondsInput.Text ?? "").Trim();
+            _autoConfirmSeconds = int.TryParse(raw, out int secs) && secs > 0 ? Math.Min(secs, 300) : 0;
+            SavePreferences();
         }
 
         // 逾時輸入：空白 = 自動；否則限制在 30～1800 秒（30 分鐘）的合理範圍。
@@ -8066,11 +8586,11 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             public static bool ShowConfirm(
                 Window owner, string title, string message, FrameworkElement resourceHost,
                 string confirmText = "確定", string cancelText = "取消", bool danger = false,
-                Action<Window>? onShown = null)
+                Action<Window>? onShown = null, int autoConfirmSeconds = 0)
             {
-                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, confirmText, cancelText, danger);
+                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, confirmText, cancelText, danger, autoConfirmSeconds);
                 // 手機鏡像（§17 階段二）遠端回答用：把視窗參照交給呼叫端，讓手機也能設 DialogResult 關閉此框。
-                // 其他呼叫者不傳 onShown，行為完全不變。
+                // 其他呼叫者不傳 onShown / autoConfirmSeconds，行為完全不變。
                 if (onShown != null)
                     dlg.Loaded += (_, __) => onShown(dlg);
                 return dlg.ShowDialog() == true;
@@ -8081,7 +8601,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 Window owner, string title, string message, FrameworkElement resourceHost,
                 string okText = "確定")
             {
-                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, okText, null, false);
+                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, okText, null, false, 0);
                 dlg.ShowDialog();
             }
 
@@ -8094,7 +8614,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             private sealed class MenuConfirmWindow : Window
             {
                 public MenuConfirmWindow(Window owner, string title, string message, FrameworkElement resourceHost,
-                    string confirmText, string? cancelText, bool danger)
+                    string confirmText, string? cancelText, bool danger, int autoConfirmSeconds = 0)
                 {
                     Owner = owner;
                     Title = title;
@@ -8185,6 +8705,29 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     confirm.IsDefault = true;
                     confirm.Click += (_, __) => { DialogResult = true; Close(); };
                     btnPanel.Children.Add(confirm);
+
+                    // 自動同意倒數（產檔確認框用）：按鈕顯示剩餘秒數，逾時未選擇＝按下確認。
+                    // 只有明確傳入 autoConfirmSeconds > 0 的呼叫者會啟用；刪除確認等其他對話框絕不自動同意。
+                    if (autoConfirmSeconds > 0)
+                    {
+                        int remaining = autoConfirmSeconds;
+                        confirm.Content = $"{confirmText}（{remaining}）";
+                        var countdown = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+                        countdown.Tick += (_, __) =>
+                        {
+                            remaining--;
+                            if (remaining <= 0)
+                            {
+                                countdown.Stop();
+                                try { DialogResult = true; } catch { }
+                                Close();
+                                return;
+                            }
+                            confirm.Content = $"{confirmText}（{remaining}）";
+                        };
+                        Closed += (_, __) => countdown.Stop(); // 任一方式關閉（含手機遠端回答）都停表
+                        countdown.Start();
+                    }
 
                     Grid.SetRow(btnPanel, 2);
                     root.Children.Add(btnPanel);

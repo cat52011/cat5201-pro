@@ -4,7 +4,7 @@ namespace test
 {
     public sealed class AgentParallelExecutionRequest
     {
-        public NodeControl Node { get; init; } = null!;
+        public INodeContext Node { get; init; } = null!;
 
         public string OriginalInput { get; init; } = "";
 

@@ -275,23 +275,10 @@ namespace test
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
 
-            var taskType = OrchestrationPlanner.ResolveTaskType(topText, NodeTaskMode.Chat);
-
-            bool looksLikeOutput =
-                taskType == OrchestrationTaskType.Presentation ||
-                taskType == OrchestrationTaskType.GenerateFile ||
-                taskType == OrchestrationTaskType.ImageGeneration ||
-                taskType == OrchestrationTaskType.VideoGeneration ||
-                OutputFormatDetector.WantsPresentation(topText) ||
-                OutputFormatDetector.WantsWrittenReport(topText) ||
-                OutputFormatDetector.WantsSpreadsheet(topText) ||
-                // 寬鬆放行：只要提到影片/圖片就花一次便宜 API 跑精準判斷，
-                // 避免「給我一個15秒的影片」這種不在關鍵字白名單的講法連 LLM 都沒機會判。
-                OrchestrationPlanner.MentionsVideoOrImage(topText);
-
-            if (!looksLikeOutput)
-                return OutputIntent.None;
-
+            // 2026-07-04（使用者指示）：不再用關鍵字預審決定「要不要問第一層 AI」——
+            // 關鍵字白名單永遠有漏（「給我一張關於這間公司的圖」的「圖」就不在清單裡），
+            // 使用者要的是「AI 判斷使用者要什麼」。一律花一次便宜 API 讓 OutputIntentResolver
+            // 做語意判斷；它輸出極小、只送使用者那句話，成本可忽略。LLM 失敗才退回關鍵字。
             try
             {
                 return await _outputIntentResolver.ResolveAsync(topText, ct);
@@ -780,13 +767,17 @@ namespace test
         }
 
         private async Task<AiFallbackExecutionResult> ExecuteWithFallbackAsync(
-    NodeControl node,
+    INodeContext nodeContext,
     string topText,
     NodeExecutionDecision decision,
     Action<string>? onDelta,
     bool useStreaming,
     CancellationToken ct)
         {
+            // Slice B1 cast 橋：委派契約收 INodeContext（AgentRuntime 不再認得 NodeControl），
+            // 實際執行（token 記錄 / 串流）仍需具體控制項；runtime 流動的本來就是 NodeControl。
+            var node = (NodeControl)nodeContext;
+
             // §15 個人化：fallback 鏈的成本過濾只在 Auto / API 模式套用個人化開關；
             // 手動模式永遠獨立——使用者選什麼就以它為主，不做任何成本剔除。
             bool applyUserCostBlock = _main.IsAutoModelSelectionEnabled();

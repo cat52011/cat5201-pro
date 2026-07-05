@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    cat5201.Core：UI 無關的共用核心（「一個核心 × 三介面」的核心層）。
+    刻意 net8.0（非 -windows、無 WPF）：桌面 WPF / 未來 web 後端 / 手機都能引用同一份邏輯與契約。
+    起點＝先放三介面共用的 DTO（WorkspaceSnapshot / MirrorCommand…），之後逐步把執行/編排/工作區核心搬進來。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>test</RootNamespace>
+  </PropertyGroup>
+
+</Project>

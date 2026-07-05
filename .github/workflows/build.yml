@@ -1,0 +1,25 @@
+# CI：每次 push / PR 自動建置 + 跑測試（商品級安全網——本機忘了跑，這裡會攔住）。
+name: build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build (solution)
+        run: dotnet build cat5201pro.sln -c Release -warnaserror:false
+
+      - name: Test
+        run: dotnet test tests/cat5201.Tests/cat5201.Tests.csproj -c Release --no-restore

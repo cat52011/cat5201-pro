@@ -43,11 +43,19 @@ namespace test
         // 偏好區塊放在上游鏈設定之下、其他預設之上。空則回空字串。
         private static string PreferenceHeader(string preferenceBlock)
         {
-            if (string.IsNullOrWhiteSpace(preferenceBlock))
+            // §19 Skills 注入：使用者技能與全域偏好同級，一起進 prompt 頭部（單一注入點，所有策略共用）。
+            string skills = SkillsRegistry.BuildPromptBlock();
+            bool hasPrefs = !string.IsNullOrWhiteSpace(preferenceBlock);
+
+            if (!hasPrefs && skills.Length == 0)
                 return "";
 
-            return preferenceBlock.Trim() + "\n" +
-                   "（以上全域偏好優先於本提示的「預設使用繁體中文」等預設規則；但若上方有【上游鏈設定】且指定了輸出語言/格式/語氣，則以上游鏈設定為準、全域偏好退居其次。）\n\n";
+            string prefs = hasPrefs
+                ? preferenceBlock.Trim() + "\n" +
+                  "（以上全域偏好優先於本提示的「預設使用繁體中文」等預設規則；但若上方有【上游鏈設定】且指定了輸出語言/格式/語氣，則以上游鏈設定為準、全域偏好退居其次。）\n\n"
+                : "";
+
+            return prefs + skills;
         }
 
         private string BuildFullContextPrompt(NodeContextBundle ctx, string topText, NodeTaskMode taskMode, string memoryBlock, string preferenceBlock)

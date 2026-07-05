@@ -7,13 +7,25 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>ico_pack_256x256_1-Photoroom.ico</ApplicationIcon>
+
+    <!-- 商品級中繼資料：檔案總管內容頁 / 工作管理員 / 關於顯示都吃這裡。 -->
+    <AssemblyTitle>cat5201-pro — AI 工作台</AssemblyTitle>
+    <Product>cat5201-pro</Product>
+    <Company>cat5201</Company>
+    <Authors>cat5201</Authors>
+    <Description>節點畫布 × 多代理編排的 AI 工作台：串接 OpenAI / Claude / Gemini / Perplexity，可稽查每一步決策與成本，產出 PDF / DOCX / PPTX / XLSX / 圖片 / 影片。</Description>
+    <Copyright>© 2026 cat5201</Copyright>
+    <Version>1.8.0</Version>
+    <FileVersion>1.8.0.0</FileVersion>
+    <InformationalVersion>1.8.0-pro</InformationalVersion>
+    <!-- tests\ 與 cat5201.Core\ 是獨立子專案；排除它們，避免主專案的預設 glob 把它們的 .cs 吸進來編。 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;cat5201.Core\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <None Remove="Assets\Perplexity_logo.png" />
   </ItemGroup>
 
-	
   <ItemGroup>
     <Content Include="ico_pack_256x256_1-Photoroom.ico" />
   </ItemGroup>
@@ -21,6 +33,16 @@
   <!-- 手機鏡像（§17 階段一）：WinExe 內嵌 Kestrel 開唯讀 web server，手機同區網瀏覽。 -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!-- 讓測試專案能存取 internal 型別（如 UserPreferencesState），才能測個人化向後相容。 -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="cat5201.Tests" />
+  </ItemGroup>
+
+  <!-- UI 無關的共用核心（一個核心 × 三介面）。 -->
+  <ItemGroup>
+    <ProjectReference Include="cat5201.Core\cat5201.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

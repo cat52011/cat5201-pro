@@ -33,6 +33,10 @@ namespace test
             ("ANTHROPIC_API_KEY",  "Claude",     "Anthropic Claude 文字 / 導演 / 程式碼"),
             ("GEMINI_API_KEY",     "Gemini",     "Google Gemini 文字、Veo 影片（Google 生態）"),
             ("PERPLEXITY_API_KEY", "Perplexity", "即時聯網研究 / 來源查證"),
+            // v1 休眠擴充點（服務已備好，設金鑰即啟用；目前經環境變數設定）：
+            ("KLING_API_KEY",              "Kling",        "圖生影片 I2V 精製（格式 AccessKey:SecretKey）"),
+            ("GOOGLE_OAUTH_CLIENT_ID",     "Google OAuth", "Drive/Docs/Sheets 整合（桌面應用用戶端 ID）"),
+            ("GOOGLE_OAUTH_CLIENT_SECRET", "Google OAuth", "Drive/Docs/Sheets 整合（用戶端密鑰）"),
         };
 
         public enum KeySource { None, Environment, UserEntered }

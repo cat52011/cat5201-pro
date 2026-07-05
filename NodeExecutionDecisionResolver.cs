@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace test
 {
-    public sealed class NodeExecutionDecisionResolver
+    public sealed class NodeExecutionDecisionResolver : IExecutionDecisionResolver
     {
         private readonly AgentRuntimeProfileResolver _agentProfileResolver = new();
         private readonly AgentSelectionResolver _agentSelectionResolver = new();
@@ -28,10 +28,12 @@ namespace test
         }
 
         public async Task<NodeExecutionDecision> ResolveAsync(
-            NodeControl node,
+            INodeContext nodeContext,
             string topText,
             CancellationToken ct)
         {
+            // Slice B1 cast 橋：選 agent/模型要讀 UI 上的選單狀態，需要具體控制項（runtime 流動的本來就是 NodeControl）。
+            var node = (NodeControl)nodeContext;
             string selectedAgentId = _main.GetNodeSelectedAgent(node);
             var selectedAgent = AgentRegistry.Get(selectedAgentId);
 

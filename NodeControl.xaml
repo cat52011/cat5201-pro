@@ -775,21 +775,7 @@
                                    VerticalAlignment="Center"
                                    Foreground="#9E9E9E"/>
 
-                        <!-- 失敗時：從失敗續跑（整段重新執行）。固定在右下角、黑底白字 -->
-                        <Button x:Name="RerunButton"
-                                Grid.Column="2"
-                                Content="↻"
-                                ToolTip="重新執行"
-                                Visibility="Collapsed"
-                                Style="{StaticResource StatusPillButtonStyle}"
-                                Foreground="White"
-                                Background="#222222"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Bottom"
-                                Margin="0,6,0,0"
-                                Click="RerunButton_Click"/>
-
-                        <!-- 「重新生成答案」已移到節點右鍵選單（RegenerateMenuItem）。 -->
+                        <!-- 2026-07-04：失敗重跑鈕已移除——右鍵選單即可重跑（「重新生成答案」同樣在右鍵選單）。 -->
                     </Grid>
 
                 </Grid>

@@ -2,7 +2,7 @@
 
 namespace test
 {
-    public sealed class NodeExecutionFinalizer
+    public sealed class NodeExecutionFinalizer : IDecisionFinalizer
     {
         private readonly MainWindow _main;
         private readonly NodeDecisionPresenter _presenter;

@@ -159,7 +159,21 @@ namespace test
   :root { color-scheme: dark; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   body { margin:0; font-family:-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
-         background:#0e0f13; color:#e8e8ea; padding:14px 12px 40px; }
+         background:#0e0f13; color:#e8e8ea; padding:14px 12px 140px; }
+  .cmdbar { position:fixed; left:0; right:0; bottom:0; display:flex; flex-direction:column; gap:7px;
+            padding:8px 12px calc(10px + env(safe-area-inset-bottom)); background:#14151b;
+            border-top:1px solid #23242c; }
+  .cmdrow { display:flex; gap:8px; }
+  .cmdopts { display:flex; gap:8px; }
+  .cmdopts select { flex:1; font-size:12px; padding:7px 8px; border-radius:9px; min-width:0;
+                    border:1px solid #2c2d36; background:#1d1e25; color:#9a9aa2; outline:none;
+                    -webkit-appearance:none; }
+  .cmdbar input { flex:1; font-size:14px; padding:11px 14px; border-radius:11px;
+                  border:1px solid #2c2d36; background:#1d1e25; color:#e8e8ea; outline:none; }
+  .cmdbar button { font-size:14px; font-weight:700; padding:0 18px; border-radius:11px;
+                   border:1px solid #28306e; background:#28306e; color:#dfe5ff;
+                   cursor:pointer; -webkit-appearance:none; }
+  .cmdbar button:active { opacity:.6; }
   header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
   h1 { font-size:17px; font-weight:700; margin:0; letter-spacing:.3px; }
   .meta { font-size:11px; color:#8a8a90; }
@@ -192,6 +206,7 @@ namespace test
                     box-shadow:0 0 0 1px #2f7a4d33; }
   .cb-title { font-size:15px; font-weight:700; color:#7fe0a8; }
   .cb-what { font-size:13px; color:#c8c8d0; margin:7px 0 12px; line-height:1.5; word-break:break-word; }
+  .cb-count { font-size:12px; color:#ffd479; margin:-6px 0 12px; }
   .cb-actions { display:flex; gap:8px; }
   .btn.ok { background:#16432f; border-color:#2f7a4d; color:#7fe0a8; }
   .actions { margin-top:11px; display:flex; gap:8px; border-top:1px solid #23242c; padding-top:11px; }
@@ -217,7 +232,24 @@ namespace test
   </header>
   <div id="list"><div class="empty">讀取中…</div></div>
   <div class="toast" id="toast"></div>
-  <footer>手機鏡像 · 每 1.5 秒更新 · 可停止／重跑節點</footer>
+  <footer>手機鏡像 · 每 1.5 秒更新 · 可下指令／停止／重跑</footer>
+
+  <!-- §17 階段三：手機直接下指令 → 桌面畫布建節點並執行；可選連接節點與模型 -->
+  <div class="cmdbar">
+    <div class="cmdopts">
+      <select id="parentSel" title="連接到哪個節點">
+        <option value="">🔗 自動（接最後執行節點）</option>
+      </select>
+      <select id="modelSel" title="使用哪個模型">
+        <option value="">🤖 預設模型</option>
+      </select>
+    </div>
+    <div class="cmdrow">
+      <input id="newCmd" type="text" placeholder="下指令給工作台（會花 token）…"
+             enterkeyhint="send" onkeydown="if(event.key==='Enter')sendNew()">
+      <button onclick="sendNew()">送出</button>
+    </div>
+  </div>
 
 <script>
   const TOKEN = new URLSearchParams(location.search).get('t') || '';
@@ -225,6 +257,7 @@ namespace test
   function esc(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
   function render(snap){
+    syncSelects(snap);
     const list = document.getElementById('list');
     const nodes = snap.nodes || [];
     document.getElementById('meta').textContent =
@@ -234,10 +267,13 @@ namespace test
     if (snap.anyRunning){ pill.classList.add('live'); liveText.textContent='執行中'; }
     else { pill.classList.remove('live'); liveText.textContent='閒置'; }
 
+    const pendingCount = (snap.pending && snap.pending.remainingSeconds >= 0)
+      ? `<div class="cb-count">⏳ 約 ${snap.pending.remainingSeconds} 秒後未回應將自動執行</div>` : '';
     const pendingHtml = snap.pending ? `
       <div class="confirm-banner">
         <div class="cb-title">📎 要產生檔案／媒體嗎？</div>
         <div class="cb-what">偵測到即將產生：${esc(snap.pending.what)}</div>
+        ${pendingCount}
         <div class="cb-actions">
           <button class="btn ok" onclick="cmd('','confirm')">是，執行</button>
           <button class="btn" onclick="cmd('','reject')">否，只要文字</button>
@@ -248,7 +284,8 @@ namespace test
 
     list.innerHTML = pendingHtml + nodes.map(n => {
       const st = n.status || 'idle';
-      const files = (n.files||[]).map(f => `<span class="file">📄 ${esc(f)}</span>`).join('');
+      const files = (n.files||[]).map(f =>
+        `<span class="file" onclick="toast('檔案在電腦端，請到桌面開啟')" style="cursor:pointer">📄 ${esc(f)}</span>`).join('');
       const tokens = n.hasRealTokens
         ? `<span><b>${(n.inputTokens||0)+(n.outputTokens||0)}</b> tokens</span>`
         : ((n.inputTokens||n.outputTokens) ? `<span>~${(n.inputTokens||0)+(n.outputTokens||0)} tokens(估算)</span>` : '');
@@ -280,15 +317,73 @@ namespace test
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
-  async function cmd(id, action){
+  async function cmd(id, action, text){
     if (action === 'rerun' && !confirm('重跑會重新呼叫 AI（會花 token／費用），確定嗎？')) return;
     try {
       const r = await fetch('/api/command?t=' + encodeURIComponent(TOKEN), {
         method:'POST', headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ nodeId:id, action })
+        body: JSON.stringify({ nodeId:id, action, text: text || '' })
       });
       const res = await r.json();
       toast(res.message || (res.ok ? '完成' : '失敗'));
+      tick();
+      return res;
+    } catch(e){ toast('連線失敗'); }
+  }
+
+  // 選項同步：內容變了才重建（避免打斷正在操作的使用者）；保留目前選擇。
+  let lastParentKey = '', lastModelKey = '';
+  function syncSelects(snap){
+    const pSel = document.getElementById('parentSel');
+    const mSel = document.getElementById('modelSel');
+
+    const nodes = snap.nodes || [];
+    const pKey = nodes.map(n => n.id + '|' + n.title).join(';');
+    if (pKey !== lastParentKey && document.activeElement !== pSel){
+      lastParentKey = pKey;
+      const keep = pSel.value;
+      pSel.length = 1; // 保留「自動」
+      for (const n of nodes){
+        const o = document.createElement('option');
+        o.value = n.id;
+        o.textContent = '🔗 ' + ((n.title || '(未命名)').slice(0, 18));
+        pSel.appendChild(o);
+      }
+      if ([...pSel.options].some(o => o.value === keep)) pSel.value = keep;
+    }
+
+    const models = snap.models || [];
+    const mKey = models.map(m => m.id).join(';');
+    if (mKey !== lastModelKey && document.activeElement !== mSel){
+      lastModelKey = mKey;
+      const keep = mSel.value;
+      mSel.length = 1; // 保留「預設模型」
+      for (const m of models){
+        const o = document.createElement('option');
+        o.value = m.id;
+        o.textContent = '🤖 ' + m.name;
+        mSel.appendChild(o);
+      }
+      if ([...mSel.options].some(o => o.value === keep)) mSel.value = keep;
+    }
+  }
+
+  async function sendNew(){
+    const box = document.getElementById('newCmd');
+    const text = (box.value || '').trim();
+    if (!text) return;
+    try {
+      const r = await fetch('/api/command?t=' + encodeURIComponent(TOKEN), {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          nodeId:'', action:'newnode', text,
+          parentNodeId: document.getElementById('parentSel').value,
+          modelId: document.getElementById('modelSel').value,
+        })
+      });
+      const res = await r.json();
+      toast(res.message || (res.ok ? '完成' : '失敗'));
+      if (res && res.ok) box.value = '';
       tick();
     } catch(e){ toast('連線失敗'); }
   }

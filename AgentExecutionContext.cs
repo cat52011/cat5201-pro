@@ -5,7 +5,7 @@ namespace test
 {
     public sealed class AgentExecutionContext
     {
-        public NodeControl Node { get; init; } = null!;
+        public INodeContext Node { get; init; } = null!;
 
         public AgentDefinition Agent { get; init; } = null!;
 

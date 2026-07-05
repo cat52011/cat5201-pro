@@ -2,7 +2,7 @@
 {
     public sealed class AgentExecutionRequest
     {
-        public NodeControl Node { get; init; } = null!;
+        public INodeContext Node { get; init; } = null!;   // Slice B2：執行腦只認抽象節點
         public AgentDefinition Agent { get; init; } = null!;
 
         public string TopText { get; init; } = "";

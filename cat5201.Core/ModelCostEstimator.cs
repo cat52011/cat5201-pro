@@ -111,6 +111,13 @@ namespace test
         }
 
         /// <summary>
+        /// 圖片單張成本描述（給二次確認框等 UI 用）——與實際計費同一價目表，避免兩處真相不一致。
+        /// 例：「約 NT$5.44/張」。
+        /// </summary>
+        public static string ImageUnitCostText(string? size = null, string? quality = null)
+            => $"約 {FormatTwd(ImageCostUsd(size, quality))}/張";
+
+        /// <summary>
         /// 圖片成本提示字串，沿用文字成本的「估算 ≈ … · 約 NT$…」格式（圖片無 token，改顯示張數）。
         /// 例：「估算 ≈ 1 張圖 · 約 NT$5.44」。
         /// </summary>

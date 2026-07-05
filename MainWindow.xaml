@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:test"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
-        Title="cat5201pro"
+        Title="cat5201-pro"
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized"
         ResizeMode="CanResize">
@@ -986,7 +986,28 @@ Margin="0,20,20,0">
                                 Background="#F1F1F3"
                                 Foreground="#444"
                                 BorderThickness="0"
+                                Margin="0,0,8,0"
                                 Click="ShowApiTab_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="18,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <Button x:Name="TabSkillsBtn"
+                                Content="Skills"
+                                Height="32"
+                                FontSize="13"
+                                FontWeight="SemiBold"
+                                Cursor="Hand"
+                                Background="#F1F1F3"
+                                Foreground="#444"
+                                BorderThickness="0"
+                                Click="ShowSkillsTab_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="18,0">
@@ -1470,6 +1491,95 @@ Margin="0,20,20,0">
                                        Foreground="#A8A8AC"/>
                         </StackPanel>
 
+                        <!-- 花錢安全：今日累計花費 + 每日上限（0/留空 = 不限制） -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="花費"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="所有 AI 呼叫（文字 tokens）與媒體生成（圖片/影片）的費用都會累計到全域帳本。設每日上限後，達標當天不再執行新任務（不會中斷正在跑的）。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <TextBlock x:Name="SpendTodayText"
+                                   Text="今日已花：約 NT$0"
+                                   FontSize="12.5"
+                                   FontWeight="SemiBold"
+                                   Foreground="#333"
+                                   Margin="0,0,0,8"/>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="每日上限"
+                                       VerticalAlignment="Center"
+                                       FontSize="12.5"
+                                       Foreground="#333"
+                                       Margin="0,0,10,0"/>
+                            <Border Background="#F7F7F8"
+                                    BorderBrush="#E4E4E7"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Width="96"
+                                    Height="34">
+                                <TextBox x:Name="DailyBudgetInput"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         VerticalContentAlignment="Center"
+                                         Padding="12,0"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         MaxLength="6"
+                                         TextChanged="DailyBudgetInput_Changed"/>
+                            </Border>
+                            <TextBlock Text="NT$／天"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0"
+                                       FontSize="12.5"
+                                       Foreground="#666"/>
+                            <TextBlock Text="（留空＝不限制）"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       FontSize="11.5"
+                                       Foreground="#A8A8AC"/>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0">
+                            <TextBlock Text="確認框自動同意"
+                                       VerticalAlignment="Center"
+                                       FontSize="12.5"
+                                       Foreground="#333"
+                                       Margin="0,0,10,0"/>
+                            <Border Background="#F7F7F8"
+                                    BorderBrush="#E4E4E7"
+                                    BorderThickness="1"
+                                    CornerRadius="9"
+                                    Width="72"
+                                    Height="34">
+                                <TextBox x:Name="AutoConfirmSecondsInput"
+                                         BorderThickness="0"
+                                         Background="Transparent"
+                                         VerticalContentAlignment="Center"
+                                         Padding="12,0"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         MaxLength="3"
+                                         TextChanged="AutoConfirmSecondsInput_Changed"/>
+                            </Border>
+                            <TextBlock Text="秒後自動執行"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0"
+                                       FontSize="12.5"
+                                       Foreground="#666"/>
+                            <TextBlock Text="（0＝不自動，等你手動選擇）"
+                                       VerticalAlignment="Center"
+                                       Margin="10,0,0,0"
+                                       FontSize="11.5"
+                                       Foreground="#A8A8AC"/>
+                        </StackPanel>
+
                         <!-- 手機鏡像（§17 階段一）：開啟後手機同區網可唯讀看到畫布即時狀態 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
@@ -1535,6 +1645,114 @@ Margin="0,20,20,0">
                                          TextAlignment="Center"/>
                             </StackPanel>
                         </Border>
+
+                    </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- §19 技能分頁（可捲動）：與 API 同級的獨立分頁；技能＝可重複使用的指示/能力，執行時自動注入 prompt -->
+                    <ScrollViewer x:Name="SkillsScroll"
+                                  Grid.Row="2"
+                                  Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="2,10,2,6">
+                        <TextBlock Text="Skills"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,4,0,2"/>
+                        <TextBlock Text="把常用的指示、流程或格式模板存成「技能」，每次執行任務時自動注入給 AI。全域生效、跨專案、重啟保留；可個別開關。與本節點明確指示衝突時，以節點為準。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,10"/>
+
+                        <TextBlock Text="新增技能"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,0,0,4"/>
+                        <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" CornerRadius="9" Margin="0,0,0,6">
+                            <TextBox x:Name="SkillNameInput"
+                                     BorderThickness="0" Background="Transparent"
+                                     Padding="12,8" FontSize="12.5" Foreground="#333"
+                                     VerticalContentAlignment="Center"
+                                     ToolTip="技能名稱（例：週報格式）"/>
+                        </Border>
+                        <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" CornerRadius="9" Margin="0,0,0,8">
+                            <TextBox x:Name="SkillContentInput"
+                                     BorderThickness="0" Background="Transparent"
+                                     Padding="12,8" FontSize="12.5" Foreground="#333"
+                                     AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="64" MaxHeight="160"
+                                     VerticalScrollBarVisibility="Auto"
+                                     ToolTip="技能內容：要注入給 AI 的指示/流程/格式模板"/>
+                        </Border>
+                        <Button x:Name="AddSkillButton"
+                                Content="＋ 新增技能"
+                                Height="34" FontSize="13" FontWeight="SemiBold"
+                                Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
+                                Click="AddSkill_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="White"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#333"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <!-- 從 GitHub 匯入（支援 raw / blob 連結的 .md 或純文字技能檔；SKILL.md frontmatter 的 name 會自動帶入） -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+                        <TextBlock Text="從 GitHub 匯入"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,14,0,2"/>
+                        <TextBlock Text="貼上 GitHub 上技能檔的連結（blob 或 raw 皆可，例如 SKILL.md），自動抓取並匯入成一條技能。frontmatter 的 name/description 會自動解析。"
+                                   FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" CornerRadius="9">
+                                <TextBox x:Name="SkillImportUrlInput"
+                                         BorderThickness="0" Background="Transparent"
+                                         Padding="12,8" FontSize="12" Foreground="#333"
+                                         VerticalContentAlignment="Center"
+                                         ToolTip="https://github.com/…/SKILL.md 或 raw.githubusercontent.com 連結"/>
+                            </Border>
+                            <Button x:Name="ImportSkillButton"
+                                    Grid.Column="2"
+                                    Content="匯入"
+                                    Height="34" Width="72" FontSize="13" FontWeight="SemiBold"
+                                    Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
+                                    Click="ImportSkillFromGitHub_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="White"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#333"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                        <TextBlock x:Name="SkillImportHint"
+                                   Text=""
+                                   FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="2,6,0,0"/>
+
+                        <!-- 已存在的技能清單 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+                        <TextBlock Text="我的技能"
+                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,14,0,6"/>
+                        <StackPanel x:Name="SkillsListPanel"/>
                     </StackPanel>
                     </ScrollViewer>
 
@@ -1689,6 +1907,52 @@ Margin="0,20,20,0">
                                 </Button>
                             </Grid>
 
+                            <!-- Google OAuth（Drive 整合；桌面應用程式用戶端） -->
+                            <Grid Margin="0,6,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                    <TextBlock Text="Google Client ID" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                    <TextBlock Text="（Drive 整合，見下方「Google 整合」區）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                </StackPanel>
+                                <TextBlock x:Name="ApiStatus_GoogleClientId" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_GoogleClientId" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="GOOGLE_OAUTH_CLIENT_ID" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
+                            <Grid Margin="0,6,0,4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="Google Client Secret" FontSize="12.5" FontWeight="SemiBold" Foreground="#333" Grid.Column="0"/>
+                                <TextBlock x:Name="ApiStatus_GoogleClientSecret" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                            </Grid>
+                            <Grid Margin="0,-6,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
+                                    <PasswordBox x:Name="ApiKeyBox_GoogleClientSecret" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
+                                </Border>
+                                <Button Grid.Column="1" Content="清除" Tag="GOOGLE_OAUTH_CLIENT_SECRET" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
+                                </Button>
+                            </Grid>
+
                             <Button x:Name="SaveApiKeysButton"
                                     Content="儲存 API 金鑰"
                                     Height="36"
@@ -1719,6 +1983,64 @@ Margin="0,20,20,0">
                                        Foreground="#1F9D55"
                                        Margin="2,8,0,0"
                                        Visibility="Collapsed"/>
+
+                            <!-- §18 Google 整合：連結帳戶 + 產出自動上傳 Drive -->
+                            <Border Height="1" Background="#ECECEC" Margin="0,18,0,0"/>
+                            <TextBlock Text="Google 整合"
+                                       FontSize="13" FontWeight="SemiBold" Foreground="#444" Margin="0,14,0,2"/>
+                            <TextBlock Text="連結 Google 帳戶後，產出的檔案（PDF／PPTX／DOCX／圖片／影片）可自動存到你的 Drive。授權採最小權限（只碰本程式建立的檔案），憑證與 token 皆只存本機。"
+                                       FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,0,0,8"/>
+                            <TextBlock x:Name="GoogleStatusText"
+                                       Text="狀態：檢查中…"
+                                       FontSize="12" Foreground="#666" Margin="0,0,0,8"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <Button x:Name="GoogleAuthBtn"
+                                        Content="連結 Google"
+                                        Height="32" FontSize="12.5" FontWeight="SemiBold"
+                                        Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
+                                        Margin="0,0,8,0"
+                                        Click="GoogleAuth_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="16,0">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                  TextElement.Foreground="White"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                                <Button x:Name="GoogleUnlinkBtn"
+                                        Content="解除連結"
+                                        Height="32" FontSize="12.5"
+                                        Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0"
+                                        Click="GoogleUnlink_Click">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="9" Padding="16,0">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+                            </StackPanel>
+                            <Grid Margin="0,3">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="產出檔案自動上傳 Drive"
+                                               FontSize="12.5" Foreground="#333"/>
+                                    <TextBlock Text="需已連結帳戶；上傳結果記錄在診斷日誌"
+                                               FontSize="11" Foreground="#A8A8AC"/>
+                                </StackPanel>
+                                <CheckBox x:Name="GoogleAutoUploadSwitch"
+                                          Grid.Column="1"
+                                          Style="{StaticResource AppleSwitchStyle}"
+                                          VerticalAlignment="Center"
+                                          Checked="GoogleAutoUploadSwitch_Changed"
+                                          Unchecked="GoogleAutoUploadSwitch_Changed"/>
+                            </Grid>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

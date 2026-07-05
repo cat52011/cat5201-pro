@@ -48,6 +48,7 @@ namespace test
                 content ??= "";
                 File.WriteAllText(fullPath, content, Utf8Bom);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = extension == ".txt" ? "text" : "markdown",
@@ -93,6 +94,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "docx",
@@ -141,6 +143,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "pdf",
@@ -189,6 +192,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "pptx",
@@ -237,6 +241,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "xlsx",
@@ -286,6 +291,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "image",
@@ -335,6 +341,7 @@ namespace test
 
                 File.WriteAllBytes(fullPath, content);
 
+                NotifyWritten(fullPath);
                 return new GeneratedFilePayload
                 {
                     Format = "video",
@@ -351,6 +358,18 @@ namespace test
             {
                 return Failed(ex.Message, title);
             }
+        }
+
+        /// <summary>
+        /// §18：檔案成功落地後的通知鉤子（由 MainWindow 設定；目前用於 Drive 自動上傳）。
+        /// 鉤子失敗絕不影響產檔主流程。
+        /// </summary>
+        public static Action<string>? PostWriteHook { get; set; }
+
+        private static void NotifyWritten(string fullPath)
+        {
+            try { PostWriteHook?.Invoke(fullPath); }
+            catch (Exception ex) { AppLog.Warn("GeneratedFileWriter", "PostWriteHook 失敗（不影響產檔）", ex); }
         }
 
         private static GeneratedFilePayload Failed(string error, string title)

@@ -132,6 +132,7 @@ namespace test
                     normalized,
                     "圖片", "圖像", "生成圖片", "產生圖片",
                     "畫一張", "畫一隻", "畫一幅", "畫個", "畫張", "幫我畫", "請畫",
+                    "照片", "相片", "photo",
                     "image", "generate image", "draw"))
             {
                 return OrchestrationTaskType.ImageGeneration;
@@ -205,7 +206,8 @@ namespace test
 
             return ContainsAny(s,
                 "影片", "短片", "動畫", "影像", "video", "movie", "clip", "animation",
-                "圖片", "圖像", "插圖", "圖檔", "畫一", "畫個", "畫張", "image", "picture", "illustration", "draw");
+                "圖片", "圖像", "插圖", "圖檔", "畫一", "畫個", "畫張", "image", "picture", "illustration", "draw",
+                "照片", "相片", "photo", "拍一張");   // 2026-07-04：「生成一張…的照片」曾被漏放行
         }
 
         // 有圖片附件時，使用者是否想「編輯這張圖」（改建 / 裝潢 / 改圖 / 套風格…）。

@@ -16,17 +16,17 @@ namespace test
         private const int MaxRepairPreviousOutputChars = 2500;
         private const int MaxRepairDiffChars = 14000;
 
-        private readonly MainWindow _main;
-        private readonly NodeExecutionDecisionResolver _decisionResolver;
-        private readonly Func<NodeControl, string, NodeExecutionDecision, Action<string>?, bool, CancellationToken, Task<AiFallbackExecutionResult>> _executeWithFallbackAsync;
-        private readonly NodeExecutionFinalizer _executionFinalizer;
+        private readonly IAgentHost _main;   // #3：抽服務層第一刀——依賴抽象而非具體 MainWindow。
+        private readonly IExecutionDecisionResolver _decisionResolver;
+        private readonly Func<INodeContext, string, NodeExecutionDecision, Action<string>?, bool, CancellationToken, Task<AiFallbackExecutionResult>> _executeWithFallbackAsync;
+        private readonly IDecisionFinalizer _executionFinalizer;
         private readonly AgentDelegationPlanner _delegationPlanner = new();
 
         public AgentRuntime(
-            MainWindow main,
-            NodeExecutionDecisionResolver decisionResolver,
-            Func<NodeControl, string, NodeExecutionDecision, Action<string>?, bool, CancellationToken, Task<AiFallbackExecutionResult>> executeWithFallbackAsync,
-            NodeExecutionFinalizer executionFinalizer)
+            IAgentHost main,
+            IExecutionDecisionResolver decisionResolver,
+            Func<INodeContext, string, NodeExecutionDecision, Action<string>?, bool, CancellationToken, Task<AiFallbackExecutionResult>> executeWithFallbackAsync,
+            IDecisionFinalizer executionFinalizer)
         {
             _main = main;
             _decisionResolver = decisionResolver;
@@ -179,9 +179,10 @@ namespace test
 
                 if (producesOutput)
                 {
-                    allowGeneration = autoMode
-                        ? await _main.ConfirmGenerationAsync(detectedTaskType, request.OutputIntent)
-                        : false;
+                    // 手動/Auto 一律彈二次確認（2026-07-04 修正）：先前手動模式直接封殺媒體生成，
+                    // 導致使用者明確要求「生成照片」也只得到純文字。確認框＝明確徵詢，不是偷偷轉換，
+                    // 不違反「純手動不自動轉換」的本意；使用者按「否」仍是純文字。
+                    allowGeneration = await _main.ConfirmGenerationAsync(detectedTaskType, request.OutputIntent);
                 }
             }
 
@@ -1201,7 +1202,7 @@ namespace test
         /// 寫檔失敗不影響主答案，只把 generate_file 階段標記為 failed。
         /// </summary>
         private async Task<AiFallbackExecutionResult> GenerateReportFile(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition runtimeAgent,
             string userInput,
             AgentWorkspace workspace,
@@ -1386,7 +1387,7 @@ namespace test
         /// 寫檔失敗不影響主答案，只把 presentation_outline 階段標記為 failed。
         /// </summary>
         private async Task<AiFallbackExecutionResult> GeneratePresentation(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition runtimeAgent,
             string userInput,
             AgentWorkspace workspace,
@@ -1475,7 +1476,7 @@ namespace test
                             workspace, node, runtimeAgent?.Id ?? "presentation-agent",
                             "generated_file", pptxResult));
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("AgentRuntime", "簡報 PPTX 產出失敗（已略過，主答案不受影響）", ex); }
             }
 
             // 簡報一律配一份「分頁 / 版面 / 封面圖都與 pptx 一致」的 deck.pdf（一張投影片一頁，同一份 outline + 同一張封面圖）。
@@ -1492,7 +1493,7 @@ namespace test
                         workspace, node, runtimeAgent?.Id ?? "presentation-agent",
                         "generated_file", pdfResult));
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("AgentRuntime", "簡報 PDF 對照產出失敗（已略過）", ex); }
 
             // §7 NotebookLM 匯出輔助（B 方案）：使用者要求時，附一份可匯入 NotebookLM 的來源文字包。
             string? notebookLmFile = null;
@@ -1518,7 +1519,7 @@ namespace test
                         notebookLmFile = nb.FileName;
                     }
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("AgentRuntime", "NotebookLM 匯入包產出失敗（已略過）", ex); }
             }
 
             if (pptxResult?.Success == true || gammaUrl != null)
@@ -1557,7 +1558,7 @@ namespace test
         // 回傳 gammaUrl（成功，可能為空字串表示無連結）；回傳 null 代表未啟用或失敗，呼叫端應 fallback 到 PptxBuilder。
         // 目前休眠：沒有 GAMMA_API_KEY 時 IsConfigured=false，直接回 null，行為與現在相同。
         private async Task<string?> TryAddGammaPptxAsync(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition? runtimeAgent,
             PresentationOutlinePayload outline,
             string contentText,
@@ -1648,7 +1649,7 @@ namespace test
 
         // 為簡報生成一張封面圖：回傳 (png bytes, 寫出的檔名)；失敗時回傳 (null, null) 不影響簡報。
         private async Task<(byte[]?, string?)> TryGenerateCoverImageAsync(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition? runtimeAgent,
             PresentationOutlinePayload outline,
             AgentWorkspace workspace,
@@ -1698,7 +1699,7 @@ namespace test
         // 通用配圖 brief：把一段內容素材交給 Claude，萃取成「一個具體、單一焦點、可畫的英文畫面提示」，
         // 並套用統一的簡約資訊示意風格指示。封面、（後續）內容頁、報告章節配圖共用，確保調性一致。
         private async Task<string> BuildIllustrationBriefAsync(
-            NodeControl node, string material, string contextLabel, CancellationToken ct)
+            INodeContext node, string material, string contextLabel, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(material))
                 return "";
@@ -1764,7 +1765,7 @@ namespace test
         // 再用 gpt-image-2 生成與內容呼應的圖、填入 slide.ImageBytes（由 PptxBuilder / DeckPdfBuilder 嵌入）。
         // 缺 OPENAI_API_KEY / 任何失敗一律略過，不影響簡報主體。
         private async Task GenerateSlideIllustrationsAsync(
-            NodeControl node, PresentationOutlinePayload outline, CancellationToken ct)
+            INodeContext node, PresentationOutlinePayload outline, CancellationToken ct)
         {
             if (outline?.Slides == null) return;
 
@@ -1801,14 +1802,14 @@ namespace test
                     }
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("AgentRuntime", "內容配圖生成失敗（已略過）", ex); }
             }
         }
 
         // 用一次 Claude 呼叫，從內容區塊挑最多 maxCount 個適合配圖的，並寫具體英文配圖提示。
         // sections：(id, title, body) 清單（簡報＝內容頁，報告＝章節）；回傳 id → 英文提示。任何失敗回空字典。
         private async Task<Dictionary<int, string>> PlanIllustrationsAsync(
-            NodeControl node,
+            INodeContext node,
             IReadOnlyList<(int id, string title, string body)> sections,
             int maxCount, string contextLabel, CancellationToken ct)
         {
@@ -1874,7 +1875,7 @@ namespace test
                 }
             }
             catch (OperationCanceledException) { throw; }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("AgentRuntime", "附加產出步驟失敗（已略過，主答案不受影響）", ex); }
 
             return result;
         }
@@ -1895,7 +1896,7 @@ namespace test
         // 生成與內容呼應的圖、寫成 png，並在該章節標題行後插入 markdown 圖片語法
         // （DocxReportBuilder / PdfReportBuilder 會嵌入）。缺金鑰 / 任何失敗一律回原 markdown。
         private async Task<string> IllustrateReportMarkdownAsync(
-            NodeControl node, string markdown, string genDir, CancellationToken ct)
+            INodeContext node, string markdown, string genDir, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(markdown)) return markdown;
 
@@ -1949,7 +1950,7 @@ namespace test
                     node.AddMediaCostUsd(usd, $"報告配圖 US${usd:F2}");
                 }
                 catch (OperationCanceledException) { throw; }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("AgentRuntime", "報告配圖生成失敗（已略過）", ex); }
             }
 
             if (inserts.Count == 0) return markdown;
@@ -1971,7 +1972,7 @@ namespace test
         }
 
         // 把（可能含上游搜尋結果的）原始輸入交給 Claude，萃取真正主體並寫成具體、可畫的圖片提示。
-        private async Task<string> BuildImageBriefAsync(NodeControl node, string rawRequest, CancellationToken ct)
+        private async Task<string> BuildImageBriefAsync(INodeContext node, string rawRequest, CancellationToken ct)
         {
             string briefPrompt =
                 "你是圖片生成的提示詞工程師。下面是使用者的請求，可能夾帶上游節點的搜尋結果或一大段背景文字。\n" +
@@ -2010,7 +2011,7 @@ namespace test
         }
 
         private async Task<AiFallbackExecutionResult> GenerateImageFile(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition runtimeAgent,
             string userInput,
             AgentWorkspace workspace,
@@ -2122,7 +2123,7 @@ namespace test
         // Image Edit：上傳圖 + 指令 → OpenAI images/edits 改圖，輸出改建後的照片。
         // 缺圖 / 缺金鑰 / 失敗一律附註說明、不中斷主答案。
         private async Task<AiFallbackExecutionResult> GenerateImageEdit(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition runtimeAgent,
             string userInput,
             AgentWorkspace workspace,
@@ -2188,7 +2189,7 @@ namespace test
         }
 
         // 取節點（含沿上游鏈繼承）的第一張圖片附件 bytes；無則 null。
-        private byte[]? GetFirstImageAttachmentBytes(NodeControl node)
+        private byte[]? GetFirstImageAttachmentBytes(INodeContext node)
         {
             try
             {
@@ -2208,12 +2209,12 @@ namespace test
                         return System.IO.File.ReadAllBytes(path);
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("AgentRuntime", "讀取圖片附件失敗", ex); }
             return null;
         }
 
         // 把使用者的中文修改指令轉成乾淨英文編輯指令（保留整體結構、去除與圖片無關的雜訊如「影片風格」）。
-        private async Task<string> BuildImageEditPromptAsync(NodeControl node, string userInput, CancellationToken ct)
+        private async Task<string> BuildImageEditPromptAsync(INodeContext node, string userInput, CancellationToken ct)
         {
             string p =
                 "你是圖片編輯提示詞工程師。使用者上傳了一張照片，並用中文描述想怎麼修改它。\n" +
@@ -2265,7 +2266,7 @@ namespace test
         /// 支援取消（OperationCanceledException 往上拋）。即使 Veo API 未配置，使用者仍拿到完整 Claude 影片計畫。
         /// </summary>
         private async Task<AiFallbackExecutionResult> GenerateVideoFile(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition runtimeAgent,
             string userInput,
             AgentWorkspace workspace,
@@ -2660,7 +2661,7 @@ namespace test
         // 刻意保持簡單：內容品質的真正投資留到接上 Gamma / NotebookLM，這層不做逐頁深寫等重工。
         // 任一步失敗回 null，呼叫端 fallback 回確定性切段。
         private async Task<PresentationOutlinePayload?> BuildAuthoredPresentationAsync(
-            NodeControl node,
+            INodeContext node,
             string userInput,
             AgentWorkspace workspace,
             AiFallbackExecutionResult execution,
@@ -2709,7 +2710,7 @@ namespace test
 
         // §7.2 單張投影片重生：用作者模型只重寫指定那一張，回傳替換後的新大綱（失敗回 null，呼叫端保留原樣）。
         public async Task<PresentationOutlinePayload?> RegeneratePresentationSlideAsync(
-            NodeControl node,
+            INodeContext node,
             PresentationOutlinePayload outline,
             int slideOrder,
             string userInput,
@@ -2755,7 +2756,7 @@ namespace test
 
         // 內容作者共用 executor：以選定的作者模型跑一步（簡報骨架 / 逐頁內容 / 報告 / 表格），必要時 fallback。
         private async Task<AiFallbackExecutionResult> RunAuthorStepAsync(
-            NodeControl node, string prompt, string authorModelId, string label, CancellationToken ct)
+            INodeContext node, string prompt, string authorModelId, string label, CancellationToken ct)
         {
             var decision = new NodeExecutionDecision
             {
@@ -2776,7 +2777,7 @@ namespace test
 
         // §6 報告 / 表格內容作者：用作者模型把主答案整理成乾淨內容，回傳去圍欄後的文字（失敗回 null）。
         private async Task<string?> AuthorCleanAsync(
-            NodeControl node, string prompt, string label, CancellationToken ct)
+            INodeContext node, string prompt, string label, CancellationToken ct)
         {
             try
             {
@@ -2792,7 +2793,7 @@ namespace test
 
         // 用 Perplexity 蒐集簡報素材；無金鑰 / 失敗時回空字串（不中斷，作者改用自身知識）。
         private async Task<string> ResearchForPresentationAsync(
-            NodeControl node, string userInput, int requestedSlides, CancellationToken ct)
+            INodeContext node, string userInput, int requestedSlides, CancellationToken ct)
         {
             try
             {
@@ -2881,7 +2882,7 @@ namespace test
         // I2V：用 gpt-image-2 生成一張「調到目標色調」的英雄圖，當 Veo 連貫基底段的起始幀。
         // 失敗（缺 OPENAI_API_KEY / 出圖失敗 / 任何例外）一律回 null → 呼叫端自動退回純 T2V，不中斷影片。
         private async Task<byte[]?> TryGenerateHeroStillAsync(
-            NodeControl node, VideoPlanPayload plan, string videoStyle, string aspectRatio, CancellationToken ct)
+            INodeContext node, VideoPlanPayload plan, string videoStyle, string aspectRatio, CancellationToken ct)
         {
             try
             {
@@ -2933,7 +2934,7 @@ namespace test
         }
 
         private async Task<VideoPlanPayload> BuildVideoPlanAsync(
-            NodeControl node, string prompt, int targetSeconds, string stylePrompt, string? treatment,
+            INodeContext node, string prompt, int targetSeconds, string stylePrompt, string? treatment,
             VideoCutMode cutMode, CancellationToken ct)
         {
             string directorPrompt = VideoPlanBuilder.BuildDirectorPrompt(prompt, targetSeconds, stylePrompt, treatment, cutMode);
@@ -3036,7 +3037,7 @@ namespace test
         }
 
         private async Task<AiFallbackExecutionResult> RunFinalSynthesisAsync(
-            NodeControl node,
+            INodeContext node,
             AgentDefinition rootAgent,
             string originalInput,
             AgentWorkspace workspace,
@@ -3131,7 +3132,7 @@ namespace test
         }
 
         private async Task<AiFallbackExecutionResult?> TryRepairInvalidCodeDiffAsync(
-            NodeControl node,
+            INodeContext node,
             string originalFinalInput,
             string userGoal,
             AiFallbackExecutionResult previousExecution,

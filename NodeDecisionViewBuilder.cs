@@ -204,9 +204,7 @@ namespace test
             if (files.Count > 0)
                 lines.Add("📄 產出：" + string.Join("、", files));
 
-            string durationText = log.DurationMs >= 1000
-                ? $"{log.DurationMs / 1000.0:0.0} 秒"
-                : $"{log.DurationMs} 毫秒";
+            string durationText = FormatDuration(log.DurationMs);
 
             string resultLine = log.Success
                 ? $"✅ 結果：成功 · {durationText}"
@@ -839,10 +837,19 @@ namespace test
             };
         }
 
+        /// <summary>毫秒 → 人類可讀時長：850 毫秒 / 12.4 秒 / 2 分 50 秒。</summary>
+        internal static string FormatDuration(long ms)
+        {
+            if (ms < 1000) return $"{ms} 毫秒";
+            if (ms < 60_000) return $"{ms / 1000.0:0.#} 秒";
+            long totalSec = (long)Math.Round(ms / 1000.0);
+            return $"{totalSec / 60} 分 {totalSec % 60} 秒";
+        }
+
         private static NodeDecisionStepViewData BuildExecutionStep(AiExecutionLogEntry log)
         {
             string executionDetail = log.Success
-                ? $"成功 / {log.DurationMs}ms"
+                ? $"成功 · {FormatDuration(log.DurationMs)}"
                 : $"失敗 / {Safe(log.ErrorMessage)}";
 
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
@@ -874,7 +881,7 @@ namespace test
 
         private static string BuildTaskSummary(AiExecutionLogEntry log)
         {
-            return $"{Safe(log.TaskMode)} / {log.Confidence:0.00} / {log.DurationMs}ms";
+            return $"{Safe(log.TaskMode)} / {log.Confidence:0.00} / {FormatDuration(log.DurationMs)}";
         }
 
         private static string BuildKeywordSummary(AiExecutionLogEntry log)
