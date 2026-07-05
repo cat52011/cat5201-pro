@@ -448,7 +448,9 @@ namespace test
             List<SkillDefinition>? Skills = null,
             int DailyBudgetTwd = 0,
             int AutoConfirmSeconds = 10,
-            bool GoogleAutoUploadDrive = false
+            bool GoogleAutoUploadDrive = false,
+            List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
+            bool DriveConvertToGoogleFormat = false
         );
 
         // 全域個人化偏好放在子資料夾，永遠不會被 SavesDir 的 *.json 專案掃描列舉到（非遞迴），
@@ -5299,7 +5301,9 @@ namespace test
                     Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
                     DailyBudgetTwd: _dailyBudgetTwd,
                     AutoConfirmSeconds: _autoConfirmSeconds,
-                    GoogleAutoUploadDrive: _googleAutoUploadDrive
+                    GoogleAutoUploadDrive: _googleAutoUploadDrive,
+                    DriveUploadTypes: _driveUploadTypes.ToList(),
+                    DriveConvertToGoogleFormat: _driveConvertGoogle
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -5370,6 +5374,10 @@ namespace test
                 _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
                 _autoConfirmSeconds = Math.Clamp(prefs.AutoConfirmSeconds, 0, 300);
                 _googleAutoUploadDrive = prefs.GoogleAutoUploadDrive;
+                _driveUploadTypes = prefs.DriveUploadTypes == null
+                    ? new HashSet<string>(AllDriveTypes)            // 舊偏好檔：預設全開
+                    : new HashSet<string>(prefs.DriveUploadTypes);
+                _driveConvertGoogle = prefs.DriveConvertToGoogleFormat;
             }
             catch (Exception ex)
             {
@@ -7256,6 +7264,15 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     AutoConfirmSecondsInput.Text = _autoConfirmSeconds > 0 ? _autoConfirmSeconds.ToString() : "0";
                 if (GoogleAutoUploadSwitch != null)
                     GoogleAutoUploadSwitch.IsChecked = _googleAutoUploadDrive;
+                if (DriveTypePdf != null)   DriveTypePdf.IsChecked   = _driveUploadTypes.Contains("pdf");
+                if (DriveTypeWord != null)  DriveTypeWord.IsChecked  = _driveUploadTypes.Contains("word");
+                if (DriveTypePpt != null)   DriveTypePpt.IsChecked   = _driveUploadTypes.Contains("ppt");
+                if (DriveTypeExcel != null) DriveTypeExcel.IsChecked = _driveUploadTypes.Contains("excel");
+                if (DriveTypeImage != null) DriveTypeImage.IsChecked = _driveUploadTypes.Contains("image");
+                if (DriveTypeVideo != null) DriveTypeVideo.IsChecked = _driveUploadTypes.Contains("video");
+                if (DriveTypeText != null)  DriveTypeText.IsChecked  = _driveUploadTypes.Contains("text");
+                if (DriveConvertSwitch != null)
+                    DriveConvertSwitch.IsChecked = _driveConvertGoogle;
                 if (SpendTodayText != null)
                     SpendTodayText.Text = $"今日已花：{SpendLedger.TodayDisplay()}";
                 RefreshSkillsList();   // §19：開設定面板時同步技能清單
@@ -7311,6 +7328,24 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
         // ===== §18 Google Drive 整合 =====
         private bool _googleAutoUploadDrive; // 個人化：產出檔案自動上傳 Drive（預設關）
+
+        // 個人化：哪些「檔案類型」要上傳（各類型可個別開關）。
+        private static readonly string[] AllDriveTypes = { "pdf", "word", "ppt", "excel", "image", "video", "text" };
+        private HashSet<string> _driveUploadTypes = new(AllDriveTypes);
+        private bool _driveConvertGoogle; // DOCX/XLSX 上傳時轉成 Google 文件/試算表格式
+
+        private static string DriveCategoryOf(string path) =>
+            System.IO.Path.GetExtension(path).ToLowerInvariant() switch
+            {
+                ".pdf" => "pdf",
+                ".docx" => "word",
+                ".pptx" => "ppt",
+                ".xlsx" => "excel",
+                ".png" or ".jpg" or ".jpeg" or ".webp" => "image",
+                ".mp4" => "video",
+                _ => "text", // .md / .txt 及其他
+            };
+
         private GoogleDriveService? _googleDrive;
 
         private GoogleDriveService GoogleDrive =>
@@ -7324,12 +7359,27 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             {
                 GeneratedFileWriter.PostWriteHook = path =>
                 {
+                    // 個人化：各檔案類型可個別開關（讀即時欄位值，改設定立即生效、免重掛鉤子）。
+                    if (!_driveUploadTypes.Contains(DriveCategoryOf(path)))
+                        return;
+
+                    // 個人化：DOCX/XLSX 可轉成 Google 文件/試算表格式（Drive 端轉檔）。
+                    string? convertTo = !_driveConvertGoogle
+                        ? null
+                        : System.IO.Path.GetExtension(path).ToLowerInvariant() switch
+                        {
+                            ".docx" => GoogleDriveService.GoogleDocMime,
+                            ".xlsx" => GoogleDriveService.GoogleSheetMime,
+                            _ => null,
+                        };
+
                     _ = Task.Run(async () =>
                     {
                         try
                         {
-                            var (id, link) = await GoogleDrive.UploadFileAsync(path, CancellationToken.None);
-                            AppLog.Info("GoogleDrive", $"已自動上傳：{System.IO.Path.GetFileName(path)} → {link}");
+                            var (id, link) = await GoogleDrive.UploadFileAsync(path, CancellationToken.None, convertTo);
+                            AppLog.Info("GoogleDrive",
+                                $"已自動上傳：{System.IO.Path.GetFileName(path)}{(convertTo != null ? "（已轉 Google 格式）" : "")} → {link}");
                         }
                         catch (Exception ex)
                         {
@@ -7386,7 +7436,70 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             WireDrivePostWriteHook();
         }
 
+        // 各檔案類型的上傳開關（一個 handler 讀全部勾選框）。
+        private void DriveTypeCheck_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+
+            var set = new HashSet<string>();
+            foreach (var cb in new[] { DriveTypePdf, DriveTypeWord, DriveTypePpt, DriveTypeExcel, DriveTypeImage, DriveTypeVideo, DriveTypeText })
+            {
+                if (cb?.IsChecked == true && cb.Tag is string tag)
+                    set.Add(tag);
+            }
+            _driveUploadTypes = set;
+            SavePreferences(); // 鉤子讀即時欄位值，免重掛
+        }
+
+        private void DriveConvertSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            _driveConvertGoogle = DriveConvertSwitch?.IsChecked == true;
+            SavePreferences();
+        }
+
         private bool _fetchingGoogleEmail;
+
+        /// <summary>NodeControl 附件鈕用：Drive 是否已可用（有憑證且已連結）。</summary>
+        public bool IsGoogleDriveLinked() => GoogleDrive.IsConfigured && GoogleDrive.IsAuthorized;
+
+        /// <summary>
+        /// §18：從 Drive 選檔 → 下載到暫存 → 走既有附件流程加進節點。回傳是否有加入任何附件。
+        /// </summary>
+        public async Task<bool> AttachFromDriveAsync(NodeControl node)
+        {
+            try
+            {
+                var files = await GoogleDrive.ListFilesAsync(CancellationToken.None);
+                var picker = new DriveFilePickerDialog(this, files);
+                if (picker.ShowDialog() != true || picker.Selected.Count == 0)
+                    return false;
+
+                string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201-drive");
+                Directory.CreateDirectory(tempDir);
+
+                var localPaths = new List<string>();
+                foreach (var (id, name) in picker.Selected)
+                {
+                    string safe = string.Concat(name.Split(System.IO.Path.GetInvalidFileNameChars()));
+                    string local = System.IO.Path.Combine(tempDir, safe);
+                    await GoogleDrive.DownloadFileAsync(id, local, CancellationToken.None);
+                    localPaths.Add(local);
+                }
+
+                AddAttachmentsForNode(node, localPaths); // 既有流程會複製進專案附件資料夾
+                AppLog.Info("GoogleDrive", $"從 Drive 附加 {localPaths.Count} 個檔案");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("GoogleDrive", "從 Drive 附加檔案失敗", ex);
+                MenuConfirmDialog.ShowMessage(this, "Google Drive", "從 Drive 取檔失敗：" + ex.Message, this);
+                return false;
+            }
+        }
 
         private void RefreshGoogleStatus()
         {
@@ -7479,6 +7592,11 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             {
                 _mirrorServer ??= new MobileMirrorServer();
                 _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
+                _mirrorServer.NodeTextProvider = nodeId =>               // §17：手機看完整輸出（丟回 UI 執行緒讀）
+                    Dispatcher.InvokeAsync(() =>
+                        MainCanvas.Children.OfType<NodeControl>()
+                            .FirstOrDefault(n => n.Id.ToString() == nodeId)
+                            ?.GetBottomText()).Task;
                 _lastMirrorContentKey = null; // 重啟 server 後第一份快照一定要推
                 if (!_mirrorServer.IsRunning)
                     await _mirrorServer.StartAsync(MobileMirrorServer.DefaultPort);

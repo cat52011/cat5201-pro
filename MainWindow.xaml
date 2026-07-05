@@ -1580,6 +1580,70 @@ Margin="0,20,20,0">
                                        Foreground="#A8A8AC"/>
                         </StackPanel>
 
+                        <!-- §18 雲端上傳：產出檔案自動上傳 Google Drive（各類型可個別開關） -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="雲端上傳（Google Drive）"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="產出的檔案自動存一份到你的 Google Drive。可勾選哪些類型要上傳；帳戶連結在「API」分頁的「Google 整合」區。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <Grid Margin="0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="產出檔案自動上傳 Drive"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="需已連結帳戶；上傳結果記錄在診斷日誌"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="GoogleAutoUploadSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="GoogleAutoUploadSwitch_Changed"
+                                      Unchecked="GoogleAutoUploadSwitch_Changed"/>
+                        </Grid>
+
+                        <TextBlock Text="要上傳的檔案類型："
+                                   FontSize="12" Foreground="#555" Margin="0,10,0,4"/>
+                        <WrapPanel>
+                            <CheckBox x:Name="DriveTypePdf"   Content="PDF"   Tag="pdf"   Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypeWord"  Content="Word"  Tag="word"  Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypePpt"   Content="簡報"  Tag="ppt"   Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypeExcel" Content="Excel" Tag="excel" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypeImage" Content="圖片"  Tag="image" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypeVideo" Content="影片"  Tag="video" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                            <CheckBox x:Name="DriveTypeText"  Content="文字/MD" Tag="text" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                        </WrapPanel>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Word／Excel 轉成 Google 文件／試算表"
+                                           FontSize="12.5" Foreground="#333"/>
+                                <TextBlock Text="上傳時由 Drive 轉檔，變成可線上編輯的 Google 格式"
+                                           FontSize="11" Foreground="#A8A8AC"/>
+                            </StackPanel>
+                            <CheckBox x:Name="DriveConvertSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="DriveConvertSwitch_Changed"
+                                      Unchecked="DriveConvertSwitch_Changed"/>
+                        </Grid>
+
                         <!-- 手機鏡像（§17 階段一）：開啟後手機同區網可唯讀看到畫布即時狀態 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
@@ -2023,24 +2087,8 @@ Margin="0,20,20,0">
                                     </Button.Template>
                                 </Button>
                             </StackPanel>
-                            <Grid Margin="0,3">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                    <TextBlock Text="產出檔案自動上傳 Drive"
-                                               FontSize="12.5" Foreground="#333"/>
-                                    <TextBlock Text="需已連結帳戶；上傳結果記錄在診斷日誌"
-                                               FontSize="11" Foreground="#A8A8AC"/>
-                                </StackPanel>
-                                <CheckBox x:Name="GoogleAutoUploadSwitch"
-                                          Grid.Column="1"
-                                          Style="{StaticResource AppleSwitchStyle}"
-                                          VerticalAlignment="Center"
-                                          Checked="GoogleAutoUploadSwitch_Changed"
-                                          Unchecked="GoogleAutoUploadSwitch_Changed"/>
-                            </Grid>
+                            <TextBlock Text="上傳偏好（開關／各檔案類型／轉 Google 格式）在「個人化」分頁的「雲端上傳」區設定。"
+                                       FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,3,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>

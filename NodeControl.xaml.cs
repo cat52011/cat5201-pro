@@ -1495,6 +1495,36 @@ namespace test
                 return;
             }
 
+            // §18：已連結 Google Drive 時提供雙來源選單；未連結行為與以前完全相同（直開本機選檔）。
+            if (_parent.IsGoogleDriveLinked() && sender is FrameworkElement anchorEl)
+            {
+                var menu = new ContextMenu();
+
+                var local = new MenuItem { Header = "📁 本機檔案…" };
+                local.Click += (_, __) => PickLocalAttachments();
+                menu.Items.Add(local);
+
+                var drive = new MenuItem { Header = "☁️ Google Drive…" };
+                drive.Click += async (_, __) =>
+                {
+                    if (await _parent.AttachFromDriveAsync(this))
+                    {
+                        RefreshAttachmentsUI();
+                        ContentChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                };
+                menu.Items.Add(drive);
+
+                menu.PlacementTarget = anchorEl;
+                menu.IsOpen = true;
+                return;
+            }
+
+            PickLocalAttachments();
+        }
+
+        private void PickLocalAttachments()
+        {
             var dlg = new OpenFileDialog
             {
                 Title = "選擇要上傳給 AI 的檔案/照片",
@@ -1505,7 +1535,7 @@ namespace test
                     "文件 (*.pdf;*.txt;*.md;*.csv;*.json)|*.pdf;*.txt;*.md;*.csv;*.json"
             };
 
-            if (dlg.ShowDialog(Window.GetWindow(this)) == true)
+            if (dlg.ShowDialog(Window.GetWindow(this)) == true && _parent != null)
             {
                 _parent.AddAttachmentsForNode(this, dlg.FileNames);
                 RefreshAttachmentsUI();

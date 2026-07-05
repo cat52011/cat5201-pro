@@ -40,6 +40,12 @@ namespace test
         /// </summary>
         public Func<MirrorCommand, Task<MirrorCommandResult>>? CommandHandler { get; set; }
 
+        /// <summary>
+        /// §17：取單一節點完整輸出文字（快照只帶 240 字預覽，點卡片看全文時呼叫）。
+        /// 由 MainWindow 設定，實作須丟回 UI 執行緒。回 null＝找不到節點。
+        /// </summary>
+        public Func<string, Task<string?>>? NodeTextProvider { get; set; }
+
         /// <summary>由 UI 執行緒在每次推送時呼叫，覆寫最新快照。</summary>
         public void Publish(string json)
         {
@@ -70,6 +76,20 @@ namespace test
                 : Results.Unauthorized());
             // 健康檢查 / 連線測試用（不需權杖）
             app.MapGet("/api/ping", () => Results.Content("ok", "text/plain; charset=utf-8"));
+
+            // §17：單一節點完整輸出（手機點卡片看全文）。
+            app.MapGet("/api/node/{id}/text", async (HttpContext ctx, string id) =>
+            {
+                if (!Authorized(ctx))
+                    return Results.Unauthorized();
+                var provider = NodeTextProvider;
+                if (provider == null)
+                    return Results.Content("", "text/plain; charset=utf-8");
+                string? text = await provider(id);
+                return text == null
+                    ? Results.NotFound()
+                    : Results.Content(text, "text/plain; charset=utf-8");
+            });
 
             // 手機端輕操控（§17 階段二）：停止 / 重跑節點。權杖保護；實際動作由 CommandHandler 丟回 UI 執行緒執行。
             app.MapPost("/api/command", async (HttpContext ctx) =>
@@ -215,6 +235,16 @@ namespace test
   .btn:active { opacity:.6; }
   .btn.stop { background:#3a1720; border-color:#7a1f2f; color:#ff9aab; }
   .btn.rerun { background:#141f3a; border-color:#28306e; color:#aeb8ff; }
+  .modal { position:fixed; inset:0; background:#0e0f13ee; z-index:50; display:none;
+           flex-direction:column; padding:14px 12px calc(14px + env(safe-area-inset-bottom)); }
+  .modal.show { display:flex; }
+  .modal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .modal-title { font-size:14px; font-weight:700; color:#e8e8ea; }
+  .modal-close { font-size:13px; font-weight:600; padding:8px 16px; border-radius:9px;
+                 border:1px solid #2c2d36; background:#1d1e25; color:#cfcfe0; cursor:pointer; -webkit-appearance:none; }
+  .modal-body { flex:1; overflow-y:auto; background:#16171d; border:1px solid #23242c; border-radius:14px;
+                padding:14px; font-size:13.5px; line-height:1.65; color:#d8d8de;
+                white-space:pre-wrap; word-break:break-word; -webkit-overflow-scrolling:touch; }
   .toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%);
            background:#26272f; color:#f0f0f4; font-size:13px; padding:11px 18px; border-radius:11px;
            box-shadow:0 6px 24px #0009; opacity:0; transition:opacity .25s; pointer-events:none; max-width:80%; }
@@ -231,6 +261,16 @@ namespace test
     <div class="pill" id="livePill"><span class="dot"></span><span id="liveText">唯讀鏡像</span></div>
   </header>
   <div id="list"><div class="empty">讀取中…</div></div>
+
+  <!-- §17：點卡片預覽 → 看完整輸出 -->
+  <div class="modal" id="fullModal">
+    <div class="modal-head">
+      <div class="modal-title" id="fullTitle">完整輸出</div>
+      <button class="modal-close" onclick="closeFull()">✕ 關閉</button>
+    </div>
+    <div class="modal-body" id="fullBody">載入中…</div>
+  </div>
+
   <div class="toast" id="toast"></div>
   <footer>手機鏡像 · 每 1.5 秒更新 · 可下指令／停止／重跑</footer>
 
@@ -292,7 +332,9 @@ namespace test
       const cost = n.mediaCostUsd ? `<span>媒體 <b>US$${Number(n.mediaCostUsd).toFixed(2)}</b></span>` : '';
       const model = n.model ? `<span>${esc(n.model)}</span>` : '';
       const hint = (st==='running' && n.loadingHint) ? `<div class="hint">⏳ ${esc(n.loadingHint)}</div>` : '';
-      const prev = n.outputPreview ? `<div class="preview">${esc(n.outputPreview)}</div>` : '';
+      const prev = n.outputPreview
+        ? `<div class="preview" style="cursor:pointer" onclick="viewFull('${n.id}','${esc((n.title||'').slice(0,24)).replace(/'/g,'')}')">${esc(n.outputPreview)}<div style="color:#6f7dff;font-size:11px;margin-top:6px">點一下看完整輸出 ▸</div></div>`
+        : '';
       const acts = [];
       if (n.canStop)  acts.push(`<button class="btn stop"  onclick="cmd('${n.id}','stop')">■ 停止</button>`);
       if (n.canRerun) acts.push(`<button class="btn rerun" onclick="cmd('${n.id}','rerun')">↻ 重跑</button>`);
@@ -387,6 +429,21 @@ namespace test
       tick();
     } catch(e){ toast('連線失敗'); }
   }
+
+  // §17：看完整輸出
+  async function viewFull(id, title){
+    const modal = document.getElementById('fullModal');
+    document.getElementById('fullTitle').textContent = title || '完整輸出';
+    document.getElementById('fullBody').textContent = '載入中…';
+    modal.classList.add('show');
+    try {
+      const r = await fetch('/api/node/' + encodeURIComponent(id) + '/text?t=' + encodeURIComponent(TOKEN), { cache:'no-store' });
+      document.getElementById('fullBody').textContent = r.ok ? (await r.text() || '（沒有輸出）') : '（讀取失敗）';
+    } catch(e){
+      document.getElementById('fullBody').textContent = '（連線失敗）';
+    }
+  }
+  function closeFull(){ document.getElementById('fullModal').classList.remove('show'); }
 
   let failCount = 0;
   async function tick(){
