@@ -1,6 +1,6 @@
 using System;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// File Generation v1 的產物：一個實際寫到磁碟的檔案（目前支援 markdown / 純文字）。

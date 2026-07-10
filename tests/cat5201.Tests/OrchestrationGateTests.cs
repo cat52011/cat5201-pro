@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// 第一層意圖閘門：寬鬆關鍵字（高召回）放行後才交 LLM 精準判斷。

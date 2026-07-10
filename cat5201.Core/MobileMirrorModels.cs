@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 手機鏡像（§17 階段一）用的「UI 無關」狀態快照。

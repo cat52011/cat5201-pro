@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     public static class NodeDecisionViewBuilder
     {
@@ -260,7 +260,22 @@ namespace test
             return CollectParticipantModels(log, primary);
         }
 
-        // 頂部「模型」欄用：實際參與的模型（主模型 + 各產出物的模型），去重後回顯示標籤清單。
+        // 「真的動手交付」的產出物種類——與 BuildAiTeamStep 會掛上非系統 AI 角色的集合一致。
+        // 刻意排除 orchestration/workflow/downstream_node_plan/task_plan 等「路由規劃 meta」：
+        // 它們被標的是節點「被規劃到」的模型，常因 fallback 從未實際執行，算進參與模型會與
+        // 「參與的 AI」對不上、且把沒跑過的模型講成參與者＝違反可稽查。
+        private static readonly HashSet<string> WorkDeliveringArtifactKinds = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "facts", "verified_facts",
+            "search", "search_summary",
+            "analysis", "reasoning_analysis",
+            "presentation", "presentation_outline",
+            "media", "image", "video",
+            "code", "code_snapshot", "diff", "patch", "code_diff",
+            "final", "final_synthesis"
+        };
+
+        // 頂部「模型」欄用：實際參與的模型（主模型 + 各「真的動手」產出物的模型），去重後回顯示標籤清單。
         private static List<string> CollectParticipantModels(AiExecutionLogEntry log, string primaryModelLabel)
         {
             var labels = new List<string>();
@@ -276,8 +291,17 @@ namespace test
             Add(primaryModelLabel);
             foreach (var a in log.WorkspaceArtifacts ?? Array.Empty<AgentWorkspaceArtifactRecord>())
             {
-                if (!string.IsNullOrWhiteSpace(a?.ModelId))
-                    Add(GetModelLabel(a!.ModelId));
+                if (a == null || string.IsNullOrWhiteSpace(a.ModelId))
+                    continue;
+
+                string kind = (a.ArtifactKind ?? "").Trim().ToLowerInvariant();
+                string itemType = (a.ItemType ?? "").Trim().ToLowerInvariant();
+                string k = (kind.Length == 0 || kind == "artifact") ? itemType : kind;
+
+                if (!WorkDeliveringArtifactKinds.Contains(k))
+                    continue;
+
+                Add(GetModelLabel(a.ModelId));
             }
 
             return labels;

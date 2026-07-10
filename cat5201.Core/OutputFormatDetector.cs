@@ -1,6 +1,6 @@
 using System;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// §6 多輸出偵測：集中判斷一段使用者輸入「想要哪些輸出檔」。

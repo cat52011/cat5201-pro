@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 最小可用的 Gemini generateContent API 封裝（v1：非串流，文字輸入/輸出）。

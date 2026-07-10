@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>§19 Skills 注入：注入區塊的組成規則（啟用才注入、空內容不收、停用保留不注入）。</summary>
     public class SkillsRegistryTests

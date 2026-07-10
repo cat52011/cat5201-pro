@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// §6 多輸出偵測是「要產哪些檔」的關鍵字判斷（OrchestrationPlanner 與 AgentRuntime 共用），

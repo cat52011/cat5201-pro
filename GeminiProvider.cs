@@ -4,7 +4,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Multi-Model：Gemini provider（v1 文字）。透過 router 取得 GeminiChatService。

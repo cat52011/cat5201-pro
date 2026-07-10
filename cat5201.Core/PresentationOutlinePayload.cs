@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Presentation Agent v1 的結構化產物：把內容拆解成「投影片大綱 / slide plan」。

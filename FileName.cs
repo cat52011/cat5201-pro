@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace cat5201
+namespace Cat5201
 {
     internal class FileName
     {

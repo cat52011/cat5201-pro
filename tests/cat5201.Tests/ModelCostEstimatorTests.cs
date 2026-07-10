@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>成本/token 估算是決策窗與成本控制的數字來源，行為要穩定。</summary>
     public class ModelCostEstimatorTests

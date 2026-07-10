@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Memory v1 偏好擷取：用純規則（零額外 LLM 呼叫）從文字中辨識使用者偏好。

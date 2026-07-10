@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// Slice B2 的成果驗收：AgentRuntime（執行腦）已完全脫離 WPF——
@@ -38,10 +38,10 @@ namespace cat5201.Tests
             public VeoModelTier GetVeoModelTier() => VeoModelTier.Lite;
             public string GetEffectiveVeoModel() => "";
             public string GetEffectiveVideoStylePrompt() => "";
-            public IReadOnlyList<MainWindow.AttachmentInfo> GetAttachmentsForNode(INodeContext node)
-                => Array.Empty<MainWindow.AttachmentInfo>();
-            public IReadOnlyList<MainWindow.AttachmentInfo> GetEffectiveAttachmentsForNode(INodeContext node)
-                => Array.Empty<MainWindow.AttachmentInfo>();
+            public IReadOnlyList<AttachmentInfo> GetAttachmentsForNode(INodeContext node)
+                => Array.Empty<AttachmentInfo>();
+            public IReadOnlyList<AttachmentInfo> GetEffectiveAttachmentsForNode(INodeContext node)
+                => Array.Empty<AttachmentInfo>();
             public string GetAttachmentsRootDir() => Dir;
             public string GetGeneratedFilesDir() => Dir;
             public void SetLiveDecisionResolving(INodeContext node, NodeExecutionDecision decision) { }

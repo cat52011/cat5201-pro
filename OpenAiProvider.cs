@@ -4,7 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     public sealed class OpenAiProvider : IAiProvider
     {

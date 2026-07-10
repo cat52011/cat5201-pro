@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>簡報生成器選擇的儲存 round-trip + 別名解析（個人化設定，走樣＝引擎跑掉）。</summary>
     public class PresentationEngineHelperTests

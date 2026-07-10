@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>節點任務模式的解析/儲存要容錯且 round-trip 穩定（存專案檔、跨版本讀取都靠它）。</summary>
     public class NodeTaskModeHelperTests

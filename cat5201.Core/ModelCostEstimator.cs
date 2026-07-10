@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Product UX v1：Token / 成本「估算」。

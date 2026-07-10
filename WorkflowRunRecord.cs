@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 一次工作流執行的歷史紀錄（§3 Workflow replay / rerun / resume 用）。

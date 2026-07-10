@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// 影片參數解析：秒數/快剪偵測/合法基底量化。量化錯了會被 Veo API 400 拒（踩過），故釘住。

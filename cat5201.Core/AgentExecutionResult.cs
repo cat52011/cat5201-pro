@@ -1,0 +1,23 @@
+﻿using System.Collections.Generic;
+
+namespace Cat5201
+{
+    public sealed class AgentExecutionResult
+    {
+        public NodeExecutionDecision Decision { get; init; } = new();
+        public AiFallbackExecutionResult Execution { get; init; } = new();
+
+        public IReadOnlyList<AgentCapabilityTraceItem> CapabilityTrace { get; init; }
+            = new List<AgentCapabilityTraceItem>();
+
+        public IReadOnlyList<AgentDelegationTraceItem> DelegationTrace { get; init; }
+            = new List<AgentDelegationTraceItem>();
+
+        public string FinalText =>
+            Execution?.Text ?? "";
+
+        public bool IsSuccess =>
+            Execution != null && Execution.IsSuccess;
+        public AgentWorkspaceSummary? WorkspaceSummary { get; init; }
+    }
+}

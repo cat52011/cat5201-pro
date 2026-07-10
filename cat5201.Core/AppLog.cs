@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 商品級可觀測性（STRATEGY §5「第一天就接 tracing」的最小落地）：

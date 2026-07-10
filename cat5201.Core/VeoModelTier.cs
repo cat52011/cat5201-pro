@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Veo 3.1 三個品質 / 成本檔位（個人化可選）。前期測試預設 Lite（最省）。

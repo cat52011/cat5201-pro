@@ -4,7 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.Json;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Video Gen v1：建立「Claude 導演 prompt」並把 Claude 回傳的 JSON 解析成 VideoPlanPayload。

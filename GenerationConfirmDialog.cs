@@ -7,7 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 產檔／媒體生成的專屬確認框——這是產品「AI 即將花你的錢」的招牌時刻，

@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 個人化「任務 → AI 模型」自訂路由表。使用者可在個人化設定中，為每種任務模式（Research / Code 等）

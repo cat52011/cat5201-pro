@@ -17,7 +17,7 @@ using System.Windows.Media.Effects;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 
-namespace test
+namespace Cat5201
 {
     public partial class NodeControl : UserControl, INodeContext
     {
@@ -45,7 +45,7 @@ namespace test
         private string _loadingExtraHint = "";
 
         // Product UX：節點執行狀態（邊框顏色 + 狀態列）。
-        private enum NodeRunStatus { Idle, Running, Success, Failed }
+        private enum NodeRunStatus { Idle, Running, Success, Failed, Waiting }
         private NodeRunStatus _runStatus = NodeRunStatus.Idle;
         private DispatcherTimer? _statusRevertTimer;
         // 失敗後「重新執行」要用的上一次實際送出 prompt。
@@ -132,6 +132,7 @@ namespace test
             NodeRunStatus.Running => "running",
             NodeRunStatus.Success => "success",
             NodeRunStatus.Failed => "failed",
+            NodeRunStatus.Waiting => "waiting",
             _ => "idle",
         };
 
@@ -141,6 +142,7 @@ namespace test
             NodeRunStatus.Running => "執行中",
             NodeRunStatus.Success => "成功",
             NodeRunStatus.Failed => "失敗",
+            NodeRunStatus.Waiting => "等待中",
             _ => "閒置",
         };
 
@@ -1570,10 +1572,16 @@ namespace test
 
             await GenerateBottomReplyFromTopAsync(runTop);
 
-            // §4 Mode 2（完全自動）：送出且成功後，若為多階段任務且策略為 FullyAuto，
-            // 自動展開下游節點並依序執行整條工作流。
             if (_parent != null && RunProducedUsableOutput())
-                await _parent.MaybeAutoExpandAfterSubmitAsync(this);
+            {
+                // 藍色虛線（流動模式）下游：上游一完成就自動沿線往下跑（下游各自仍會檢查自己輸入端是否有內容，
+                // 空的節點會被 RunCurrentTopTextAsync 略過）。這是明確畫的執行路徑，不受「自動展開」個人化開關影響。
+                if (_parent.NodeHasFlowDownstream(this))
+                    await _parent.RunFlowWorkflowAsync(this, runStartNode: false);
+                // 否則維持 §4 Mode 2（完全自動）：多階段任務且策略為 FullyAuto 時，AI 自動展開下游並依序執行。
+                else
+                    await _parent.MaybeAutoExpandAfterSubmitAsync(this);
+            }
         }
 
         // 本次執行是否產出可作為下游輸入的有效內容（排除錯誤 / 逾時 / 無回應訊息）。
@@ -1768,6 +1776,7 @@ namespace test
                     NodeRunStatus.Running => new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xE6)), // 藍：執行中
                     NodeRunStatus.Success => new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x5B)), // 綠：成功
                     NodeRunStatus.Failed => new SolidColorBrush(Color.FromRgb(0xD1, 0x43, 0x43)),  // 紅：失敗
+                    NodeRunStatus.Waiting => new SolidColorBrush(Color.FromRgb(0xE0, 0x92, 0x2B)), // 琥珀：等待上游
                     _ => new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00)),                      // 黑：閒置
                 };
             }
@@ -1800,10 +1809,31 @@ namespace test
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Visible;
                     break;
 
+                case NodeRunStatus.Waiting:
+                    // 排入流動工作流、等上游跑完前的過渡狀態；只換琥珀邊框，不顯示 footer。
+                    if (StatusText != null) StatusText.Text = "";
+                    if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
+                    break;
+
                 default: // Idle
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
                     break;
             }
+        }
+
+        /// <summary>被排入流動工作流、等待上游完成前的「等待中」狀態（節點琥珀框 + 手機鏡像顯示）。</summary>
+        public void MarkWaiting()
+        {
+            if (_isGenerating || _runStatus == NodeRunStatus.Running)
+                return; // 正在跑的節點不覆蓋
+            ApplyRunStatus(NodeRunStatus.Waiting);
+        }
+
+        /// <summary>若仍停在等待中（上游失敗或鏈結束而未輪到它執行），復位為閒置。</summary>
+        public void ClearWaitingStatus()
+        {
+            if (_runStatus == NodeRunStatus.Waiting)
+                ApplyRunStatus(NodeRunStatus.Idle);
         }
 
         private void StartStatusRevertTimer()

@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// §6 第一層輸出判斷的結果：使用者這次想要「簡報 / 報告 / 表格」之中的哪幾個（可多選、可全無）。

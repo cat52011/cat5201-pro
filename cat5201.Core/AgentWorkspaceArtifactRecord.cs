@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     public sealed class AgentWorkspaceArtifactRecord
     {

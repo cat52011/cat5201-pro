@@ -18,7 +18,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PathShape = System.Windows.Shapes.Path;
 
-namespace test
+namespace Cat5201
 {
     public partial class MainWindow : Window, IAgentHost
     {
@@ -315,13 +315,7 @@ namespace test
                 dotInner.Opacity = 1.0;
             }
         }
-        public sealed class AttachmentInfo
-        {
-            public string FileName { get; set; } = "";
-            public string RelativePath { get; set; } = "";
-            public string MimeType { get; set; } = "application/octet-stream";
-            public string Kind { get; set; } = "file";
-        }
+        // AttachmentInfo 已提出至 cat5201.Core\AttachmentInfo.cs（B3b）——同命名空間,既有 bare 引用照常解析。
 
         private sealed class FileItem
         {
@@ -429,35 +423,6 @@ namespace test
             bool BlockDeepResearch = false,
             int ManualTimeoutSeconds = 0
         );
-
-        // 全域個人化偏好：與「專案檔」分離，存成單一檔案，跨專案、跨重啟一致。
-        // 開新專案或開啟舊專案都不會覆蓋這些設定——它們是「使用者的」，不是「某個檔案的」。
-        internal record UserPreferencesState(
-            bool AutoModelSelectionEnabled = false,
-            bool AdvancedAutoResolverEnabled = false,
-            string DownstreamAutoMode = "OneClick",
-            string PresentationEngine = "Claude",
-            Dictionary<string, string>? TaskRoutingOverrides = null,
-            bool BlockOpus = false,
-            bool BlockDeepResearch = false,
-            int ManualTimeoutSeconds = 0,
-            string VideoStyleOverride = "",
-            string VideoModelTier = "Lite",
-            bool ReadUpstreamAttachments = false,
-            bool MobileMirrorEnabled = false,
-            List<SkillDefinition>? Skills = null,
-            int DailyBudgetTwd = 0,
-            int AutoConfirmSeconds = 10,
-            bool GoogleAutoUploadDrive = false,
-            List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
-            bool DriveConvertToGoogleFormat = false
-        );
-
-        // 全域個人化偏好放在子資料夾，永遠不會被 SavesDir 的 *.json 專案掃描列舉到（非遞迴），
-        // 因此不可能出現在檔案清單、也不可能被當成專案誤開而崩潰。
-        private string PreferencesPath => System.IO.Path.Combine(SavesDir, "_config", "_preferences.json");
-        // 舊版把偏好直接放在 SavesDir 根目錄；保留路徑以便一次性搬移。
-        private string LegacyPreferencesPath => System.IO.Path.Combine(SavesDir, "_preferences.json");
 
         private static string DisplayNameFromPath(string path)
             => System.IO.Path.GetFileNameWithoutExtension(path);
@@ -1038,18 +1003,6 @@ namespace test
             return fallback;
         }
 
-        public void AddExecutionLog(AiExecutionLogEntry entry)
-        {
-            _executionLogService.Add(entry);
-
-            // 花錢安全：每次執行的 LLM 文字成本進全域帳本（與決策窗同一 tokens×價目表）。
-            if (entry != null && (entry.InputTokens > 0 || entry.OutputTokens > 0))
-            {
-                var est = ModelCostEstimator.FromUsage(entry.ActualModelId, entry.InputTokens, entry.OutputTokens);
-                SpendLedger.Add(est.UsdCost, "llm");
-            }
-        }
-
         public IReadOnlyList<AiExecutionLogEntry> GetExecutionLogs(NodeControl node)
         {
             if (node == null)
@@ -1098,77 +1051,6 @@ namespace test
         public bool IsAdvancedAutoResolverEnabled()
         {
             return _isAdvancedAutoResolverEnabled;
-        }
-
-        // 第一層意圖閘門（Auto 模式）：實際產生影片/圖片/檔案前的二次確認。
-        // 回傳 true = 使用者同意產出；false = 只給純文字回答。
-        // 在 UI 執行緒上同步彈窗（AgentRuntime.ExecuteAsync 本就跑在 UI 執行緒），故回傳已完成的 Task。
-        public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent)
-        {
-            // 逐項（圖示 / 名稱 / 成本徽章）——成本一律取自 ModelCostEstimator 同一價目表。
-            var items = new List<(string Icon, string Name, string Detail)>();
-
-            void AddTarget(string icon, string name, string detail)
-            {
-                if (!items.Exists(x => x.Name == name))
-                    items.Add((icon, name, detail));
-            }
-
-            switch (taskType)
-            {
-                case OrchestrationTaskType.VideoGeneration:
-                    AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
-                    break;
-                case OrchestrationTaskType.ImageGeneration:
-                    AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
-                    break;
-                case OrchestrationTaskType.ImageEdit:
-                    AddTarget("🖌️", "圖片編輯", "gpt-image");
-                    break;
-                case OrchestrationTaskType.Presentation:
-                    AddTarget("📊", "簡報", "PPTX＋PDF 對照");
-                    break;
-                case OrchestrationTaskType.GenerateFile:
-                    AddTarget("📁", "檔案", "");
-                    break;
-            }
-
-            if (outputIntent != null)
-            {
-                if (outputIntent.WantsPresentation) AddTarget("📊", "簡報", "PPTX＋PDF 對照");
-                if (outputIntent.WantsReport) AddTarget("📄", "書面報告", "Word／PDF");
-                if (outputIntent.WantsTable) AddTarget("📑", "表格", "Excel");
-                if (outputIntent.WantsImage) AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
-                if (outputIntent.WantsVideo) AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
-            }
-
-            if (items.Count == 0)
-                AddTarget("📁", "檔案／媒體", "");
-
-            // 手機端橫幅文字（名稱＋徽章合併成一行）。
-            string what = string.Join("、", items.ConvertAll(x =>
-                string.IsNullOrWhiteSpace(x.Detail) ? x.Name : $"{x.Name}（{x.Detail}）"));
-
-            var dlg = new GenerationConfirmDialog(this, items, autoConfirmSeconds: _autoConfirmSeconds);
-            dlg.Loaded += (_, __) =>
-            {
-                // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
-                _pendingGenConfirmWindow = dlg;
-                _pendingGenConfirmWhat = what;
-                _pendingGenConfirmDeadlineUtc = _autoConfirmSeconds > 0
-                    ? DateTime.UtcNow.AddSeconds(_autoConfirmSeconds)
-                    : null;
-                BuildAndPublishMirrorSnapshot();
-            };
-            bool ok = dlg.ShowDialog() == true;
-
-            // 對話框已關（桌面或手機任一回答）：清除待確認狀態並更新手機畫面。
-            _pendingGenConfirmWindow = null;
-            _pendingGenConfirmWhat = null;
-            _pendingGenConfirmDeadlineUtc = null;
-            BuildAndPublishMirrorSnapshot();
-
-            return Task.FromResult(ok);
         }
 
         public void SetAutoModelSelectionEnabled(bool enabled, bool save = true)
@@ -2849,6 +2731,13 @@ namespace test
 
             WireDrivePostWriteHook(); // §18：依偏好與憑證狀態掛上 Drive 自動上傳
 
+            // P2-2 會話還原：偵測上次崩潰 → 提示開回最後的專案；並寫入本次 marker。
+            bool prevCrashed = DetectCrashAndWriteSessionLock();
+            OfferSessionRestoreIfCrashed(prevCrashed);
+
+            // P2-1 首次啟動精靈：四把主金鑰全空 → 引導輸入與驗證。
+            ShowOnboardingIfNoKeys();
+
             SetRandomStartMessage();
             RefreshFileList();
 
@@ -3057,6 +2946,7 @@ namespace test
             try
             {
                 File.Delete(path);
+                TryDeleteSidecarBak(path); // AtomicFile 每次存檔留的 .json.bak，主檔刪了它就是孤兒垃圾，一起清。
 
                 var folder = GetAttachmentFolderForFile(path);
                 if (Directory.Exists(folder))
@@ -3098,6 +2988,36 @@ namespace test
             }
         }
 
+        // AtomicFile 原子寫入時會把舊內容留成同名 .bak（斷電保護）。專案主檔一旦刪除/改名，
+        // 這個 .bak 就成了不會出現在清單、只在檔案總管現形的孤兒——刪除時清掉、改名時跟著搬。
+        private static void TryDeleteSidecarBak(string jsonPath)
+        {
+            try
+            {
+                var bak = jsonPath + ".bak";
+                if (File.Exists(bak))
+                    File.Delete(bak);
+            }
+            catch (Exception ex) { AppLog.Warn("Project", "清除 .bak 備份失敗", ex); }
+        }
+
+        private static void TryMoveSidecarBak(string oldJsonPath, string newJsonPath)
+        {
+            try
+            {
+                var oldBak = oldJsonPath + ".bak";
+                if (!File.Exists(oldBak))
+                    return;
+
+                var newBak = newJsonPath + ".bak";
+                if (File.Exists(newBak))
+                    File.Delete(newBak);
+
+                File.Move(oldBak, newBak);
+            }
+            catch (Exception ex) { AppLog.Warn("Project", "搬移 .bak 備份失敗", ex); }
+        }
+
         private void RenameFile(string oldPath)
         {
             var oldName = DisplayNameFromPath(oldPath);
@@ -3134,6 +3054,7 @@ namespace test
                 var newFolder = GetAttachmentFolderForFile(newPath);
 
                 File.Move(oldPath, newPath);
+                TryMoveSidecarBak(oldPath, newPath); // 舊名的 .json.bak 跟著搬到新名，否則留在原名下變孤兒。
 
                 bool attachmentFolderHandled = MoveAttachmentFolderSafely(oldFolder, newFolder, out var folderMoveError);
                 if (!attachmentFolderHandled)
@@ -3243,21 +3164,6 @@ namespace test
             {
                 node.RefreshAttachmentsUI();
             }
-        }
-
-        private void RefreshFileList()
-        {
-            var prefName = System.IO.Path.GetFileName(PreferencesPath);
-            var items = Directory.GetFiles(SavesDir, "*.json")
-                                 .Where(p => !string.Equals(System.IO.Path.GetFileName(p), prefName, StringComparison.OrdinalIgnoreCase))
-                                 .OrderByDescending(File.GetCreationTime)
-                                 .Select(p => new FileItem(p))
-                                 .ToList();
-
-            FileList.ItemsSource = items;
-
-            if (!string.IsNullOrEmpty(_currentFilePath))
-                SelectFileInList(_currentFilePath);
         }
 
         private void SelectFileInList(string fullPath)
@@ -5280,153 +5186,6 @@ namespace test
             CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
         }
 
-        // 全域個人化偏好寫檔。不受 _hasStarted 限制——設定面板任何變更都會即時落地。
-        private void SavePreferences()
-        {
-            try
-            {
-                var prefs = new UserPreferencesState(
-                    AutoModelSelectionEnabled: _isAutoModelSelectionEnabled,
-                    AdvancedAutoResolverEnabled: _isAdvancedAutoResolverEnabled,
-                    DownstreamAutoMode: DownstreamAutoModeHelper.ToStorageValue(_downstreamAutoMode),
-                    PresentationEngine: PresentationEngineHelper.ToStorageValue(_presentationEngine),
-                    TaskRoutingOverrides: _taskRoutingOverrides.ToStorage(),
-                    BlockOpus: AiAutoCostPolicy.BlockOpus,
-                    BlockDeepResearch: AiAutoCostPolicy.BlockDeepResearch,
-                    ManualTimeoutSeconds: _manualTimeoutSeconds,
-                    VideoStyleOverride: _videoStyleOverride ?? "",
-                    VideoModelTier: VeoModels.ToStorageValue(_videoModelTier),
-                    ReadUpstreamAttachments: _readUpstreamAttachments,
-                    MobileMirrorEnabled: _mobileMirrorEnabled,
-                    Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
-                    DailyBudgetTwd: _dailyBudgetTwd,
-                    AutoConfirmSeconds: _autoConfirmSeconds,
-                    GoogleAutoUploadDrive: _googleAutoUploadDrive,
-                    DriveUploadTypes: _driveUploadTypes.ToList(),
-                    DriveConvertToGoogleFormat: _driveConvertGoogle
-                );
-
-                var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
-                if (!string.IsNullOrEmpty(dir))
-                    Directory.CreateDirectory(dir);
-                var json = JsonSerializer.Serialize(prefs, new JsonSerializerOptions { WriteIndented = true });
-                AtomicFile.WriteAllText(PreferencesPath, json); // 原子寫入：斷電/崩潰不毀個人化，舊檔留 .bak
-            }
-            catch (Exception ex)
-            {
-                // 偏好寫檔失敗不應中斷主流程；下次變更會再試。留痕以便診斷「設定沒存到」。
-                AppLog.Warn("Preferences", "SavePreferences 寫檔失敗", ex);
-            }
-        }
-
-        // 啟動時載入全域個人化偏好，套用到記憶體狀態（在顯示 UI / 同步開關之前呼叫）。
-        private void LoadPreferences()
-        {
-            try
-            {
-                // 一次性搬移：舊版偏好檔在 SavesDir 根目錄，移進 _config 子資料夾並刪掉舊檔，
-                // 避免它繼續出現在使用者的存檔資料夾裡。
-                if (!File.Exists(PreferencesPath) && File.Exists(LegacyPreferencesPath))
-                {
-                    try
-                    {
-                        var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
-                        if (!string.IsNullOrEmpty(dir))
-                            Directory.CreateDirectory(dir);
-                        File.Move(LegacyPreferencesPath, PreferencesPath);
-                    }
-                    catch
-                    {
-                        // 搬移失敗就盡量刪掉舊檔，至少不要再被誤當專案。
-                        try { File.Delete(LegacyPreferencesPath); } catch { }
-                    }
-                }
-
-                if (!File.Exists(PreferencesPath))
-                {
-                    // 首次升級遷移：個人化設定以前存在各專案檔裡，現在改成全域。
-                    // 把「最近一次專案檔」的設定帶過來，使用者不必重設一次。
-                    TrySeedPreferencesFromLatestProject();
-                    return;
-                }
-
-                var prefs = JsonSerializer.Deserialize<UserPreferencesState>(File.ReadAllText(PreferencesPath));
-                if (prefs == null)
-                    return;
-
-                _isAutoModelSelectionEnabled = prefs.AutoModelSelectionEnabled;
-                _isAdvancedAutoResolverEnabled = _isAutoModelSelectionEnabled && prefs.AdvancedAutoResolverEnabled;
-                _downstreamAutoMode = DownstreamAutoModeHelper.Parse(prefs.DownstreamAutoMode);
-
-                _presentationEngine = PresentationEngineHelper.Parse(prefs.PresentationEngine);
-                if (_presentationEngine == PresentationEngine.Gamma)
-                    _presentationEngine = PresentationEngine.Claude; // Gamma 尚未開放，一律落回 Claude。
-
-                _taskRoutingOverrides.LoadFromStorage(prefs.TaskRoutingOverrides);
-                AiAutoCostPolicy.BlockOpus = prefs.BlockOpus;
-                AiAutoCostPolicy.BlockDeepResearch = prefs.BlockDeepResearch;
-                _manualTimeoutSeconds = prefs.ManualTimeoutSeconds;
-                _videoStyleOverride = prefs.VideoStyleOverride ?? "";
-                _videoModelTier = VeoModels.ParseTier(prefs.VideoModelTier);
-                _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
-                _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
-                SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
-                _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
-                _autoConfirmSeconds = Math.Clamp(prefs.AutoConfirmSeconds, 0, 300);
-                _googleAutoUploadDrive = prefs.GoogleAutoUploadDrive;
-                _driveUploadTypes = prefs.DriveUploadTypes == null
-                    ? new HashSet<string>(AllDriveTypes)            // 舊偏好檔：預設全開
-                    : new HashSet<string>(prefs.DriveUploadTypes);
-                _driveConvertGoogle = prefs.DriveConvertToGoogleFormat;
-            }
-            catch (Exception ex)
-            {
-                // 偏好檔毀損時忽略，沿用預設值。留痕以便診斷「個人化被重置」。
-                AppLog.Warn("Preferences", "LoadPreferences 讀取失敗，沿用預設值", ex);
-            }
-        }
-
-        // 一次性遷移：沒有全域偏好檔時，從最近一次專案檔讀回個人化設定並寫成全域偏好。
-        private void TrySeedPreferencesFromLatestProject()
-        {
-            try
-            {
-                var latest = Directory.GetFiles(SavesDir, "*.json")
-                    .Where(p => !string.Equals(
-                        System.IO.Path.GetFileName(p),
-                        System.IO.Path.GetFileName(PreferencesPath),
-                        StringComparison.OrdinalIgnoreCase))
-                    .OrderByDescending(File.GetLastWriteTime)
-                    .FirstOrDefault();
-
-                if (latest == null)
-                    return;
-
-                var state = JsonSerializer.Deserialize<AppState>(File.ReadAllText(latest));
-                if (state == null)
-                    return;
-
-                _isAutoModelSelectionEnabled = state.AutoModelSelectionEnabled;
-                _isAdvancedAutoResolverEnabled = _isAutoModelSelectionEnabled && state.AdvancedAutoResolverEnabled;
-                _downstreamAutoMode = DownstreamAutoModeHelper.Parse(state.DownstreamAutoMode);
-
-                _presentationEngine = PresentationEngineHelper.Parse(state.PresentationEngine);
-                if (_presentationEngine == PresentationEngine.Gamma)
-                    _presentationEngine = PresentationEngine.Claude;
-
-                _taskRoutingOverrides.LoadFromStorage(state.TaskRoutingOverrides);
-                AiAutoCostPolicy.BlockOpus = state.BlockOpus;
-                AiAutoCostPolicy.BlockDeepResearch = state.BlockDeepResearch;
-                _manualTimeoutSeconds = state.ManualTimeoutSeconds;
-
-                SavePreferences(); // 立刻落地成全域偏好，下次起點即一致。
-            }
-            catch
-            {
-                // 遷移失敗就沿用預設，不影響啟動。
-            }
-        }
-
         private void LoadState(string path)
         {
             if (!File.Exists(path)) return;
@@ -6130,105 +5889,6 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
         {
             foreach (var c in _connections)
                 yield return (c.StartNode, c.StartThumb, c.EndNode, c.EndThumb);
-        }
-
-        public void SetLiveDecisionResolving(INodeContext nodeContext, NodeExecutionDecision decision)
-        {
-            // Slice B1 cast 橋：決策窗 UI 需要具體控制項。
-            var node = nodeContext as NodeControl;
-            if (node == null || decision == null)
-                return;
-
-            // §17-3：記住「最後執行的節點」——手機下的新指令會自動接在它的下游。
-            _lastRunNode = node;
-
-            string requestedLabel = GetDecisionModelLabel(
-                string.IsNullOrWhiteSpace(decision.RequestedModelId) ? decision.ModelId : decision.RequestedModelId);
-
-            string plannedLabel = GetDecisionModelLabel(decision.ModelId);
-
-            string modelText = string.Equals(requestedLabel, plannedLabel, StringComparison.OrdinalIgnoreCase)
-                ? plannedLabel
-                : $"{plannedLabel} ← {requestedLabel}";
-
-            var steps = new List<NodeDecisionStepViewData>
-    {
-        new NodeDecisionStepViewData
-        {
-            Title = "Task Mode",
-            Detail = $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / confidence {decision.Confidence:0.00}",
-            State = NodeDecisionStepState.Info,
-            Highlight = true,
-            DetailLines = BuildTaskModeLines(decision)
-        },
-        new NodeDecisionStepViewData
-        {
-            Title = "Model Selection",
-            Detail = modelText,
-            State = NodeDecisionStepState.Info,
-            Highlight = true,
-            DetailLines = BuildModelLines(decision, actualModelId: null)
-        },
-         new NodeDecisionStepViewData
-{
-    Title = "Resolver",
-    Detail = string.IsNullOrWhiteSpace(decision.ResolverLabel) ? "-" : decision.ResolverLabel,
-    State = NodeDecisionStepState.Info,
-    Highlight = true,
-    IsActive = true,
-    DetailLines = BuildResolverLines(decision, extra: "正在建立執行決策")
-},
-        new NodeDecisionStepViewData
-{
-    Title = "Capability Guard",
-    Detail = decision.CapabilityAdjusted ? "已調整" : "檢查中",
-    State = decision.CapabilityAdjusted ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
-    IsActive = !decision.CapabilityAdjusted,
-    DetailLines = BuildCapabilityLines(decision, forcePendingText: !decision.CapabilityAdjusted)
-},
-        new NodeDecisionStepViewData
-{
-    Title = "Delegation",
-    Detail = "尚未觸發",
-    State = NodeDecisionStepState.Info,
-    DetailLines = new[]
-    {
-        "目前尚未進入 agent delegation"
-    }
-},
-        new NodeDecisionStepViewData
-        {
-            Title = "Fallback",
-            Detail = "尚未觸發",
-            State = NodeDecisionStepState.Info,
-            DetailLines = new[]
-            {
-                "目前尚未進入 runtime fallback"
-            }
-        },
-       new NodeDecisionStepViewData
-{
-    Title = "Execution",
-    Detail = "等待執行",
-    State = NodeDecisionStepState.Info,
-    DetailLines = new[]
-    {
-        "執行尚未開始"
-    }
-}
-    };
-
-            var view = BuildLiveDecisionViewData(
-                decision,
-                modelText,
-                $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / {decision.Confidence:0.00}",
-                extra: decision.CapabilityAdjusted
-                    ? (string.IsNullOrWhiteSpace(decision.CapabilityReason) ? "-" : decision.CapabilityReason)
-                    : "-",
-                steps: steps);
-
-            _liveDecisionViewsByNode[node.Id] = view;
-            RefreshDecisionForNode(node);
         }
 
         public void SetLiveDecisionExecuting(
@@ -7034,93 +6694,6 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x44, 0x44, 0x44));
         }
 
-        // ===== API 金鑰面板 =====
-
-        // (env 變數名, 狀態文字框, 密碼框) 對應表，集中一次處理避免重複。
-        private (string Env, System.Windows.Controls.TextBlock? Status, System.Windows.Controls.PasswordBox? Box)[] ApiKeyRows() =>
-            new (string, System.Windows.Controls.TextBlock?, System.Windows.Controls.PasswordBox?)[]
-        {
-            ("OPENAI_API_KEY",     ApiStatus_OpenAI,     ApiKeyBox_OpenAI),
-            ("ANTHROPIC_API_KEY",  ApiStatus_Anthropic,  ApiKeyBox_Anthropic),
-            ("GEMINI_API_KEY",     ApiStatus_Gemini,     ApiKeyBox_Gemini),
-            ("PERPLEXITY_API_KEY", ApiStatus_Perplexity, ApiKeyBox_Perplexity),
-            ("GAMMA_API_KEY",      ApiStatus_Gamma,      ApiKeyBox_Gamma),
-            ("GOOGLE_OAUTH_CLIENT_ID",     ApiStatus_GoogleClientId,     ApiKeyBox_GoogleClientId),
-            ("GOOGLE_OAUTH_CLIENT_SECRET", ApiStatus_GoogleClientSecret, ApiKeyBox_GoogleClientSecret),
-        };
-
-        // 更新各列狀態徽章；密碼框一律清空（不回填祕密），留空＝不變更。
-        private void RefreshApiPanel()
-        {
-            RefreshGoogleStatus(); // §18：Google 連結狀態
-            foreach (var row in ApiKeyRows())
-            {
-                if (row.Box != null) row.Box.Password = "";
-                if (row.Status == null) continue;
-
-                switch (ApiKeyStore.GetSource(row.Env))
-                {
-                    case ApiKeyStore.KeySource.Environment:
-                        row.Status.Text = "環境變數";
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x1F, 0x9D, 0x55));
-                        break;
-                    case ApiKeyStore.KeySource.UserEntered:
-                        row.Status.Text = "已儲存";
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0x6B, 0xE6));
-                        break;
-                    default:
-                        row.Status.Text = "未設定";
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xA8, 0xA8, 0xAC));
-                        break;
-                }
-            }
-            if (ApiSaveHint != null) ApiSaveHint.Visibility = Visibility.Collapsed;
-        }
-
-        private void SaveApiKeys_Click(object sender, RoutedEventArgs e)
-        {
-            var updates = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-            foreach (var row in ApiKeyRows())
-            {
-                string entered = row.Box?.Password ?? "";
-                if (!string.IsNullOrWhiteSpace(entered))
-                    updates[row.Env] = entered.Trim(); // 只更新有輸入的；留空＝保留原值
-            }
-
-            if (updates.Count > 0)
-            {
-                ApiKeyStore.SetUserKeys(updates);
-                _aiRouter.ResetServices(); // 讓已快取的服務用新金鑰重建
-            }
-
-            RefreshApiPanel();
-            if (ApiSaveHint != null)
-            {
-                ApiSaveHint.Text = updates.Count > 0 ? "已儲存（已加密落地）。" : "沒有新輸入的金鑰。";
-                ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(
-                    updates.Count > 0
-                        ? System.Windows.Media.Color.FromRgb(0x1F, 0x9D, 0x55)
-                        : System.Windows.Media.Color.FromRgb(0xA8, 0xA8, 0xAC));
-                ApiSaveHint.Visibility = Visibility.Visible;
-            }
-        }
-
-        private void ClearApiKey_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not System.Windows.Controls.Button btn || btn.Tag is not string env || string.IsNullOrWhiteSpace(env))
-                return;
-
-            ApiKeyStore.SetUserKeys(new Dictionary<string, string?> { [env] = null });
-            _aiRouter.ResetServices();
-            RefreshApiPanel();
-            if (ApiSaveHint != null)
-            {
-                ApiSaveHint.Text = "已清除該金鑰。";
-                ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xA8, 0xA8, 0xAC));
-                ApiSaveHint.Visibility = Visibility.Visible;
-            }
-        }
-
         private void CloseSettings_Click(object sender, RoutedEventArgs e)
         {
             if (SettingsOverlay != null)
@@ -7305,763 +6878,6 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 return;
             AiAutoCostPolicy.BlockDeepResearch = BlockDeepResearchSwitch?.IsChecked == true;
             SaveState();
-        }
-
-        // ===== 手機鏡像（§17 階段一）：開關 → 啟停內嵌唯讀 web server + 每 1.5 秒推快照 =====
-        private MobileMirrorServer? _mirrorServer;
-        private DispatcherTimer? _mirrorPump;
-        private string? _lastMirrorContentKey; // 快照去重：內容沒變就不重新序列化推送
-        private bool _mobileMirrorEnabled; // 個人化偏好：是否啟用手機鏡像（存 _preferences.json，啟動自動開）
-        // §17 階段二遠端二次確認：目前開著的「要不要產生」對話框 + 內容；手機回答時設其 DialogResult 即可關閉。
-        private Window? _pendingGenConfirmWindow;
-        private string? _pendingGenConfirmWhat;
-        private DateTime? _pendingGenConfirmDeadlineUtc; // 自動同意期限（手機顯示近似倒數用）
-        // §17-3：最後執行的節點（SetLiveDecisionResolving 時更新）；手機新指令接它的下游。
-        private NodeControl? _lastRunNode;
-
-        // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
-        private int _dailyBudgetTwd;
-
-        // 產檔確認框自動同意秒數（0 = 不自動，等使用者手動選擇）。存個人化偏好——
-        // 「可稽查」產品該讓使用者自己決定要不要自動同意，不寫死。
-        private int _autoConfirmSeconds = 10;
-
-        // ===== §18 Google Drive 整合 =====
-        private bool _googleAutoUploadDrive; // 個人化：產出檔案自動上傳 Drive（預設關）
-
-        // 個人化：哪些「檔案類型」要上傳（各類型可個別開關）。
-        private static readonly string[] AllDriveTypes = { "pdf", "word", "ppt", "excel", "image", "video", "text" };
-        private HashSet<string> _driveUploadTypes = new(AllDriveTypes);
-        private bool _driveConvertGoogle; // DOCX/XLSX 上傳時轉成 Google 文件/試算表格式
-
-        private static string DriveCategoryOf(string path) =>
-            System.IO.Path.GetExtension(path).ToLowerInvariant() switch
-            {
-                ".pdf" => "pdf",
-                ".docx" => "word",
-                ".pptx" => "ppt",
-                ".xlsx" => "excel",
-                ".png" or ".jpg" or ".jpeg" or ".webp" => "image",
-                ".mp4" => "video",
-                _ => "text", // .md / .txt 及其他
-            };
-
-        private GoogleDriveService? _googleDrive;
-
-        private GoogleDriveService GoogleDrive =>
-            _googleDrive ??= new GoogleDriveService(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
-
-        // 依開關與憑證狀態掛/卸產檔後鉤子。上傳走背景執行緒 fire-and-forget，成敗都留診斷日誌。
-        private void WireDrivePostWriteHook()
-        {
-            // 必須「已連結」才掛鉤子——避免背景上傳觸發互動式授權（從背景執行緒彈瀏覽器）。
-            if (_googleAutoUploadDrive && GoogleDrive.IsConfigured && GoogleDrive.IsAuthorized)
-            {
-                GeneratedFileWriter.PostWriteHook = path =>
-                {
-                    // 個人化：各檔案類型可個別開關（讀即時欄位值，改設定立即生效、免重掛鉤子）。
-                    if (!_driveUploadTypes.Contains(DriveCategoryOf(path)))
-                        return;
-
-                    // 個人化：DOCX/XLSX 可轉成 Google 文件/試算表格式（Drive 端轉檔）。
-                    string? convertTo = !_driveConvertGoogle
-                        ? null
-                        : System.IO.Path.GetExtension(path).ToLowerInvariant() switch
-                        {
-                            ".docx" => GoogleDriveService.GoogleDocMime,
-                            ".xlsx" => GoogleDriveService.GoogleSheetMime,
-                            _ => null,
-                        };
-
-                    _ = Task.Run(async () =>
-                    {
-                        try
-                        {
-                            var (id, link) = await GoogleDrive.UploadFileAsync(path, CancellationToken.None, convertTo);
-                            AppLog.Info("GoogleDrive",
-                                $"已自動上傳：{System.IO.Path.GetFileName(path)}{(convertTo != null ? "（已轉 Google 格式）" : "")} → {link}");
-                        }
-                        catch (Exception ex)
-                        {
-                            AppLog.Warn("GoogleDrive", $"自動上傳失敗：{System.IO.Path.GetFileName(path)}", ex);
-                        }
-                    });
-                };
-            }
-            else
-            {
-                GeneratedFileWriter.PostWriteHook = null;
-            }
-        }
-
-        private async void GoogleAuth_Click(object sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (!GoogleDrive.IsConfigured)
-                {
-                    MenuConfirmDialog.ShowMessage(this, "Google 整合",
-                        "尚未設定憑證。請先到 Google Cloud Console 建立「桌面應用程式」OAuth 用戶端，\n" +
-                        "然後設定環境變數 GOOGLE_OAUTH_CLIENT_ID 與 GOOGLE_OAUTH_CLIENT_SECRET，重啟本程式。", this);
-                    return;
-                }
-                await GoogleDrive.AuthorizeAsync(CancellationToken.None);
-                string linkedEmail = "";
-                try { linkedEmail = await GoogleDrive.GetUserEmailAsync(CancellationToken.None); } catch { }
-                RefreshGoogleStatus();
-                WireDrivePostWriteHook();
-                MenuConfirmDialog.ShowMessage(this, "Google 整合",
-                    string.IsNullOrWhiteSpace(linkedEmail) ? "✓ 已連結 Google 帳戶。" : $"✓ 已連結 {linkedEmail}。", this);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("GoogleDrive", "授權失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "Google 整合", "連結失敗：" + ex.Message, this);
-            }
-        }
-
-        private void GoogleUnlink_Click(object sender, RoutedEventArgs e)
-        {
-            GoogleDrive.Unlink();
-            RefreshGoogleStatus();
-            WireDrivePostWriteHook();
-        }
-
-        private void GoogleAutoUploadSwitch_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_syncingCostControls)
-                return;
-            _googleAutoUploadDrive = GoogleAutoUploadSwitch?.IsChecked == true;
-            SavePreferences();
-            WireDrivePostWriteHook();
-        }
-
-        // 各檔案類型的上傳開關（一個 handler 讀全部勾選框）。
-        private void DriveTypeCheck_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_syncingCostControls)
-                return;
-
-            var set = new HashSet<string>();
-            foreach (var cb in new[] { DriveTypePdf, DriveTypeWord, DriveTypePpt, DriveTypeExcel, DriveTypeImage, DriveTypeVideo, DriveTypeText })
-            {
-                if (cb?.IsChecked == true && cb.Tag is string tag)
-                    set.Add(tag);
-            }
-            _driveUploadTypes = set;
-            SavePreferences(); // 鉤子讀即時欄位值，免重掛
-        }
-
-        private void DriveConvertSwitch_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_syncingCostControls)
-                return;
-            _driveConvertGoogle = DriveConvertSwitch?.IsChecked == true;
-            SavePreferences();
-        }
-
-        private bool _fetchingGoogleEmail;
-
-        /// <summary>NodeControl 附件鈕用：Drive 是否已可用（有憑證且已連結）。</summary>
-        public bool IsGoogleDriveLinked() => GoogleDrive.IsConfigured && GoogleDrive.IsAuthorized;
-
-        /// <summary>
-        /// §18：從 Drive 選檔 → 下載到暫存 → 走既有附件流程加進節點。回傳是否有加入任何附件。
-        /// </summary>
-        public async Task<bool> AttachFromDriveAsync(NodeControl node)
-        {
-            try
-            {
-                var files = await GoogleDrive.ListFilesAsync(CancellationToken.None);
-                var picker = new DriveFilePickerDialog(this, files);
-                if (picker.ShowDialog() != true || picker.Selected.Count == 0)
-                    return false;
-
-                string tempDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201-drive");
-                Directory.CreateDirectory(tempDir);
-
-                var localPaths = new List<string>();
-                foreach (var (id, name) in picker.Selected)
-                {
-                    string safe = string.Concat(name.Split(System.IO.Path.GetInvalidFileNameChars()));
-                    string local = System.IO.Path.Combine(tempDir, safe);
-                    await GoogleDrive.DownloadFileAsync(id, local, CancellationToken.None);
-                    localPaths.Add(local);
-                }
-
-                AddAttachmentsForNode(node, localPaths); // 既有流程會複製進專案附件資料夾
-                AppLog.Info("GoogleDrive", $"從 Drive 附加 {localPaths.Count} 個檔案");
-                return true;
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("GoogleDrive", "從 Drive 附加檔案失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "Google Drive", "從 Drive 取檔失敗：" + ex.Message, this);
-                return false;
-            }
-        }
-
-        private void RefreshGoogleStatus()
-        {
-            if (GoogleStatusText == null) return;
-
-            if (!GoogleDrive.IsConfigured)
-            {
-                GoogleStatusText.Text = "狀態：未設定憑證（App 內 API 分頁或環境變數 GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）";
-                return;
-            }
-            if (!GoogleDrive.IsAuthorized)
-            {
-                GoogleStatusText.Text = "狀態：已設定憑證，尚未連結（按「連結 Google」完成授權）";
-                return;
-            }
-
-            // 已連結：顯示帳戶信箱。沒快取先顯示通用文字，背景抓一次再更新。
-            string? email = GoogleDrive.CachedEmail;
-            GoogleStatusText.Text = string.IsNullOrWhiteSpace(email)
-                ? "狀態：✓ 已連結 Google 帳戶"
-                : $"狀態：✓ 已連結 {email}";
-
-            if (string.IsNullOrWhiteSpace(email) && !_fetchingGoogleEmail)
-            {
-                _fetchingGoogleEmail = true;
-                _ = FetchGoogleEmailAsync();
-            }
-        }
-
-        private async Task FetchGoogleEmailAsync()
-        {
-            try
-            {
-                string email = await GoogleDrive.GetUserEmailAsync(CancellationToken.None);
-                if (!string.IsNullOrWhiteSpace(email) && GoogleStatusText != null)
-                    GoogleStatusText.Text = $"狀態：✓ 已連結 {email}"; // await 後回到 UI 執行緒（無 ConfigureAwait(false)）
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("GoogleDrive", "取帳戶信箱失敗（顯示通用文字）", ex);
-            }
-            finally
-            {
-                _fetchingGoogleEmail = false;
-            }
-        }
-
-        /// <summary>執行前檢查每日預算；超標回 false 並給使用者看的訊息。</summary>
-        public bool CheckDailyBudgetAllows(out string message)
-        {
-            if (SpendLedger.IsOverDailyBudget(_dailyBudgetTwd))
-            {
-                message =
-                    $"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.TodayDisplay()}）。\n" +
-                    "今天不再執行新任務。可到 設定 → 個人化 → 花費 調高或清除上限。";
-                return false;
-            }
-            message = "";
-            return true;
-        }
-
-        private static readonly JsonSerializerOptions MirrorJsonOptions = new()
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        };
-
-        private async void MobileMirrorSwitch_Changed(object sender, RoutedEventArgs e)
-        {
-            if (_syncingCostControls)
-                return;
-            bool on = MobileMirrorSwitch?.IsChecked == true;
-            _mobileMirrorEnabled = on;      // 尊重個人化：使用者的明確選擇立即落地
-            SavePreferences();
-            if (on)
-                await StartMobileMirrorAsync();
-            else
-                await StopMobileMirrorAsync();
-        }
-
-        // 啟動時若個人化已開啟手機鏡像，自動把 server 拉起來（開關同步是 gated 的、不會觸發，故明確呼叫）。
-        private async Task AutoStartMobileMirrorIfEnabledAsync()
-        {
-            if (!_mobileMirrorEnabled) return;
-            await StartMobileMirrorAsync();
-        }
-
-        private async Task StartMobileMirrorAsync()
-        {
-            try
-            {
-                _mirrorServer ??= new MobileMirrorServer();
-                _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
-                _mirrorServer.NodeTextProvider = nodeId =>               // §17：手機看完整輸出（丟回 UI 執行緒讀）
-                    Dispatcher.InvokeAsync(() =>
-                        MainCanvas.Children.OfType<NodeControl>()
-                            .FirstOrDefault(n => n.Id.ToString() == nodeId)
-                            ?.GetBottomText()).Task;
-                _lastMirrorContentKey = null; // 重啟 server 後第一份快照一定要推
-                if (!_mirrorServer.IsRunning)
-                    await _mirrorServer.StartAsync(MobileMirrorServer.DefaultPort);
-
-                BuildAndPublishMirrorSnapshot(); // 先推一次，畫面不空白
-
-                _mirrorPump ??= new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(1500) };
-                _mirrorPump.Tick -= MirrorPump_Tick;
-                _mirrorPump.Tick += MirrorPump_Tick;
-                _mirrorPump.Start();
-
-                string url = _mirrorServer.GetLanUrl();
-                if (MobileMirrorUrlText != null) MobileMirrorUrlText.Text = url;
-                if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Visible;
-                UpdateMirrorQrImage(url);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Error("MobileMirror", "手機鏡像伺服器啟動失敗", ex);
-                _mirrorPump?.Stop();
-                if (MobileMirrorSwitch != null) MobileMirrorSwitch.IsChecked = false;
-                if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
-                MessageBox.Show(
-                    "無法啟動手機鏡像伺服器（可能是 " + MobileMirrorServer.DefaultPort + " 埠被占用，或防火牆阻擋）。\n\n" + ex.Message,
-                    "手機鏡像", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-
-        private async Task StopMobileMirrorAsync()
-        {
-            _mirrorPump?.Stop();
-            if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
-            if (MobileMirrorQr != null) MobileMirrorQr.Source = null;
-            if (_mirrorServer != null) await _mirrorServer.StopAsync();
-        }
-
-        // 用 QRCoder 產生 URL 的 QR 碼（PngByteQRCode 免 System.Drawing），手機掃描即連，免手打 IP。
-        private void UpdateMirrorQrImage(string url)
-        {
-            if (MobileMirrorQr == null) return;
-            try
-            {
-                using var gen = new QRCoder.QRCodeGenerator();
-                using var data = gen.CreateQrCode(url, QRCoder.QRCodeGenerator.ECCLevel.M);
-                var png = new QRCoder.PngByteQRCode(data).GetGraphic(6);
-                var bmp = new BitmapImage();
-                using (var ms = new MemoryStream(png))
-                {
-                    bmp.BeginInit();
-                    bmp.CacheOption = BitmapCacheOption.OnLoad;
-                    bmp.StreamSource = ms;
-                    bmp.EndInit();
-                }
-                bmp.Freeze();
-                MobileMirrorQr.Source = bmp;
-            }
-            catch
-            {
-                MobileMirrorQr.Source = null; // QR 失敗不影響鏡像本身，使用者仍可手打 URL
-            }
-        }
-
-        private void MirrorPump_Tick(object? sender, EventArgs e) => BuildAndPublishMirrorSnapshot();
-
-        /// <summary>從畫布節點建 UI 無關快照並推給 server。失敗絕不可影響主程式。</summary>
-        private void BuildAndPublishMirrorSnapshot()
-        {
-            if (_mirrorServer == null || !_mirrorServer.IsRunning)
-                return;
-            try
-            {
-                var now = DateTime.Now;
-                var snap = new WorkspaceSnapshot
-                {
-                    Version = now.Ticks,
-                    GeneratedAtUtc = DateTime.UtcNow.ToString("o"),
-                    GeneratedAtLocal = now.ToString("HH:mm:ss"),
-                };
-
-                foreach (var node in MainCanvas.Children.OfType<NodeControl>())
-                {
-                    bool hasReal = node.TryGetRealTokenUsage(out int inTok, out int outTok);
-                    var (mediaUsd, _) = node.GetMediaCostUsd();
-                    var files = node.GetOutputFilePaths()
-                        .Select(p => Path.GetFileName(p))
-                        .Where(n => !string.IsNullOrWhiteSpace(n))
-                        .ToList();
-
-                    // 參與模型：顯示本次執行「所有」參與的模型（主 + 各產出物），與決策窗同一來源；
-                    // 尚未執行過（無 log）才退回目前選的單一模型。
-                    var modelLabels = NodeDecisionViewBuilder.GetParticipantModelLabels(GetLatestExecutionLog(node));
-                    string modelText = modelLabels.Count > 0
-                        ? string.Join(" + ", modelLabels)
-                        : node.GetCommittedModelId();
-
-                    snap.Nodes.Add(new NodeSnapshot
-                    {
-                        Id = node.Id.ToString(),
-                        Title = node.GetInputTitle(),
-                        Status = node.GetRunStatusKey(),
-                        StatusLabel = node.GetRunStatusLabel(),
-                        Model = modelText,
-                        InputTokens = inTok,
-                        OutputTokens = outTok,
-                        HasRealTokens = hasReal,
-                        MediaCostUsd = mediaUsd,
-                        LoadingHint = node.GetLoadingHintText(),
-                        OutputPreview = node.GetOutputPreview(),
-                        Files = files,
-                        CanStop = node.IsGenerating,
-                        CanRerun = !node.IsGenerating && !string.IsNullOrWhiteSpace(node.GetInputTitle()),
-                    });
-                }
-
-                snap.NodeCount = snap.Nodes.Count;
-                snap.AnyRunning = snap.Nodes.Any(n => n.Status == "running");
-                snap.Models = AiModelRegistry.Available
-                    .Select(m => new MirrorModelOption { Id = m.Id, Name = m.DisplayName })
-                    .ToList();
-                if (_pendingGenConfirmWhat != null)
-                    snap.Pending = new PendingConfirmationSnapshot
-                    {
-                        What = _pendingGenConfirmWhat,
-                        RemainingSeconds = _pendingGenConfirmDeadlineUtc.HasValue
-                            ? Math.Max(0, (int)(_pendingGenConfirmDeadlineUtc.Value - DateTime.UtcNow).TotalSeconds)
-                            : -1,
-                    };
-
-                // 去重：內容（節點+待確認）沒變就不推送——畫布閒置時省序列化與手機流量。
-                string contentKey = JsonSerializer.Serialize(new { snap.Nodes, snap.Pending }, MirrorJsonOptions);
-                if (contentKey == _lastMirrorContentKey)
-                    return;
-                _lastMirrorContentKey = contentKey;
-
-                _mirrorServer.Publish(JsonSerializer.Serialize(snap, MirrorJsonOptions));
-            }
-            catch (Exception ex) { AppLog.Warn("MobileMirror", "快照推送失敗（不影響主程式）", ex); }
-        }
-
-        // ===== §19 技能注入：設定面板「技能」區的新增/開關/刪除；存個人化、餵 SkillsRegistry =====
-
-        // 就地編輯：點清單裡的技能名稱 → 帶回輸入框，按鈕變「儲存修改」。
-        private SkillDefinition? _editingSkill;
-
-        private void AddSkill_Click(object sender, RoutedEventArgs e)
-        {
-            string name = (SkillNameInput?.Text ?? "").Trim();
-            string content = (SkillContentInput?.Text ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(content))
-                return; // 內容是技能的本體，沒內容不收
-
-            var list = new List<SkillDefinition>(SkillsRegistry.GetAll());
-            if (_editingSkill != null && list.Contains(_editingSkill))
-            {
-                _editingSkill.Name = name;      // 就地更新，保留啟用狀態與排序
-                _editingSkill.Content = content;
-            }
-            else
-            {
-                list.Add(new SkillDefinition { Name = name, Content = content, Enabled = true });
-            }
-            SkillsRegistry.SetAll(list);
-            SavePreferences();
-            ExitSkillEditMode();
-            RefreshSkillsList();
-        }
-
-        private void EnterSkillEditMode(SkillDefinition skill)
-        {
-            _editingSkill = skill;
-            if (SkillNameInput != null) SkillNameInput.Text = skill.Name;
-            if (SkillContentInput != null) SkillContentInput.Text = skill.Content;
-            if (AddSkillButton != null) AddSkillButton.Content = "✓ 儲存修改";
-            if (SkillImportHint != null)
-            {
-                SkillImportHint.Text = $"編輯中：「{(string.IsNullOrWhiteSpace(skill.Name) ? "(未命名)" : skill.Name)}」——改完按「儲存修改」。";
-                SkillImportHint.Foreground = new SolidColorBrush(Color.FromRgb(0x3B, 0x54, 0xFF));
-            }
-        }
-
-        private void ExitSkillEditMode()
-        {
-            _editingSkill = null;
-            if (SkillNameInput != null) SkillNameInput.Text = "";
-            if (SkillContentInput != null) SkillContentInput.Text = "";
-            if (AddSkillButton != null) AddSkillButton.Content = "＋ 新增技能";
-            if (SkillImportHint != null) SkillImportHint.Text = "";
-        }
-
-        // §19：從 GitHub 匯入技能檔（SKILL.md / 任意 .md / 純文字）。blob 連結自動轉 raw。
-        private static readonly HttpClient _skillImportHttp = new() { Timeout = TimeSpan.FromSeconds(20) };
-
-        private async void ImportSkillFromGitHub_Click(object sender, RoutedEventArgs e)
-        {
-            string url = (SkillImportUrlInput?.Text ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(url))
-                return;
-
-            void Hint(string msg, bool error = false)
-            {
-                if (SkillImportHint == null) return;
-                SkillImportHint.Text = msg;
-                SkillImportHint.Foreground = new SolidColorBrush(
-                    error ? Color.FromRgb(0xC0, 0x3A, 0x4B) : Color.FromRgb(0x2E, 0x7D, 0x4F));
-            }
-
-            try
-            {
-                // github.com/{owner}/{repo}/blob/{branch}/{path} → raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}
-                string fetchUrl = url;
-                var m = Regex.Match(url, @"^https://github\.com/([^/]+)/([^/]+)/blob/(.+)$");
-                if (m.Success)
-                    fetchUrl = $"https://raw.githubusercontent.com/{m.Groups[1].Value}/{m.Groups[2].Value}/{m.Groups[3].Value}";
-
-                Hint("下載中…");
-                string text = await _skillImportHttp.GetStringAsync(fetchUrl);
-                if (string.IsNullOrWhiteSpace(text))
-                {
-                    Hint("檔案是空的。", error: true);
-                    return;
-                }
-                if (text.Length > 20_000)
-                    text = text[..20_000]; // 防超大檔把 prompt 撐爆
-
-                // 解析 SKILL.md 式 frontmatter（--- name: … ---）；沒有就用檔名當名稱、全文當內容。
-                string name = "";
-                string content = text.Trim();
-                var fm = Regex.Match(text, @"^\s*---\s*\r?\n(.*?)\r?\n---\s*\r?\n?", RegexOptions.Singleline);
-                if (fm.Success)
-                {
-                    var nameMatch = Regex.Match(fm.Groups[1].Value, @"(?m)^name\s*:\s*(.+)$");
-                    if (nameMatch.Success)
-                        name = nameMatch.Groups[1].Value.Trim().Trim('"', '\'');
-                    content = text[(fm.Index + fm.Length)..].Trim();
-                    if (content.Length == 0)
-                        content = text.Trim(); // frontmatter-only 的怪檔：退回全文
-                }
-                if (string.IsNullOrWhiteSpace(name))
-                {
-                    try { name = System.IO.Path.GetFileNameWithoutExtension(new Uri(fetchUrl).AbsolutePath); }
-                    catch { name = "匯入的技能"; }
-                }
-
-                var list = new List<SkillDefinition>(SkillsRegistry.GetAll())
-                {
-                    new SkillDefinition { Name = name, Content = content, Enabled = true }
-                };
-                SkillsRegistry.SetAll(list);
-                SavePreferences();
-                RefreshSkillsList();
-                if (SkillImportUrlInput != null) SkillImportUrlInput.Text = "";
-                Hint($"✓ 已匯入「{name}」（{content.Length} 字）");
-                AppLog.Info("Skills", $"GitHub 匯入技能：{name} ← {fetchUrl}");
-            }
-            catch (Exception ex)
-            {
-                Hint("匯入失敗：" + ex.Message, error: true);
-                AppLog.Warn("Skills", "GitHub 匯入失敗：" + url, ex);
-            }
-        }
-
-        // 以程式生成列（與記憶清單同慣例），避免 DataTemplate 綁定複雜度。
-        private void RefreshSkillsList()
-        {
-            if (SkillsListPanel == null)
-                return;
-
-            SkillsListPanel.Children.Clear();
-            var skills = SkillsRegistry.GetAll();
-
-            foreach (var skill in skills)
-            {
-                var row = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(0xF4, 0xF5, 0xFB)),
-                    CornerRadius = new CornerRadius(10),
-                    Padding = new Thickness(12, 8, 12, 8),
-                    Margin = new Thickness(0, 0, 0, 6),
-                };
-                var grid = new Grid();
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-                var s = skill; // 閉包固定
-
-                var toggle = new CheckBox
-                {
-                    IsChecked = s.Enabled,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 8, 0),
-                    ToolTip = "啟用/停用此技能（停用＝保留但不注入）",
-                };
-                toggle.Checked += (_, __) => { s.Enabled = true; SavePreferences(); };
-                toggle.Unchecked += (_, __) => { s.Enabled = false; SavePreferences(); };
-                Grid.SetColumn(toggle, 0);
-
-                var nameText = new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(s.Name) ? "(未命名技能)" : s.Name,
-                    FontSize = 12.5,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    ToolTip = s.Content + "\n（點一下編輯）",
-                    Cursor = Cursors.Hand,
-                };
-                nameText.MouseLeftButtonUp += (_, __) => EnterSkillEditMode(s); // 就地編輯
-                Grid.SetColumn(nameText, 1);
-
-                var del = new Button
-                {
-                    Content = "✕",
-                    FontSize = 12,
-                    Width = 24,
-                    Height = 24,
-                    Cursor = Cursors.Hand,
-                    Background = Brushes.Transparent,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
-                    BorderThickness = new Thickness(0),
-                    ToolTip = "刪除此技能",
-                };
-                del.Click += (_, __) =>
-                {
-                    var remaining = new List<SkillDefinition>(SkillsRegistry.GetAll());
-                    remaining.Remove(s);
-                    SkillsRegistry.SetAll(remaining);
-                    SavePreferences();
-                    if (ReferenceEquals(_editingSkill, s)) ExitSkillEditMode(); // 刪掉正在編輯的 → 退出編輯
-                    RefreshSkillsList();
-                };
-                Grid.SetColumn(del, 2);
-
-                grid.Children.Add(toggle);
-                grid.Children.Add(nameText);
-                grid.Children.Add(del);
-                row.Child = grid;
-                SkillsListPanel.Children.Add(row);
-            }
-        }
-
-        // 手機端指令（§17 階段二）：Kestrel 執行緒呼叫進來，一律用 Dispatcher 丟回 WPF UI 執行緒執行，
-        // 因為底下要碰 NodeControl（碰 UI 物件必須在 UI 執行緒——技術地雷）。
-        private Task<MirrorCommandResult> HandleMirrorCommandAsync(MirrorCommand cmd)
-            => Dispatcher.InvokeAsync(() => ExecuteMirrorCommand(cmd)).Task.Unwrap();
-
-        private Task<MirrorCommandResult> ExecuteMirrorCommand(MirrorCommand cmd)
-        {
-            string action = (cmd.Action ?? "").Trim().ToLowerInvariant();
-
-            // §17 階段三：手機直接下指令 → 在畫布建新節點並執行（不綁定既有節點）。
-            if (action == "newnode")
-            {
-                string text = (cmd.Text ?? "").Trim();
-                if (string.IsNullOrWhiteSpace(text))
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "指令是空的" });
-
-                // 放置 + 連線（§17-3）：手機可指定連接節點——
-                // ""＝自動（最後執行節點）；節點 Id＝連指定節點。找不到退回自動。
-                // 使用者要求：手機不提供「獨立節點」選項——一律接上游（只有空畫布時不得已才獨立）。
-                string parentChoice = (cmd.ParentNodeId ?? "").Trim();
-                NodeControl? anchor = !string.IsNullOrEmpty(parentChoice)
-                    ? MainCanvas.Children.OfType<NodeControl>()
-                        .FirstOrDefault(n => n.Id.ToString() == parentChoice)
-                    : null;
-                anchor ??= (_lastRunNode != null && MainCanvas.Children.Contains(_lastRunNode))
-                    ? _lastRunNode
-                    : MainCanvas.Children.OfType<NodeControl>().LastOrDefault(); // 沒跑過任何節點就接最後一個節點
-
-                double x, y;
-                if (anchor != null)
-                {
-                    x = Canvas.GetLeft(anchor) + anchor.Width + 220;   // AddNode 以中心點定位
-                    y = Canvas.GetTop(anchor) + anchor.Height / 2;
-                }
-                else
-                {
-                    int count = MainCanvas.Children.OfType<NodeControl>().Count();
-                    x = 260 + (count % 4) * 90;
-                    y = 180 + (count % 6) * 70;
-                }
-
-                var created = AddNode(x, y, beginEdit: false); // 遠端建點不開編輯器（正在跑時開編輯器會干擾）
-                created.SetTopText(text);
-
-                // §17-3：手機指定模型（空＝預設；未知 id 忽略）。Auto 模式下仍由自動選模覆寫——與桌面行為一致。
-                string requestedModel = (cmd.ModelId ?? "").Trim();
-                if (!string.IsNullOrEmpty(requestedModel) && AiModelRegistry.IsAvailable(requestedModel))
-                    created.SetCommittedModelId(requestedModel);
-
-                if (anchor != null)
-                    CreateCurve(anchor, "ThumbTR", created, "ThumbTL", flowMode: false); // 灰色實線（使用者要求）；上游注入不依賴 FlowMode
-                _ = created.RunCurrentTopTextAsync();          // fire-and-forget，立即回應手機（會自動注入上游輸出）
-                BuildAndPublishMirrorSnapshot();
-                AppLog.Info("MobileMirror", $"手機下指令建節點：{(text.Length > 40 ? text[..40] + "…" : text)}" +
-                                            (anchor != null ? "（已接為下游）" : ""));
-                return Task.FromResult(new MirrorCommandResult
-                {
-                    Ok = true,
-                    Message = anchor != null ? "已建立節點（接在最後執行節點下游）並開始執行" : "已建立節點並開始執行",
-                });
-            }
-
-            // 二次確認的回答不綁定節點：直接設對話框的 DialogResult（此方法已在 UI 執行緒），即會關閉 modal。
-            if (action == "confirm" || action == "reject")
-            {
-                var win = _pendingGenConfirmWindow;
-                if (win == null)
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "目前沒有待確認的項目" });
-                try { win.DialogResult = (action == "confirm"); }
-                catch { return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "回覆失敗（可能已由電腦回答）" }); }
-                return Task.FromResult(new MirrorCommandResult
-                {
-                    Ok = true,
-                    Message = action == "confirm" ? "已確認執行" : "已取消，只給文字",
-                });
-            }
-
-            var node = MainCanvas.Children.OfType<NodeControl>()
-                .FirstOrDefault(n => n.Id.ToString() == cmd.NodeId);
-            if (node == null)
-                return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "找不到節點" });
-
-            switch (action)
-            {
-                case "stop":
-                    bool stopped = node.StopActiveRun();
-                    return Task.FromResult(new MirrorCommandResult
-                    {
-                        Ok = stopped,
-                        Message = stopped ? "已送出停止" : "節點不在執行中",
-                    });
-
-                case "rerun":
-                    if (node.IsGenerating)
-                        return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "節點執行中，無法重跑" });
-                    _ = node.RerunFromMirrorAsync();  // 不等它跑完，立即回應手機
-                    BuildAndPublishMirrorSnapshot();  // 立刻把「執行中」推給手機
-                    return Task.FromResult(new MirrorCommandResult { Ok = true, Message = "已開始重跑" });
-
-                default:
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "未知指令" });
-            }
-        }
-
-        // 每日花費上限：空白/0 = 不限制；上限 999999。
-        private void DailyBudgetInput_Changed(object sender, TextChangedEventArgs e)
-        {
-            if (_syncingCostControls || DailyBudgetInput == null)
-                return;
-
-            string raw = (DailyBudgetInput.Text ?? "").Trim();
-            _dailyBudgetTwd = int.TryParse(raw, out int twd) && twd > 0 ? twd : 0;
-            SavePreferences();
-        }
-
-        // 產檔確認框自動同意秒數：空白/0 = 不自動；上限 300 秒。
-        private void AutoConfirmSecondsInput_Changed(object sender, TextChangedEventArgs e)
-        {
-            if (_syncingCostControls || AutoConfirmSecondsInput == null)
-                return;
-
-            string raw = (AutoConfirmSecondsInput.Text ?? "").Trim();
-            _autoConfirmSeconds = int.TryParse(raw, out int secs) && secs > 0 ? Math.Min(secs, 300) : 0;
-            SavePreferences();
         }
 
         // 逾時輸入：空白 = 自動；否則限制在 30～1800 秒（30 分鐘）的合理範圍。
@@ -8628,6 +7444,9 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
             using var cts = new CancellationTokenSource();
             _workflowChainCts = cts;
+            // 下游先全部標記「等待中」（琥珀框 + 手機顯示），輪到誰執行時 Running 會蓋過；
+            // startNode 自己不標（runStartNode 時它馬上就跑、否則它是剛跑完的上游）。
+            MarkFlowSubtreeWaiting(startNode, includeRoot: false);
             try
             {
                 var visited = new HashSet<Guid>();
@@ -8638,7 +7457,40 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 _runningChainNode = null;
                 if (ReferenceEquals(_workflowChainCts, cts))
                     _workflowChainCts = null;
+                // 仍停在等待中的（上游失敗、被取消、或空節點被略過）→ 復位為閒置。
+                ClearFlowSubtreeWaiting(startNode);
             }
+        }
+
+        // 沿流動邊（藍色虛線）走整棵子樹，把節點標記為「等待中」。includeRoot=false 時不標 root 本身。
+        private void MarkFlowSubtreeWaiting(NodeControl root, bool includeRoot)
+        {
+            var visited = new HashSet<Guid>();
+            void Walk(NodeControl n, bool mark)
+            {
+                if (n == null || !visited.Add(n.Id))
+                    return;
+                if (mark)
+                    n.MarkWaiting();
+                foreach (var child in GetFlowDownstreamNodes(n))
+                    Walk(child, true);
+            }
+            Walk(root, includeRoot);
+        }
+
+        // 復位整棵流動子樹裡「仍停在等待中」的節點（已執行/失敗的不動）。
+        private void ClearFlowSubtreeWaiting(NodeControl root)
+        {
+            var visited = new HashSet<Guid>();
+            void Walk(NodeControl n)
+            {
+                if (n == null || !visited.Add(n.Id))
+                    return;
+                n.ClearWaitingStatus();
+                foreach (var child in GetFlowDownstreamNodes(n))
+                    Walk(child);
+            }
+            Walk(root);
         }
 
         private async Task RunFlowSubtreeAsync(

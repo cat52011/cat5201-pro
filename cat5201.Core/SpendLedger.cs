@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 花錢安全（商品級核心）：全域花費帳本。這個產品會花使用者真金白銀，

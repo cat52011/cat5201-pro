@@ -1,8 +1,8 @@
 using System.Linq;
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>模型註冊表是路由/fallback/UI 的單一真相；查詢行為要正確且容錯。</summary>
     public class AiModelRegistryTests

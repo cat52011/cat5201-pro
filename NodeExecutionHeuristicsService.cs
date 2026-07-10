@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     public sealed class NodeExecutionHeuristicsService
     {

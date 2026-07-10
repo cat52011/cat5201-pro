@@ -8,7 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 最小可用的 Claude Messages API 呼叫封裝

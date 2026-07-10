@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Multi-Model v1：模型成本層級。用於 UI 顯示與「依能力＋成本」的 fallback 排序。

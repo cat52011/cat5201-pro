@@ -1,8 +1,8 @@
 using System.Linq;
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// 編排規劃腦（OrchestrationPlanner.Build）的整合式測試：

@@ -2,9 +2,9 @@ using System;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
-using test;
+using Cat5201;
 
-namespace cat5201
+namespace Cat5201
 {
     /// <summary>
     /// 商品級全域防護（§13 產品 UX 收尾）：任何未被捕捉的例外都不再讓程式無聲蒸發——

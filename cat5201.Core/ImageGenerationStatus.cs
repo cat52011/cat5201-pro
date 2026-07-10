@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Image Gen v1 狀態：圖片任務的生命週期。

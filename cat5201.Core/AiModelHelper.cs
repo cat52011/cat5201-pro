@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace test
+namespace Cat5201
 {
     public static class AiModelHelper
     {

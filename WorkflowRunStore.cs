@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 每個節點的工作流執行歷史 + 最近一次成功的 workspace 快取（§3）。

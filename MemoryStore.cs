@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 
-namespace test
+namespace Cat5201
 {
     public sealed class MemoryStore
     {

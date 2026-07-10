@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     public static class AiCapabilityGuard
     {

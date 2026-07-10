@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 影片導演的「原廠預設風格」。這是注入給 Claude 導演 + Veo 的視覺風格基底。

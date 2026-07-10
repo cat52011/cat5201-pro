@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Video Gen v1（多工具導演流程）：Claude 當「導演」產出的結構化影片計畫。

@@ -2,18 +2,18 @@
 using System.Collections.Generic;
 using System.Linq;
 
-namespace test
+namespace Cat5201
 {
     public sealed class AgentSelectionResolver
     {
         public AgentSelectionResolution Resolve(
             string topText,
             NodeTaskMode taskMode,
-            IReadOnlyList<MainWindow.AttachmentInfo> attachments,
+            IReadOnlyList<AttachmentInfo> attachments,
             string? fallbackAgentId = null)
         {
             topText ??= "";
-            attachments ??= Array.Empty<MainWindow.AttachmentInfo>();
+            attachments ??= Array.Empty<AttachmentInfo>();
 
             bool hasImageAttachments = attachments.Any(a =>
                 string.Equals(a.Kind, "image", StringComparison.OrdinalIgnoreCase));

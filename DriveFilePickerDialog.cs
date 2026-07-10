@@ -7,19 +7,20 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Effects;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// §18：從 Google Drive 選檔當附件的選擇器。
     /// 呼叫端先用 ListFilesAsync 拿清單再開此窗（此窗不打 API，保持簡單可測）。
-    /// Google 原生格式（Docs/Sheets/Slides）不能直接下載位元組，列出但停用並註明。
+    /// P3-3：Google 原生格式（Docs/Sheets/Slides）以 export 轉純文字/CSV 當輸入，可勾選;
+    /// 其他原生格式（繪圖/表單）仍停用。
     /// </summary>
     public sealed class DriveFilePickerDialog : Window
     {
         private readonly List<CheckBox> _boxes = new();
 
-        /// <summary>使用者勾選的 (Id, Name)。按「附加」才有值。</summary>
-        public List<(string Id, string Name)> Selected { get; } = new();
+        /// <summary>使用者勾選的 (Id, Name, Mime)。按「附加」才有值;Mime 供呼叫端決定下載或匯出。</summary>
+        public List<(string Id, string Name, string Mime)> Selected { get; } = new();
 
         public DriveFilePickerDialog(Window owner, IReadOnlyList<(string Id, string Name, string Mime)> files)
         {
@@ -56,7 +57,7 @@ namespace test
             });
             root.Children.Add(new TextBlock
             {
-                Text = "最近的檔案（此程式可見範圍）。Google 原生文件（Docs/Sheets）無法直接當附件，已停用。",
+                Text = "最近的檔案（此程式可見範圍）。Google 文件／試算表／簡報會自動轉成文字或 CSV 當輸入。",
                 FontSize = 11.5,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                 TextWrapping = TextWrapping.Wrap,
@@ -80,16 +81,23 @@ namespace test
             foreach (var (id, name, mime) in files)
             {
                 bool googleNative = mime.StartsWith("application/vnd.google-apps", StringComparison.OrdinalIgnoreCase);
+                var exportPlan = GoogleDriveService.GetExportPlan(mime);
+                bool usable = !googleNative || exportPlan != null;
+
+                string suffix = "";
+                if (googleNative)
+                    suffix = exportPlan != null ? $"（{exportPlan.Value.Label}）" : "（不支援的格式）";
+
                 var cb = new CheckBox
                 {
-                    Content = (googleNative ? "📄 " : "📎 ") + name + (googleNative ? "（Google 原生格式）" : ""),
-                    Tag = (id, name),
+                    Content = (googleNative ? "📄 " : "📎 ") + name + suffix,
+                    Tag = (id, name, mime),
                     FontSize = 12.5,
                     Margin = new Thickness(2, 3, 0, 3),
-                    IsEnabled = !googleNative,
-                    Foreground = new SolidColorBrush(googleNative
-                        ? Color.FromRgb(0xB0, 0xB0, 0xB4)
-                        : Color.FromRgb(0x33, 0x33, 0x33)),
+                    IsEnabled = usable,
+                    Foreground = new SolidColorBrush(usable
+                        ? Color.FromRgb(0x33, 0x33, 0x33)
+                        : Color.FromRgb(0xB0, 0xB0, 0xB4)),
                 };
                 _boxes.Add(cb);
                 list.Children.Add(cb);
@@ -116,8 +124,8 @@ namespace test
             ok.Click += (_, __) =>
             {
                 foreach (var cb in _boxes.Where(b => b.IsChecked == true))
-                    if (cb.Tag is ValueTuple<string, string> t)
-                        Selected.Add((t.Item1, t.Item2));
+                    if (cb.Tag is ValueTuple<string, string, string> t)
+                        Selected.Add((t.Item1, t.Item2, t.Item3));
                 DialogResult = Selected.Count > 0;
                 Close();
             };

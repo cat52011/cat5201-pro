@@ -1,6 +1,6 @@
 using System;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Video Gen v1：「prompt → 影片請求」的 workspace artifact（ItemType = "video_request"）。

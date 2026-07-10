@@ -2,7 +2,7 @@ using System;
 using System.IO;
 using System.Text;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 商品級資料安全：原子寫檔。先寫暫存檔再原子替換，寫到一半斷電/崩潰也不會毀掉原檔；

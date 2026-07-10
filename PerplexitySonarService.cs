@@ -7,7 +7,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Perplexity Sonar API 封裝（主聊天層）

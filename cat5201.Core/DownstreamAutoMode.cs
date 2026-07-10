@@ -1,4 +1,4 @@
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// §4 自動下游節點：多階段任務被偵測後的觸發策略（個人化設定可切換）。

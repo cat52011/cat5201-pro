@@ -6,7 +6,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Video Gen v1：OpenAI 影片 API（Sora）封裝 —— 非同步、長時間、需輪詢。

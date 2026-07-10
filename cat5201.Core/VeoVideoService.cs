@@ -1,0 +1,411 @@
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Cat5201
+{
+    /// <summary>
+    /// Video Gen v1：Google Veo 3 影片生成（非同步、長時間操作 long-running operation）。主要影片產生器。
+    ///
+    /// 休眠預設：需 GEMINI_API_KEY（或 GOOGLE_API_KEY）且環境變數 CAT5201_VEO_ENABLED=1 才會呼叫。
+    /// 未啟用時影片任務只走 Claude 計畫（劇本/分鏡/旁白/鏡頭），不呼叫 API、不影響主答案。
+    ///
+    /// 端點（已對 ai.google.dev/gemini-api/docs/video 校正，2026-06）：
+    ///   建立：POST .../models/{model}:predictLongRunning
+    ///         body {instances:[{prompt}], parameters:{aspectRatio,resolution,durationSeconds,numberOfVideos}}
+    ///         header x-goog-api-key → 回 {name: operationName}
+    ///   輪詢：GET  .../{operationName}（header x-goog-api-key）→ {done, response:{...}, error:{...}}
+    ///   取得影片：response.generateVideoResponse.generatedSamples[0].video.uri（用 x-goog-api-key header 下載）。
+    /// 完成判定：done==true。
+    /// </summary>
+    public sealed class VeoVideoService
+    {
+        private static readonly HttpClient _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+
+        private const string ApiBase = "https://generativelanguage.googleapis.com/v1beta";
+
+        private readonly string _apiKey;
+        private readonly string _model;
+
+        private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(8);
+        // 影片無逾時上限：輪詢不設次數上限，只由 CancellationToken（使用者取消 / 工作流停止）或 operation 完成/錯誤來結束。
+
+        public VeoVideoService(string? modelOverride = null)
+        {
+            _apiKey = ApiKeyStore.ResolveAny("GEMINI_API_KEY", "GOOGLE_API_KEY");
+
+            // 優先序：環境變數 CAT5201_VEO_MODEL（除錯 / 改 ID 用，免重編）
+            //        > 個人化選擇的檔位（standard / fast / lite）
+            //        > 預設 Lite（前期測試省錢）。
+            string modelEnv = Environment.GetEnvironmentVariable("CAT5201_VEO_MODEL") ?? "";
+            _model = !string.IsNullOrWhiteSpace(modelEnv) ? modelEnv
+                   : !string.IsNullOrWhiteSpace(modelOverride) ? modelOverride
+                   : VeoModels.LiteModel;
+        }
+
+        // 安全閘門已移除：只要有 GEMINI_API_KEY / GOOGLE_API_KEY 就會實際呼叫 Veo（會計費）。
+        public bool IsConfigured => !string.IsNullOrWhiteSpace(_apiKey);
+
+        public string Model => _model;
+
+        public string NotConfiguredReason =>
+            string.IsNullOrWhiteSpace(_apiKey)
+                ? "找不到 GEMINI_API_KEY / GOOGLE_API_KEY。"
+                : "Veo 3 未啟用。";
+
+        public sealed class VeoResult
+        {
+            public bool Success { get; init; }
+            public byte[] Mp4Bytes { get; init; } = Array.Empty<byte>();
+            public string OperationName { get; init; } = "";
+            // 產生影片的 uri 參照（用於「影片延伸」——延伸要的是前段影片的 uri，不是 base64）。
+            public string VideoUri { get; init; } = "";
+            public VideoGenerationStatus Status { get; init; } = VideoGenerationStatus.Failed;
+            public string ErrorMessage { get; init; } = "";
+        }
+
+        public async Task<VeoResult> GenerateAsync(
+            string prompt,
+            int seconds,
+            string aspectRatio,
+            Action<int, VideoGenerationStatus>? onProgress,
+            CancellationToken ct = default,
+            byte[]? startImage = null,
+            string imageMime = "image/png")
+        {
+            if (string.IsNullOrWhiteSpace(prompt))
+                return Fail("影片描述為空。");
+
+            onProgress?.Invoke(0, VideoGenerationStatus.Queued);
+
+            string operationName;
+            try
+            {
+                operationName = await CreateOperationAsync(prompt, seconds, aspectRatio, startImage, imageMime, ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                return Fail($"建立 Veo 影片任務失敗：{ex.Message}");
+            }
+
+            return await PollAndExtractAsync(operationName, onProgress, ct);
+        }
+
+        /// <summary>
+        /// Veo 3.1 影片延伸：把「前一段 Veo 影片的 uri 參照」+ 新 prompt 送回，產出延續 +7 秒的完整影片（保持人物/場景連續）。
+        /// 端點同 predictLongRunning；source video 用 video.uri 參照（base64 inlineData / gcsUri 會被拒）。
+        /// uri 即前一次生成回應的 generatedSamples[0].video.uri；來源影片需為 Veo 產生且兩天內（API 限制）。
+        /// </summary>
+        public async Task<VeoResult> ExtendAsync(
+            string sourceVideoUri,
+            string prompt,
+            Action<int, VideoGenerationStatus>? onProgress,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(sourceVideoUri))
+                return Fail("延伸來源影片缺少 uri 參照（無法延伸）。");
+
+            onProgress?.Invoke(0, VideoGenerationStatus.Queued);
+
+            string operationName;
+            try
+            {
+                operationName = await CreateExtendOperationAsync(prompt, sourceVideoUri, ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                return Fail($"建立 Veo 影片延伸任務失敗：{ex.Message}");
+            }
+
+            if (string.IsNullOrWhiteSpace(operationName))
+                return Fail("Veo 延伸 API 未回傳 operation name。");
+
+            return await PollAndExtractAsync(operationName, onProgress, ct);
+        }
+
+        // 共用：輪詢 operation 直到 done，取出影片 bytes。
+        private async Task<VeoResult> PollAndExtractAsync(
+            string operationName,
+            Action<int, VideoGenerationStatus>? onProgress,
+            CancellationToken ct)
+        {
+            for (int i = 0; ; i++) // 無次數上限；由 ct 或 operation 完成/錯誤結束
+            {
+                try { await Task.Delay(PollInterval, ct); }
+                catch (OperationCanceledException) { throw; }
+
+                JsonDocument doc;
+                try
+                {
+                    doc = await PollAsync(operationName, ct);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    return Fail($"查詢 Veo 影片狀態失敗：{ex.Message}", operationName);
+                }
+
+                using (doc)
+                {
+                    var root = doc.RootElement;
+                    bool done = root.TryGetProperty("done", out var doneEl) &&
+                                doneEl.ValueKind == JsonValueKind.True;
+
+                    onProgress?.Invoke(done ? 100 : Math.Min(90, 10 + i * 5),
+                        done ? VideoGenerationStatus.Completed : VideoGenerationStatus.Generating);
+
+                    if (!done)
+                        continue;
+
+                    if (root.TryGetProperty("error", out var errEl))
+                    {
+                        string msg = errEl.TryGetProperty("message", out var m) ? (m.GetString() ?? "") : "Veo 生成失敗。";
+                        return Fail(msg, operationName);
+                    }
+
+                    try
+                    {
+                        // 先抓 video uri（延伸要用），再取 bytes（寫檔/預覽用）。
+                        string videoUri = root.TryGetProperty("response", out var respForUri)
+                            ? FindFirstString(respForUri, "uri", "videoUri", "url")
+                            : "";
+
+                        byte[] bytes = await ExtractVideoBytesAsync(root, ct);
+                        if (bytes.Length == 0)
+                        {
+                            // 帶出實際回應結構，方便診斷（延伸的回應結構可能與 base 不同）。
+                            string raw = root.TryGetProperty("response", out var respDiag)
+                                ? respDiag.GetRawText()
+                                : root.GetRawText();
+                            return Fail($"Veo 回應沒有可用的影片內容。回應結構：{Truncate(raw, 500)}", operationName);
+                        }
+
+                        return new VeoResult
+                        {
+                            Success = true,
+                            Mp4Bytes = bytes,
+                            OperationName = operationName,
+                            VideoUri = videoUri,
+                            Status = VideoGenerationStatus.Completed
+                        };
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        return Fail($"取得 Veo 影片內容失敗：{ex.Message}", operationName);
+                    }
+                }
+            }
+        }
+
+        private async Task<string> CreateOperationAsync(
+            string prompt, int seconds, string aspectRatio, byte[]? startImage, string imageMime, CancellationToken ct)
+        {
+            string url = $"{ApiBase}/models/{_model}:predictLongRunning";
+
+            string asp = string.IsNullOrWhiteSpace(aspectRatio) ? "9:16" : aspectRatio;
+            int dur = seconds > 0 ? seconds : 8;
+
+            // 圖生影（I2V）：帶起始幀時，instance 多一個 image 欄位（base64 + mimeType），
+            // Veo 會「讓這張已調好色的圖動起來」，產出的每一格都保有圖的色調 / 質感。
+            // 注意：veo 不接受 numberOfVideos（400 INVALID_ARGUMENT），故不送此欄位。
+            // 兩條路徑各自用具體匿名型別建構，確保 instances 陣列元素被正確序列化（避免 object[] 被序列化成空物件）。
+            string json;
+            if (startImage != null && startImage.Length > 0)
+            {
+                var payload = new
+                {
+                    instances = new[]
+                    {
+                        new
+                        {
+                            prompt,
+                            image = new
+                            {
+                                bytesBase64Encoded = Convert.ToBase64String(startImage),
+                                mimeType = string.IsNullOrWhiteSpace(imageMime) ? "image/png" : imageMime
+                            }
+                        }
+                    },
+                    parameters = new { aspectRatio = asp, resolution = "720p", durationSeconds = dur }
+                };
+                json = JsonSerializer.Serialize(payload);
+            }
+            else
+            {
+                var payload = new
+                {
+                    instances = new[] { new { prompt } },
+                    parameters = new { aspectRatio = asp, resolution = "720p", durationSeconds = dur }
+                };
+                json = JsonSerializer.Serialize(payload);
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+            req.Headers.Add("x-goog-api-key", _apiKey);
+
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            string body = await resp.Content.ReadAsStringAsync(ct);
+
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(DescribeVeoError((int)resp.StatusCode, body));
+
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "";
+        }
+
+        // 影片延伸：source video 用 video.uri 參照前一段 Veo 影片（inlineData / gcsUri 會被 400 拒）；延伸僅支援 720p。
+        private async Task<string> CreateExtendOperationAsync(string prompt, string sourceVideoUri, CancellationToken ct)
+        {
+            string url = $"{ApiBase}/models/{_model}:predictLongRunning";
+
+            var payload = new
+            {
+                instances = new[]
+                {
+                    new
+                    {
+                        prompt = string.IsNullOrWhiteSpace(prompt) ? "Continue the scene naturally." : prompt,
+                        video = new
+                        {
+                            uri = sourceVideoUri
+                        }
+                    }
+                },
+                parameters = new
+                {
+                    // numberOfVideos 不可送（veo-3.1 會回 400 INVALID_ARGUMENT，與 base generation 同雷）。
+                    resolution = "720p"
+                }
+            };
+
+            using var req = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+            req.Headers.Add("x-goog-api-key", _apiKey);
+
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            string body = await resp.Content.ReadAsStringAsync(ct);
+
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException(DescribeVeoError((int)resp.StatusCode, body));
+
+            using var doc = JsonDocument.Parse(body);
+            return doc.RootElement.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "";
+        }
+
+        // 把 Veo 的 HTTP 錯誤翻成「使用者看得懂、知道下一步」的訊息。
+        // 重點：429/403 不是程式 bug，而是帳號層級（Veo 是付費模型，免費額度不含影片生成）。
+        private static string DescribeVeoError(int status, string body)
+        {
+            switch (status)
+            {
+                case 429:
+                    return "Veo 3 是付費模型，目前的 Gemini 額度無法生成影片（429 配額用盡）。" +
+                           "免費方案不含 Veo 影片生成——需在 Google Cloud 專案啟用帳單後，Veo 才會真正出片。" +
+                           "（這代表請求格式已正確、只差付費權限；Claude 影片計畫已完整保留。）";
+                case 403:
+                    return "這支 Gemini 金鑰沒有 Veo 影片生成權限（403）——需啟用帳單 / 取得 Veo 存取權。";
+                case 400:
+                    return $"Veo 請求被拒（400 參數錯誤）：{Truncate(body, 300)}";
+                default:
+                    return $"Veo API {status}：{Truncate(body, 300)}";
+            }
+        }
+
+        private async Task<JsonDocument> PollAsync(string operationName, CancellationToken ct)
+        {
+            string url = $"{ApiBase}/{operationName}";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.Add("x-goog-api-key", _apiKey);
+
+            using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            string body = await resp.Content.ReadAsStringAsync(ct);
+
+            if (!resp.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Veo API {(int)resp.StatusCode}：{Truncate(body, 300)}");
+
+            return JsonDocument.Parse(body);
+        }
+
+        // Veo 回應可能是 base64 影片，或一個可下載 uri；兩者都嘗試。
+        private async Task<byte[]> ExtractVideoBytesAsync(JsonElement operationRoot, CancellationToken ct)
+        {
+            if (!operationRoot.TryGetProperty("response", out var response))
+                return Array.Empty<byte>();
+
+            string b64 = FindFirstString(response, "bytesBase64Encoded", "videoBytes", "b64_json");
+            if (!string.IsNullOrWhiteSpace(b64))
+                return Convert.FromBase64String(b64);
+
+            // 文件路徑：response.generateVideoResponse.generatedSamples[0].video.uri（用 x-goog-api-key header 下載）。
+            string uri = FindFirstString(response, "uri", "videoUri", "url");
+            if (!string.IsNullOrWhiteSpace(uri))
+            {
+                using var dlReq = new HttpRequestMessage(HttpMethod.Get, uri);
+                dlReq.Headers.Add("x-goog-api-key", _apiKey);
+
+                using var dlResp = await _http.SendAsync(dlReq, HttpCompletionOption.ResponseHeadersRead, ct);
+                if (dlResp.IsSuccessStatusCode)
+                    return await dlResp.Content.ReadAsByteArrayAsync(ct);
+            }
+
+            return Array.Empty<byte>();
+        }
+
+        // 在巢狀 JSON 中遞迴找第一個指定名稱的字串值。
+        private static string FindFirstString(JsonElement el, params string[] names)
+        {
+            switch (el.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    foreach (var prop in el.EnumerateObject())
+                    {
+                        foreach (var name in names)
+                        {
+                            if (string.Equals(prop.Name, name, StringComparison.OrdinalIgnoreCase) &&
+                                prop.Value.ValueKind == JsonValueKind.String)
+                            {
+                                return prop.Value.GetString() ?? "";
+                            }
+                        }
+
+                        string nested = FindFirstString(prop.Value, names);
+                        if (!string.IsNullOrWhiteSpace(nested))
+                            return nested;
+                    }
+                    break;
+
+                case JsonValueKind.Array:
+                    foreach (var item in el.EnumerateArray())
+                    {
+                        string nested = FindFirstString(item, names);
+                        if (!string.IsNullOrWhiteSpace(nested))
+                            return nested;
+                    }
+                    break;
+            }
+
+            return "";
+        }
+
+        private static VeoResult Fail(string error, string op = "")
+            => new VeoResult { Success = false, Status = VideoGenerationStatus.Failed, ErrorMessage = error, OperationName = op };
+
+        private static string Truncate(string s, int max)
+        {
+            s ??= "";
+            return s.Length <= max ? s : s.Substring(0, max) + "…";
+        }
+    }
+}

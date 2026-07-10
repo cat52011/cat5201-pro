@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// §19 Skills 注入：使用者自訂的可重複使用「技能」（指示/流程/格式模板）。

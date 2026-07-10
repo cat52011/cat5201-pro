@@ -1,6 +1,6 @@
 using System.Collections.Generic;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Memory v1 視覺化：一次執行召回了哪些記憶 / 偏好，給 decision-viz 顯示用。

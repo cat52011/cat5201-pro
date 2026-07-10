@@ -1,7 +1,7 @@
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>下游自動模式的儲存 round-trip——個人化存 _preferences.json 靠這對函式，走樣＝設定跑掉。</summary>
     public class DownstreamAutoModeHelperTests

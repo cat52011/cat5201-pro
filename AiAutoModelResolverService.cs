@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace test
+namespace Cat5201
 {
     public sealed class AiAutoModelResolution
     {
@@ -28,7 +28,7 @@ namespace test
 
         public async Task<AiAutoModelResolution> ResolveAsync(
             string topText,
-            IReadOnlyList<MainWindow.AttachmentInfo> attachments,
+            IReadOnlyList<AttachmentInfo> attachments,
             CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(topText))
@@ -119,7 +119,7 @@ namespace test
 
         private static string BuildUserPrompt(
             string text,
-            IReadOnlyList<MainWindow.AttachmentInfo> attachments)
+            IReadOnlyList<AttachmentInfo> attachments)
         {
             return
 $@"使用者輸入：

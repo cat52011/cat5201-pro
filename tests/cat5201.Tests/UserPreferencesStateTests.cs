@@ -1,8 +1,8 @@
 using System.Text.Json;
-using test;
+using Cat5201;
 using Xunit;
 
-namespace cat5201.Tests
+namespace Cat5201.Tests
 {
     /// <summary>
     /// 守住個人化最關鍵的 invariant：新增偏好欄位後，舊的 _preferences.json（缺新欄位）仍能安全載入用預設值，

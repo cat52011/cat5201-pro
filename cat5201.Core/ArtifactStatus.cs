@@ -1,6 +1,6 @@
 using System;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// Workspace / Artifact v2：標準化的 artifact 狀態。

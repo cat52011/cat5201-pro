@@ -12,7 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace test
+namespace Cat5201
 {
     /// <summary>
     /// 手機鏡像（§17 階段一）：在 WPF 進程內跑一個輕量唯讀 web server（Kestrel）。
@@ -208,11 +208,13 @@ namespace test
   .card.running { border-color:#3b54ff; box-shadow:0 0 0 1px #3b54ff55; }
   .card.success { border-color:#1f7a4d55; }
   .card.failed  { border-color:#7a1f2f88; }
+  .card.waiting { border-color:#e0922b66; }
   .row1 { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
   .title { font-size:14px; font-weight:600; line-height:1.35; word-break:break-word; }
   .badge { flex:none; font-size:11px; font-weight:600; padding:3px 9px; border-radius:8px; }
   .b-idle{background:#2a2b33;color:#9a9aa2} .b-running{background:#28306e;color:#aeb8ff}
   .b-success{background:#16432f;color:#5fe0a0} .b-failed{background:#491a24;color:#ff9aab}
+  .b-waiting{background:#40320f;color:#f0c070}
   .sub { font-size:11.5px; color:#8a8a90; margin-top:7px; display:flex; flex-wrap:wrap; gap:6px 12px; }
   .sub b { color:#c8c8d0; font-weight:600; }
   .hint { font-size:12px; color:#aeb8ff; margin-top:8px; }
@@ -293,7 +295,7 @@ namespace test
 
 <script>
   const TOKEN = new URLSearchParams(location.search).get('t') || '';
-  const STATUS_CLASS = { idle:'b-idle', running:'b-running', success:'b-success', failed:'b-failed' };
+  const STATUS_CLASS = { idle:'b-idle', running:'b-running', success:'b-success', failed:'b-failed', waiting:'b-waiting' };
   function esc(s){ return (s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 
   function render(snap){
