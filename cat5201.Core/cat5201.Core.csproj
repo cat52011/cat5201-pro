@@ -10,6 +10,10 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Cat5201</RootNamespace>
+    <!-- CA1416：Core 刻意為 net8.0（跨平台，為未來 web 後端），但金鑰/Drive token 用 Windows DPAPI 加密。
+         目前唯一宿主是 Windows 桌面 App，故抑制此平台警告；未來若真上 Linux 後端，需改用跨平台的 token 儲存
+         （屆時移除本抑制、讓 CA1416 重新把 DPAPI 呼叫點標出來）。 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
   </PropertyGroup>
 
 

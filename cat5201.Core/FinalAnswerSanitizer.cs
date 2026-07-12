@@ -19,12 +19,18 @@ namespace Cat5201
         private static readonly Regex EndMarkerRegex =
             new(@"\[\[END_OF_RESPONSE\]\]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+        // 內部脈絡標籤：模型有時會把 prompt 裡的脈絡區塊名（[Container:…]、[Capability Data]）當成引用寫進答案。
+        // 這些是系統內部名稱、對使用者是雜訊，最終答案一律清掉（稽查資訊留在決策窗，不進人看的答案）。Codex P1-10。
+        private static readonly Regex InternalContextLabelRegex =
+            new(@"\s*\[(?:Container\s*:[^\]]*|Capability\s*Data(?:\s*:[^\]]*)?)\]", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
         public static string Sanitize(string text, bool enforceSynthesisFormat)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return "";
 
             text = EndMarkerRegex.Replace(text, "");
+            text = InternalContextLabelRegex.Replace(text, "");
             text = CitationMarkerRegex.Replace(text, "");
             text = SourceTagCitationRegex.Replace(text, "");
 

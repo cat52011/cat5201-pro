@@ -176,6 +176,44 @@ namespace Cat5201
         private string GeneratedFilesDir => System.IO.Path.Combine(SavesDir, "_generated");
         public string GetGeneratedFilesDir() => GeneratedFilesDir;
 
+        // pro 記憶根目錄＝pro 自己的 SavesDir。歷史上 NodeService 誤把 MemoryStore 指向畢業版旁的
+        // D:\desk\college\final\file，造成 pro 與畢業版記憶混用（Codex P0-2）。已改回 pro 專屬，
+        // 並在首次存取時把舊記憶「複製」過來（畢業版原檔只讀不動，維持「絕不碰畢業版」原則）。
+        private const string LegacyMemoryBaseDir = @"D:\desk\college\final\file";
+        private bool _legacyMemoryMigrationDone;
+
+        public string GetMemoryBaseDir()
+        {
+            MigrateLegacyMemoryIfNeeded();
+            return SavesDir;
+        }
+
+        private void MigrateLegacyMemoryIfNeeded()
+        {
+            if (_legacyMemoryMigrationDone)
+                return;
+            _legacyMemoryMigrationDone = true;
+
+            try
+            {
+                var newFile = System.IO.Path.Combine(SavesDir, "_memory", "memory_store.json");
+                if (File.Exists(newFile))
+                    return; // pro 已有自己的記憶，不覆蓋
+
+                var legacyFile = System.IO.Path.Combine(LegacyMemoryBaseDir, "_memory", "memory_store.json");
+                if (!File.Exists(legacyFile))
+                    return; // 沒有舊記憶可搬
+
+                Directory.CreateDirectory(System.IO.Path.Combine(SavesDir, "_memory"));
+                File.Copy(legacyFile, newFile, overwrite: false); // 複製而非搬移：畢業版原檔保留
+                AppLog.Info("Memory", "已將舊記憶從畢業版資料夾複製到 pro 專屬記憶（畢業版原檔保留）。");
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Memory", "舊記憶遷移失敗（將以現有/空白記憶啟動）", ex);
+            }
+        }
+
         private string? _currentFilePath;
         private bool _hasStarted = false;
         private bool _suppressSave = false;
@@ -5267,7 +5305,8 @@ namespace Cat5201
                     if (string.IsNullOrWhiteSpace(logState.NodeId))
                         continue;
 
-                    AddExecutionLog(ToExecutionLogEntry(logState));
+                    // 載入歷史 log：只還原顯示，不重複計入 SpendLedger（重開專案不再累加舊成本）。
+                    AddExecutionLog(ToExecutionLogEntry(logState), recordCost: false);
                 }
 
                 var idMap = new Dictionary<string, NodeControl>();

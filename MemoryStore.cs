@@ -273,8 +273,10 @@ namespace Cat5201
 
                     _cache = list ?? new List<MemoryItem>();
                 }
-                catch
+                catch (Exception ex)
                 {
+                    // 記憶檔毀損：退回空記憶以免整個 App 起不來，但至少留下線索（避免「記憶莫名清空」查無原因）。
+                    AppLog.Warn("Memory", $"記憶檔載入失敗，改用空白記憶：{_memoryFilePath}", ex);
                     _cache = new List<MemoryItem>();
                 }
             }

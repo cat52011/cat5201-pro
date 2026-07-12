@@ -78,7 +78,8 @@ namespace Cat5201
             _modelSelection.UseOverrides(main.TaskRoutingOverrides);
             _contextStrategyResolver = new NodeContextStrategyResolver(router);
             _contextService = new NodeContextService(main);
-            _memoryStore = new MemoryStore(@"D:\desk\college\final\file");
+            // pro 專屬記憶（不再誤用畢業版旁的 final\file；首次存取會把舊記憶複製過來，Codex P0-2）。
+            _memoryStore = new MemoryStore(main.GetMemoryBaseDir());
             _memoryService = new NodeMemoryService(main, _memoryStore);
             _promptBuilder = new NodePromptBuilder(_contextService);
             _executionHeuristics = new NodeExecutionHeuristicsService(main);
@@ -129,8 +130,12 @@ namespace Cat5201
         private const int ContinuationMaxRounds = 5;
         private const int SegmentDiscoveryMaxTokens = 1200;
         private const int SegmentTranslationMaxTokens = 8000;
-        private NodeControl? _currentExecutionNode;
-        private string? _currentExecutionInstructions;
+        // 並行安全（Codex P0-5）：這兩個是「本次執行」的環境值，會被 BuildExecutionRequestAsync 讀來取
+        // 該節點的附件與指令。同層下游並行 / 報告+表格作者並行時，多條 async 流共用同一個 NodeService，
+        // 用普通欄位會在 await 交錯時互相覆蓋 → A 節點可能抓到 B 節點的附件。改用 AsyncLocal：值隨每條
+        // async 控制流各自流動、彼此隔離，並行不再串線（token 計費本來就用 currentNode 參數、不受影響）。
+        private readonly AsyncLocal<NodeControl?> _currentExecutionNode = new();
+        private readonly AsyncLocal<string?> _currentExecutionInstructions = new();
         private readonly MemoryStore _memoryStore;
         private readonly NodeMemoryService _memoryService;
         private readonly WorkflowRunStore _workflowRuns = new();
@@ -195,9 +200,9 @@ namespace Cat5201
     CancellationToken ct)
         {
             return BuildAiRequestAsync(
-                _currentExecutionNode!,
+                _currentExecutionNode.Value!,
                 model,
-                _currentExecutionInstructions!,
+                _currentExecutionInstructions.Value!,
                 prompt,
                 (NodeTaskMode)taskModeRaw,
                 useStreaming,
@@ -1003,10 +1008,10 @@ namespace Cat5201
     NodeTaskMode taskMode,
     CancellationToken ct)
         {
-            _currentExecutionNode = currentNode;
+            _currentExecutionNode.Value = currentNode;
 
             var route = _router.GetRouteInfo(model);
-            _currentExecutionInstructions = route.Provider == AiProviderKind.PerplexitySonar
+            _currentExecutionInstructions.Value = route.Provider == AiProviderKind.PerplexitySonar
                 ? _instructionBuilder.BuildPerplexityInstructions(model, route.IsDeepResearch, taskMode)
                 : _instructionBuilder.BuildGeneralNodeInstructions(model, taskMode);
 
@@ -1024,8 +1029,8 @@ namespace Cat5201
             }
             finally
             {
-                _currentExecutionNode = null;
-                _currentExecutionInstructions = null;
+                _currentExecutionNode.Value = null;
+                _currentExecutionInstructions.Value = null;
             }
         }
         private async Task<string> GenerateSinglePassOrContinuedStreamAsync_Core(
@@ -1036,10 +1041,10 @@ namespace Cat5201
     Action<string> onDelta,
     CancellationToken ct)
         {
-            _currentExecutionNode = currentNode;
+            _currentExecutionNode.Value = currentNode;
 
             var route = _router.GetRouteInfo(model);
-            _currentExecutionInstructions = route.Provider == AiProviderKind.PerplexitySonar
+            _currentExecutionInstructions.Value = route.Provider == AiProviderKind.PerplexitySonar
                 ? _instructionBuilder.BuildPerplexityInstructions(model, route.IsDeepResearch, taskMode)
                 : _instructionBuilder.BuildGeneralNodeInstructions(model, taskMode);
 
@@ -1058,8 +1063,8 @@ namespace Cat5201
             }
             finally
             {
-                _currentExecutionNode = null;
-                _currentExecutionInstructions = null;
+                _currentExecutionNode.Value = null;
+                _currentExecutionInstructions.Value = null;
             }
         }
 

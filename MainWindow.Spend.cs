@@ -25,12 +25,17 @@ namespace Cat5201
     public partial class MainWindow
     {
 
-        public void AddExecutionLog(AiExecutionLogEntry entry)
+        // 即時執行用：記 log + 計成本。
+        public void AddExecutionLog(AiExecutionLogEntry entry) => AddExecutionLog(entry, recordCost: true);
+
+        // recordCost=false：載入專案歷史 log 時只還原顯示，「不得」再次計入 SpendLedger。
+        // 否則同一組歷史成本會在每次重開專案時被重複累加，導致當日花費虛高、每日上限提前封鎖（Codex P0-3）。
+        public void AddExecutionLog(AiExecutionLogEntry entry, bool recordCost)
         {
             _executionLogService.Add(entry);
 
-            // 花錢安全：每次執行的 LLM 文字成本進全域帳本（與決策窗同一 tokens×價目表）。
-            if (entry != null && (entry.InputTokens > 0 || entry.OutputTokens > 0))
+            // 花錢安全：每次「新」執行的 LLM 文字成本進全域帳本（與決策窗同一 tokens×價目表）。
+            if (recordCost && entry != null && (entry.InputTokens > 0 || entry.OutputTokens > 0))
             {
                 var est = ModelCostEstimator.FromUsage(entry.ActualModelId, entry.InputTokens, entry.OutputTokens);
                 SpendLedger.Add(est.UsdCost, "llm");
