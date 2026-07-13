@@ -95,10 +95,9 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(relativePath))
                 return "";
 
-            string savesDir = @"D:\desk\college\final\file";
-            string attachmentsRootDir = Path.Combine(savesDir, "_attachments");
-
-            return Path.Combine(attachmentsRootDir, relativePath);
+            // 附件根目錄一律問 MainWindow（單一真相）；此類目前是死路（附件真路徑在
+            // NodeService.CollectAiAttachments），但不留寫死的畢業版路徑當地雷。
+            return Path.Combine(_main.GetAttachmentsRootDir(), relativePath);
         }
     }
 }

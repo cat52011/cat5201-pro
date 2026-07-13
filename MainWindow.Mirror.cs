@@ -169,9 +169,12 @@ namespace Cat5201
                 _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
                 _mirrorServer.NodeTextProvider = nodeId =>               // §17：手機看完整輸出（丟回 UI 執行緒讀）
                     Dispatcher.InvokeAsync(() =>
-                        MainCanvas.Children.OfType<NodeControl>()
-                            .FirstOrDefault(n => n.Id.ToString() == nodeId)
-                            ?.GetBottomText()).Task;
+                    {
+                        var node = MainCanvas.Children.OfType<NodeControl>()
+                            .FirstOrDefault(n => n.Id.ToString() == nodeId);
+                        // 顯示用途：清掉 Markdown 記號（資料層 GetBottomText 仍是原文）。
+                        return node == null ? null : MarkdownDisplayText.Clean(node.GetBottomText());
+                    }).Task;
                 _lastMirrorContentKey = null; // 重啟 server 後第一份快照一定要推
                 if (!_mirrorServer.IsRunning)
                     await _mirrorServer.StartAsync(MobileMirrorServer.DefaultPort);

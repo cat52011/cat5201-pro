@@ -159,10 +159,10 @@ namespace Cat5201
             return "";
         }
 
-        /// <summary>輸出文字預覽，截斷到 maxLen 字。</summary>
+        /// <summary>輸出文字預覽（手機鏡像等顯示用），截斷到 maxLen 字；顯示用途一律清掉 Markdown 記號。</summary>
         public string GetOutputPreview(int maxLen = 240)
         {
-            string text = (GetBottomText() ?? "").Trim();
+            string text = MarkdownDisplayText.Clean(GetBottomText()).Trim();
             if (text.Length <= maxLen) return text;
             return text.Substring(0, maxLen) + "…";
         }
@@ -1570,18 +1570,29 @@ namespace Cat5201
             ContentChanged?.Invoke(this, EventArgs.Empty);
             _parent?.NotifyNodeSubmitted(this);
 
+            // 藍虛線下游：送出「當下」就把整條執行路徑標成等待中（琥珀框＋手機顯示），
+            // 不等母節點跑完——RunFlowWorkflowAsync 開頭那次標記對手動送出來說太晚了。
+            bool hasFlowDownstream = _parent != null && _parent.NodeHasFlowDownstream(this);
+            if (hasFlowDownstream)
+                _parent!.MarkFlowSubtreeWaiting(this, includeRoot: false);
+
             await GenerateBottomReplyFromTopAsync(runTop);
 
             if (_parent != null && RunProducedUsableOutput())
             {
                 // 藍色虛線（流動模式）下游：上游一完成就自動沿線往下跑（下游各自仍會檢查自己輸入端是否有內容，
                 // 空的節點會被 RunCurrentTopTextAsync 略過）。這是明確畫的執行路徑，不受「自動展開」個人化開關影響。
-                if (_parent.NodeHasFlowDownstream(this))
+                if (hasFlowDownstream)
                     await _parent.RunFlowWorkflowAsync(this, runStartNode: false);
                 // 否則維持 §4 Mode 2（完全自動）：多階段任務且策略為 FullyAuto 時，AI 自動展開下游並依序執行。
                 else
                     await _parent.MaybeAutoExpandAfterSubmitAsync(this);
             }
+
+            // 兜底：母節點失敗、或工作流鏈忙碌被擋而沒真的往下跑時，把仍停在等待中的下游復位
+            //（只動 Waiting 狀態，成功路徑上已由 RunFlowWorkflowAsync 的 finally 清過，重複呼叫無害）。
+            if (hasFlowDownstream)
+                _parent!.ClearFlowSubtreeWaiting(this);
         }
 
         // 本次執行是否產出可作為下游輸入的有效內容（排除錯誤 / 逾時 / 無回應訊息）。
@@ -1625,6 +1636,7 @@ namespace Cat5201
                 if (_parent == null)
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
+                    _bottomRawText = null;
                     BottomDisplay.Text = "找不到主視窗，目前無法呼叫 AI。請重新開啟節點再試。";
                     ApplyRunStatus(NodeRunStatus.Failed, "主視窗未連接");
                     return;
@@ -1633,6 +1645,7 @@ namespace Cat5201
                 if (_parent.NodeService == null)
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
+                    _bottomRawText = null;
                     BottomDisplay.Text = "AI 服務尚未準備好，請稍候幾秒再試一次。";
                     ApplyRunStatus(NodeRunStatus.Failed, "服務初始化中");
                     return;
@@ -1642,6 +1655,7 @@ namespace Cat5201
                 if (!_parent.CheckDailyBudgetAllows(out string budgetMessage))
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
+                    _bottomRawText = null;
                     BottomDisplay.Text = budgetMessage;
                     ApplyRunStatus(NodeRunStatus.Failed, "已達每日花費上限");
                     return;
@@ -1660,6 +1674,7 @@ namespace Cat5201
                         if (_isShowingLoadingText)
                             StopBottomLoadingAnimation(clearIfLoading: true);
 
+                        _bottomRawText = null; // 串流中：顯示=資料（結束後才換成清過記號的版本）
                         BottomDisplay.AppendText(delta);
                         BottomDisplay.ScrollToEnd();
                     });
@@ -1680,15 +1695,19 @@ namespace Cat5201
                     }
                     else
                     {
+                        _bottomRawText = null;
                         BottomDisplay.Text = "AI 這次沒有回傳內容，可能是請求被中斷或模型無回應。請再試一次。";
                         ApplyRunStatus(NodeRunStatus.Failed, "沒有回傳內容");
                     }
                 }
                 else
                 {
-                    if (!string.Equals(BottomDisplay.Text, finalReply, StringComparison.Ordinal))
+                    // 資料留原文（下游/存檔/builder 用），顯示用清過 Markdown 記號的版本。
+                    _bottomRawText = finalReply.Trim();
+                    string display = MarkdownDisplayText.Clean(_bottomRawText);
+                    if (!string.Equals(BottomDisplay.Text, display, StringComparison.Ordinal))
                     {
-                        BottomDisplay.Text = finalReply.Trim();
+                        BottomDisplay.Text = display;
                     }
 
                     ApplyRunStatus(NodeRunStatus.Success);
@@ -1704,6 +1723,7 @@ namespace Cat5201
                 if (externalToken.IsCancellationRequested || _activeManualStop?.IsCancellationRequested == true)
                 {
                     // 使用者主動「停止」（工作流鏈，或手機遠端停止）：不是逾時，給對應訊息與狀態。
+                    _bottomRawText = null;
                     BottomDisplay.Text =
                         "已手動停止。這一步尚未完成。\n" +
                         "可右鍵「執行此節點與下游」從這裡重跑，或「略過此步、從下一步續跑」。";
@@ -1711,6 +1731,7 @@ namespace Cat5201
                 }
                 else
                 {
+                    _bottomRawText = null;
                     BottomDisplay.Text =
                         $"AI 回應逾時。這次任務超過 {FormatTimeout(executionTimeout)} 仍未完成，已自動取消。\n" +
                         "可以試著縮短問題、減少附件，或換一個較快的模型再試。";
@@ -1721,6 +1742,7 @@ namespace Cat5201
             {
                 StopBottomLoadingAnimation(clearIfLoading: true);
                 string friendly = BuildFriendlyError(ex);
+                _bottomRawText = null;
                 BottomDisplay.Text = friendly;
                 ApplyRunStatus(NodeRunStatus.Failed, friendly);
             }
@@ -2046,6 +2068,7 @@ namespace Cat5201
         private void StartBottomLoadingAnimation(bool imageTask)
         {
             _isShowingLoadingText = true;
+            _bottomRawText = null;
             BottomDisplay.Text = "";
 
             _loadingIsImageTask = imageTask;
@@ -2152,7 +2175,10 @@ namespace Cat5201
                 BottomLoadingOverlay.Visibility = Visibility.Collapsed;
 
             if (clearIfLoading && _isShowingLoadingText)
+            {
+                _bottomRawText = null;
                 BottomDisplay.Text = "";
+            }
 
             _isShowingLoadingText = false;
         }
@@ -2166,11 +2192,17 @@ namespace Cat5201
         }
 
 
-        public string GetBottomText() => BottomDisplay.Text ?? "";
+        // 顯示與資料分離（P1-10 後半）：BottomDisplay 是 TextBox 無法渲染粗體，畫面上把 **/# 記號清掉；
+        // 但存檔、下游 prompt、檔案 builder 都要原始 Markdown（PDF 粗體靠它）。
+        // _bottomRawText = 原文；null = 顯示內容就是原文（錯誤訊息、串流中、清空狀態）。
+        private string? _bottomRawText;
+
+        public string GetBottomText() => _bottomRawText ?? (BottomDisplay.Text ?? "");
 
         public void SetBottomText(string text)
         {
-            BottomDisplay.Text = text ?? "";
+            _bottomRawText = text ?? "";
+            BottomDisplay.Text = MarkdownDisplayText.Clean(_bottomRawText);
         }
 
         // 載入存檔時呼叫：節點已有輸出 → 維持閒置黑框外觀。
@@ -2186,6 +2218,7 @@ namespace Cat5201
         public void ClearBottomText()
         {
             ClearOutputFiles();
+            _bottomRawText = null;
             BottomDisplay.Text = "";
         }
 
@@ -2194,6 +2227,7 @@ namespace Cat5201
             if (string.IsNullOrEmpty(delta))
                 return;
 
+            _bottomRawText = null; // 串流 append：顯示=資料
             BottomDisplay.AppendText(delta);
             BottomDisplay.ScrollToEnd();
         }

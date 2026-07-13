@@ -1452,8 +1452,8 @@ namespace Cat5201
             }
 
             // .pptx 二進位檔：只有使用者在個人化選了「Gamma」生成器才走 Gamma（Claude 內容 + Gamma 設計）；
-            // 其餘（Claude / GPT）一律用內建 PptxBuilder。Gamma 未設定金鑰或失敗時也會回 null → fallback。
-            // 目前 Gamma 在 UI 停用且 SetPresentationEngine 會把 Gamma 落回 Claude，故此分支現階段不會觸發。
+            // 其餘（Claude / GPT）一律用內建 PptxBuilder。Gamma 未設定金鑰或失敗時回 null → 自動 fallback 內建 builder
+            //（個人化已開放 Gamma 選項；沒 GAMMA_API_KEY 的使用者選了也安全，只是拿到內建版）。
             string? gammaUrl = _main.GetPresentationEngine() == PresentationEngine.Gamma
                 ? await TryAddGammaPptxAsync(
                     node, runtimeAgent, outline, execution.Text ?? "", workspace, sourceSummary, ct)

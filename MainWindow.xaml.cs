@@ -171,7 +171,37 @@ namespace Cat5201
 
         private static readonly Random _random = new();
 
-        private string SavesDir => @"D:\desk\college\cat5201-pro\file";
+        // MVP 可攜化（Codex P0-1）：資料根目錄不再寫死 D:\。
+        // 開發機：legacy 路徑存在就沿用（行為零變、既有專案原地可用）；
+        // 其他機器：%LOCALAPPDATA%\cat5201-pro\file（每台 Windows 都有效，打包發佈可直接跑）。
+        // 所有使用者資料（專案/附件/產出/記憶/偏好/金鑰/帳本）都從這個根長出來，改這裡=全部跟著搬。
+        private static readonly string _savesDirResolved = ResolveSavesDir();
+        private string SavesDir => _savesDirResolved;
+
+        private static string ResolveSavesDir()
+        {
+            const string legacyDevDir = @"D:\desk\college\cat5201-pro\file";
+            try
+            {
+                if (Directory.Exists(legacyDevDir))
+                    return legacyDevDir;
+            }
+            catch { /* 磁碟機不存在等：直接走可攜路徑 */ }
+
+            try
+            {
+                string root = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "cat5201-pro", "file");
+                Directory.CreateDirectory(root);
+                return root;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Startup", "LOCALAPPDATA 資料目錄建立失敗，退回程式所在目錄", ex);
+                return System.IO.Path.Combine(AppContext.BaseDirectory, "file");
+            }
+        }
         private string AttachmentsRootDir => System.IO.Path.Combine(SavesDir, "_attachments");
         private string GeneratedFilesDir => System.IO.Path.Combine(SavesDir, "_generated");
         public string GetGeneratedFilesDir() => GeneratedFilesDir;
@@ -355,16 +385,36 @@ namespace Cat5201
         }
         // AttachmentInfo 已提出至 cat5201.Core\AttachmentInfo.cs（B3b）——同命名空間,既有 bare 引用照常解析。
 
-        private sealed class FileItem
+        // 檔案清單項。IsEditing/EditText 支援「就地改名」（右鍵→重新命名時，名稱原地變輸入框，
+        // 像 ChatGPT 側欄那樣），不再彈獨立對話框。
+        private sealed class FileItem : System.ComponentModel.INotifyPropertyChanged
         {
             public string FullPath { get; }
             public string DisplayName { get; }
+
+            private bool _isEditing;
+            public bool IsEditing
+            {
+                get => _isEditing;
+                set { if (_isEditing != value) { _isEditing = value; OnPropertyChanged(nameof(IsEditing)); } }
+            }
+
+            private string _editText = "";
+            public string EditText
+            {
+                get => _editText;
+                set { if (_editText != value) { _editText = value; OnPropertyChanged(nameof(EditText)); } }
+            }
 
             public FileItem(string fullPath)
             {
                 FullPath = fullPath;
                 DisplayName = System.IO.Path.GetFileNameWithoutExtension(fullPath);
             }
+
+            public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+            private void OnPropertyChanged(string name) =>
+                PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
         }
 
         private record NodeState(
@@ -2937,7 +2987,7 @@ namespace Cat5201
             };
 
             var miRename = new MenuItem { Header = "重新命名", Style = miStyle };
-            miRename.Click += (_, __) => RenameFile(item.FullPath);
+            miRename.Click += (_, __) => BeginInlineRename(item);
 
             var miDelete = new MenuItem { Header = "刪除", Style = miStyle };
             miDelete.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F")!);
@@ -3056,19 +3106,78 @@ namespace Cat5201
             catch (Exception ex) { AppLog.Warn("Project", "搬移 .bak 備份失敗", ex); }
         }
 
-        private void RenameFile(string oldPath)
+        // ===== 就地改名（右鍵→重新命名）：名稱原地變輸入框，Enter 確認 / Esc 取消 / 失焦確認 =====
+
+        private void BeginInlineRename(FileItem item)
         {
-            var oldName = DisplayNameFromPath(oldPath);
+            if (item == null)
+                return;
 
-            var newName = SimpleInputDialog.Show(
-                owner: this,
-                title: "重新命名",
-                prompt: "輸入新的檔名：",
-                defaultValue: oldName);
+            // 一次只編輯一個：先收掉其他項的編輯狀態。
+            if (FileList.ItemsSource is IEnumerable<FileItem> list)
+            {
+                foreach (var other in list)
+                    other.IsEditing = false;
+            }
 
-            if (string.IsNullOrWhiteSpace(newName)) return;
+            item.EditText = item.DisplayName;
+            item.IsEditing = true;
+        }
 
-            newName = NormalizeKeywordForFileName(newName);
+        private void FileRenameEditor_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+        {
+            // DataTrigger 切 Visible 時把焦點與全選帶進輸入框（Loaded 只發一次，不能用）。
+            if (sender is TextBox tb && e.NewValue is bool visible && visible)
+            {
+                tb.Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    tb.Focus();
+                    tb.SelectAll();
+                }), System.Windows.Threading.DispatcherPriority.Input);
+            }
+        }
+
+        private void FileRenameEditor_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (sender is not TextBox tb)
+                return;
+
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                CommitInlineRename(tb);
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                if (tb.DataContext is FileItem item)
+                    item.IsEditing = false; // 丟棄輸入，回顯示狀態
+            }
+        }
+
+        private void FileRenameEditor_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (sender is TextBox tb)
+                CommitInlineRename(tb); // 失焦＝確認（ChatGPT 行為）；內部有 IsEditing guard 防重入
+        }
+
+        private void CommitInlineRename(TextBox tb)
+        {
+            if (tb.DataContext is not FileItem item || !item.IsEditing)
+                return;
+
+            item.IsEditing = false; // 先收編輯狀態（Enter 後的 LostFocus 不會重複提交）
+
+            string newName = (item.EditText ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(newName) || string.Equals(newName, item.DisplayName, StringComparison.Ordinal))
+                return; // 空白或沒改 → 視為取消
+
+            PerformRename(item.FullPath, newName);
+        }
+
+        private void PerformRename(string oldPath, string requestedName)
+        {
+            var newName = NormalizeKeywordForFileName(requestedName);
             if (string.IsNullOrWhiteSpace(newName))
                 return;
 
@@ -3744,10 +3853,8 @@ namespace Cat5201
 
         public void SetPresentationEngine(PresentationEngine engine, bool save = true)
         {
-            // Gamma 尚未開放（無 GAMMA_API_KEY），任何路徑誤選都落回 Claude。
-            if (engine == PresentationEngine.Gamma)
-                engine = PresentationEngine.Claude;
-
+            // Gamma 已開放。沒設 GAMMA_API_KEY 時執行期自動跳過（NotConfigured → fallback 內建 PptxBuilder），
+            // 所以這裡不再攔——使用者的選擇如實保存。
             _presentationEngine = engine;
             SyncPresentationEngineRadios();
             if (save)
@@ -7502,7 +7609,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
         }
 
         // 沿流動邊（藍色虛線）走整棵子樹，把節點標記為「等待中」。includeRoot=false 時不標 root 本身。
-        private void MarkFlowSubtreeWaiting(NodeControl root, bool includeRoot)
+        // public：NodeControl 手動送出時也要「送出當下」就標整條下游（不等母節點跑完），使用者才看得到路徑已排隊。
+        public void MarkFlowSubtreeWaiting(NodeControl root, bool includeRoot)
         {
             var visited = new HashSet<Guid>();
             void Walk(NodeControl n, bool mark)
@@ -7518,7 +7626,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
         }
 
         // 復位整棵流動子樹裡「仍停在等待中」的節點（已執行/失敗的不動）。
-        private void ClearFlowSubtreeWaiting(NodeControl root)
+        // public：手動送出失敗 / 鏈忙碌被擋時，NodeControl 兜底復位（只動 Waiting，安全可重複呼叫）。
+        public void ClearFlowSubtreeWaiting(NodeControl root)
         {
             var visited = new HashSet<Guid>();
             void Walk(NodeControl n)

@@ -41,8 +41,11 @@ namespace Cat5201
             bool ReadUpstreamAttachments = false,
             bool MobileMirrorEnabled = false,
             List<SkillDefinition>? Skills = null,
-            int DailyBudgetTwd = 0,
-            int AutoConfirmSeconds = 10,
+            // MVP 安全預設（只影響「沒有偏好檔」的新使用者；既有 _preferences.json 存的值一律優先）：
+            //  DailyBudgetTwd 100＝新使用者預設每日 NT$100 上限（0＝不限制，太危險不當預設）；
+            //  AutoConfirmSeconds 0＝產檔/媒體一律等人按（硬批准），要倒數自動同意得自己開。
+            int DailyBudgetTwd = 100,
+            int AutoConfirmSeconds = 0,
             bool GoogleAutoUploadDrive = false,
             List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
             bool DriveConvertToGoogleFormat = false,
@@ -193,9 +196,8 @@ namespace Cat5201
                 _isAdvancedAutoResolverEnabled = _isAutoModelSelectionEnabled && prefs.AdvancedAutoResolverEnabled;
                 _downstreamAutoMode = DownstreamAutoModeHelper.Parse(prefs.DownstreamAutoMode);
 
+                // Gamma 已開放：沒設 GAMMA_API_KEY 時執行期自動 fallback 內建 builder（GammaPresentationService.NotConfigured）。
                 _presentationEngine = PresentationEngineHelper.Parse(prefs.PresentationEngine);
-                if (_presentationEngine == PresentationEngine.Gamma)
-                    _presentationEngine = PresentationEngine.Claude; // Gamma 尚未開放，一律落回 Claude。
 
                 _taskRoutingOverrides.LoadFromStorage(prefs.TaskRoutingOverrides);
                 AiAutoCostPolicy.BlockOpus = prefs.BlockOpus;
@@ -247,8 +249,6 @@ namespace Cat5201
                 _downstreamAutoMode = DownstreamAutoModeHelper.Parse(state.DownstreamAutoMode);
 
                 _presentationEngine = PresentationEngineHelper.Parse(state.PresentationEngine);
-                if (_presentationEngine == PresentationEngine.Gamma)
-                    _presentationEngine = PresentationEngine.Claude;
 
                 _taskRoutingOverrides.LoadFromStorage(state.TaskRoutingOverrides);
                 AiAutoCostPolicy.BlockOpus = state.BlockOpus;

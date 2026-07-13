@@ -114,11 +114,13 @@ namespace Cat5201
         }
 
         // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
-        private int _dailyBudgetTwd;
+        // MVP 安全預設＝NT$100/天（只在沒有偏好檔時生效；使用者存過的值一律優先）。
+        private int _dailyBudgetTwd = 100;
 
         // 產檔確認框自動同意秒數（0 = 不自動，等使用者手動選擇）。存個人化偏好——
         // 「可稽查」產品該讓使用者自己決定要不要自動同意，不寫死。
-        private int _autoConfirmSeconds = 10;
+        // MVP 安全預設＝0（硬批准：沒人點就不執行），與對外「產出前人類批准」的說法一致。
+        private int _autoConfirmSeconds;
 
         /// <summary>執行前檢查每日預算；超標回 false 並給使用者看的訊息。</summary>
         public bool CheckDailyBudgetAllows(out string message)

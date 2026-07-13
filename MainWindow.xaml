@@ -95,6 +95,51 @@
             </Setter>
         </Style>
 
+        <!-- 膠囊型可勾選 chip（雲端上傳的檔案類型等）：未選＝淺灰膠囊，選中＝綠底描邊＋勾號，呼應 AppleSwitchStyle 的綠。 -->
+        <Style x:Key="ChoiceChipStyle" TargetType="CheckBox">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,0,8,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Border x:Name="Chip"
+                                CornerRadius="14"
+                                Padding="12,5"
+                                Background="#F4F4F6"
+                                BorderThickness="1"
+                                BorderBrush="#E4E4E8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="Tick"
+                                           Text="✓"
+                                           FontSize="11"
+                                           FontWeight="Bold"
+                                           Foreground="#1F7A4D"
+                                           Visibility="Collapsed"
+                                           Margin="0,0,5,0"
+                                           VerticalAlignment="Center"/>
+                                <ContentPresenter x:Name="ChipContent"
+                                                  VerticalAlignment="Center"
+                                                  TextElement.FontSize="12"
+                                                  TextElement.Foreground="#666"/>
+                            </StackPanel>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Chip" Property="Background" Value="#E8F5EE"/>
+                                <Setter TargetName="Chip" Property="BorderBrush" Value="#2E9E5B"/>
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="ChipContent" Property="TextElement.Foreground" Value="#1F7A4D"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chip" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="AppleSwitchStyle" TargetType="CheckBox">
             <Setter Property="Focusable" Value="False"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -332,11 +377,45 @@
                              Margin="0,10,0,10"
                              Background="Transparent"
                              BorderThickness="0"
-                             DisplayMemberPath="DisplayName"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto"
                              MouseDoubleClick="FileList_MouseDoubleClick"
                              MouseRightButtonUp="FileList_MouseRightButtonUp">
+
+                        <!-- 就地改名：平常顯示 TextBlock；右鍵→重新命名時原地換成輸入框（Enter 確認 / Esc 取消 / 失焦確認） -->
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <TextBlock x:Name="NameText"
+                                               Text="{Binding DisplayName}"
+                                               TextTrimming="CharacterEllipsis"
+                                               VerticalAlignment="Center"/>
+                                    <!-- ChatGPT 風格：無邊框，只比背景深一點的半透明圓角底 -->
+                                    <Border x:Name="EditorWrap"
+                                            Visibility="Collapsed"
+                                            Background="#10000000"
+                                            CornerRadius="6"
+                                            Margin="-6,-3"
+                                            Padding="4,2">
+                                        <TextBox x:Name="NameEditor"
+                                                 Text="{Binding EditText, UpdateSourceTrigger=PropertyChanged}"
+                                                 FontSize="16"
+                                                 BorderThickness="0"
+                                                 Background="Transparent"
+                                                 VerticalContentAlignment="Center"
+                                                 IsVisibleChanged="FileRenameEditor_IsVisibleChanged"
+                                                 KeyDown="FileRenameEditor_KeyDown"
+                                                 LostFocus="FileRenameEditor_LostFocus"/>
+                                    </Border>
+                                </Grid>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding IsEditing}" Value="True">
+                                        <Setter TargetName="NameText" Property="Visibility" Value="Collapsed"/>
+                                        <Setter TargetName="EditorWrap" Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
 
                         <ListBox.Resources>
                             <Style TargetType="{x:Type ScrollViewer}">
@@ -1273,10 +1352,9 @@ Margin="0,20,20,0">
                                          Checked="PresentationEngine_Checked"/>
                             <RadioButton x:Name="PresentationEngineGamma"
                                          GroupName="PresentationEngine"
-                                         Content="Gamma（九月開放，暫停用）"
-                                         IsEnabled="False"
+                                         Content="Gamma（需 GAMMA_API_KEY，未設時自動改用內建）"
                                          FontSize="12.5"
-                                         Foreground="#BBB"
+                                         Foreground="#333"
                                          Margin="0,3"
                                          Checked="PresentationEngine_Checked"/>
                         </StackPanel>
@@ -1418,27 +1496,16 @@ Margin="0,20,20,0">
                         <!-- 上游附件繼承 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="上游附件"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   Foreground="#444"
-                                   Margin="0,14,0,2"/>
-                        <TextBlock Text="開啟後，下游節點執行時會一併讀取上游（母）節點掛的附件（圖片／PDF／HTML…），不只是上游的文字輸出。下游能看到原始檔案內容，但每次執行都會多送這些檔案，token 與費用較高。預設關閉。"
-                                   FontSize="11.5"
-                                   Foreground="#9A9A9E"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,8"/>
-
-                        <Grid Margin="0,3">
+                        <Grid Margin="0,14,0,3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="下游節點讀取上游附件"
-                                           FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="關閉時只讀上游的文字輸出（較省）"
-                                           FontSize="11" Foreground="#A8A8AC"/>
+                                <TextBlock Text="完整讀取上游附件"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
+                                <TextBlock Text="開啟時讀取完整上游檔案，關閉時只讀取文字輸出"
+                                           FontSize="11" Foreground="#A8A8AC" Margin="0,2,0,0"/>
                             </StackPanel>
                             <CheckBox x:Name="ReadUpstreamAttachmentsSwitch"
                                       Grid.Column="1"
@@ -1456,7 +1523,7 @@ Margin="0,20,20,0">
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="每個節點等待 AI 回應的最長秒數。留空＝自動（依任務類型，3～10 分鐘）。設定範圍 30～1800 秒；圖片／報告等較慢的任務請勿設太短。"
+                        <TextBlock Text="設定範圍 30～1800 秒（留空＝自動）"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1499,7 +1566,7 @@ Margin="0,20,20,0">
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="所有 AI 呼叫（文字 tokens）與媒體生成（圖片/影片）的費用都會累計到全域帳本。設每日上限後，達標當天不再執行新任務（不會中斷正在跑的）。"
+                        <TextBlock Text="達上限之後不再執行新開始的任務"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1573,7 +1640,7 @@ Margin="0,20,20,0">
                                        Margin="8,0,0,0"
                                        FontSize="12.5"
                                        Foreground="#666"/>
-                            <TextBlock Text="（0＝不自動，等你手動選擇）"
+                            <TextBlock Text="（0＝全手動）"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        FontSize="11.5"
@@ -1583,27 +1650,16 @@ Margin="0,20,20,0">
                         <!-- §18 雲端上傳：產出檔案自動上傳 Google Drive（各類型可個別開關） -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="雲端上傳（Google Drive）"
-                                   FontSize="13"
-                                   FontWeight="SemiBold"
-                                   Foreground="#444"
-                                   Margin="0,14,0,2"/>
-                        <TextBlock Text="產出的檔案自動存一份到你的 Google Drive。可勾選哪些類型要上傳；帳戶連結在「API」分頁的「Google 整合」區。"
-                                   FontSize="11.5"
-                                   Foreground="#9A9A9E"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,8"/>
-
-                        <Grid Margin="0,3">
+                        <Grid Margin="0,14,0,3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="產出檔案自動上傳 Drive"
-                                           FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="需已連結帳戶；上傳結果記錄在診斷日誌"
-                                           FontSize="11" Foreground="#A8A8AC"/>
+                                <TextBlock Text="產出檔案上傳 Google Drive"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
+                                <TextBlock Text="需已連結帳戶（「API」分頁的「Google 整合」區）"
+                                           FontSize="11" Foreground="#A8A8AC" Margin="0,2,0,0"/>
                             </StackPanel>
                             <CheckBox x:Name="GoogleAutoUploadSwitch"
                                       Grid.Column="1"
@@ -1613,19 +1669,24 @@ Margin="0,20,20,0">
                                       Unchecked="GoogleAutoUploadSwitch_Changed"/>
                         </Grid>
 
-                        <TextBlock Text="要上傳的檔案類型："
-                                   FontSize="12" Foreground="#555" Margin="0,10,0,4"/>
-                        <WrapPanel>
-                            <CheckBox x:Name="DriveTypePdf"   Content="PDF"   Tag="pdf"   Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypeWord"  Content="Word"  Tag="word"  Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypePpt"   Content="簡報"  Tag="ppt"   Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypeExcel" Content="Excel" Tag="excel" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypeImage" Content="圖片"  Tag="image" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypeVideo" Content="影片"  Tag="video" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                            <CheckBox x:Name="DriveTypeText"  Content="文字/MD" Tag="text" Margin="0,0,14,6" FontSize="12" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                        </WrapPanel>
+                        <!-- 檔案類型：膠囊 chip（點一下切換），包在淺灰卡片裡比裸 checkbox 清楚 -->
+                        <Border Background="#FAFAFC" CornerRadius="10" Padding="12,10,12,4" Margin="0,10,0,0">
+                            <StackPanel>
+                                <TextBlock Text="要上傳的檔案類型"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#555" Margin="0,0,0,8"/>
+                                <WrapPanel>
+                                    <CheckBox x:Name="DriveTypePdf"   Content="PDF"   Tag="pdf"   Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeWord"  Content="Word"  Tag="word"  Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypePpt"   Content="簡報"  Tag="ppt"   Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeExcel" Content="Excel" Tag="excel" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeImage" Content="圖片"  Tag="image" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeVideo" Content="影片"  Tag="video" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeText"  Content="文字/MD" Tag="text" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
 
-                        <Grid Margin="0,8,0,0">
+                        <Grid Margin="0,12,0,0">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
@@ -1652,7 +1713,7 @@ Margin="0,20,20,0">
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="開啟後，在本機開一個唯讀網頁伺服器。手機連同一個 Wi-Fi，用瀏覽器打開下方網址，即可即時看到畫布上各節點的執行狀態、token／成本與產出物。純唯讀，手機不能操控。首次開啟若 Windows 防火牆跳出，請允許。"
+                        <TextBlock Text="手機連接同一 Wi-Fi 時，可在手機上操作"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"

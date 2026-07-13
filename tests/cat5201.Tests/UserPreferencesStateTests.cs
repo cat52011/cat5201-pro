@@ -32,6 +32,9 @@ namespace Cat5201.Tests
             // 新欄位安全退回預設（不會炸、更不會擅自開對外埠）
             Assert.False(prefs.MobileMirrorEnabled);
             Assert.False(prefs.ReadUpstreamAttachments);
+            // MVP 安全預設（釘住，防止回歸）：新使用者預設每日 NT$100 上限、產檔硬批准（不倒數自動同意）。
+            Assert.Equal(100, prefs.DailyBudgetTwd);
+            Assert.Equal(0, prefs.AutoConfirmSeconds);
         }
 
         [Fact]
