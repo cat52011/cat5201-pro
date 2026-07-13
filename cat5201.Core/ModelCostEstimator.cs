@@ -36,34 +36,45 @@ namespace Cat5201
                 : $"估算 ≈ {FormatTokens(TotalTokens)} tokens · 約 {FormatTwd(UsdCost)}";
         }
 
-        // 每百萬 token 美元單價（input / output）。皆為估算值，僅供成本量級參考。
+        // 每百萬 token 美元單價（input / output）＋每次呼叫固定費（有些 provider 按次收）。
+        // 皆為估算值，僅供成本量級參考。
         private readonly struct Price
         {
-            public Price(double inputPerMillion, double outputPerMillion)
+            public Price(double inputPerMillion, double outputPerMillion, double perRequestUsd = 0)
             {
                 InputPerMillion = inputPerMillion;
                 OutputPerMillion = outputPerMillion;
+                PerRequestUsd = perRequestUsd;
             }
 
             public double InputPerMillion { get; }
             public double OutputPerMillion { get; }
+
+            // 每次 API 呼叫的固定費用（USD）。Perplexity 按次收 search/request fee，
+            // 只算 token 會系統性低估 —— 這裡以官方價目的中檔情境取近似值。
+            public double PerRequestUsd { get; }
         }
 
         private static readonly Price DefaultPrice = new(3.00, 15.00);
 
+        // 價目來源＝各家官方 pricing 頁，最後核對 2026-07-13。改價時三件事一起做：
+        // ①改數字 ②更新本註解日期 ③跑 ModelCostEstimatorTests（有釘關鍵價目防回歸）。
         private static readonly Dictionary<string, Price> PriceTable = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["gpt-5.5"] = new Price(2.50, 10.00),
-            ["claude-sonnet-4-6"] = new Price(3.00, 15.00),
-            ["claude-opus-4-8"] = new Price(15.00, 75.00),
-            ["pplx-sonar"] = new Price(1.00, 1.00),
-            ["pplx-sonar-deep-research"] = new Price(2.00, 8.00),
-            ["gemini-3.1-pro"] = new Price(1.25, 10.00),
-            ["gemini-3.5-flash"] = new Price(1.50, 9.00),
+            ["gpt-5.5"] = new Price(5.00, 30.00),                       // OpenAI 官方（standard）
+            ["claude-sonnet-4-6"] = new Price(3.00, 15.00),             // Anthropic 官方
+            ["claude-opus-4-8"] = new Price(5.00, 25.00),               // Anthropic 官方（舊表 15/75 高估 3 倍）
+            ["pplx-sonar"] = new Price(1.00, 1.00, 0.008),              // + $8/千次 request fee（medium context）
+            // Deep research 除 token 外還有 citation tokens($2/M)、search queries($5/千次)、reasoning tokens($3/M)，
+            // provider 未在 usage 回報 —— per-request 取保守常數近似（約 30 次 search + reasoning 的中檔情境）。
+            ["pplx-sonar-deep-research"] = new Price(2.00, 8.00, 0.30),
+            ["gemini-3.1-pro"] = new Price(2.00, 12.00),                // Google 官方（舊表 1.25/10 低估）
+            ["gemini-3.5-flash"] = new Price(1.50, 9.00),               // Google 官方
         };
 
-        // 約略匯率，僅用於估算顯示。
-        private const double UsdToTwd = 32.0;
+        // 約略匯率，僅用於估算顯示。公開＝全 App 單一真相（SpendLedger 也引用這裡，
+        // 兩處各養一個匯率曾造成 10 倍級顯示錯誤，不再重演）。
+        public const double UsdToTwd = 32.0;
 
         // 圖片生成成本（每張・美元）。OpenAI gpt-image 系列「以張計價」，依尺寸 / 品質不同，
         // 與文字模型的 token 計價邏輯不同（用字數估 token 會誤導），故獨立一張表。
@@ -135,6 +146,10 @@ namespace Cat5201
             double usd =
                 inputTokens / 1_000_000.0 * price.InputPerMillion +
                 outputTokens / 1_000_000.0 * price.OutputPerMillion;
+
+            // 按次計費（Perplexity search fee 等）：有實際用量＝真的呼叫過一次，加上固定費。
+            if (inputTokens > 0 || outputTokens > 0)
+                usd += price.PerRequestUsd;
 
             return new Estimate(inputTokens, outputTokens, usd, isActual);
         }

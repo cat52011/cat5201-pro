@@ -15,7 +15,8 @@ namespace Cat5201
     /// </summary>
     public static class SpendLedger
     {
-        private const double UsdToTwd = 32.0; // 與 ModelCostEstimator 同一近似匯率
+        // 匯率單一真相＝ModelCostEstimator.UsdToTwd（兩處各養一個匯率曾造成顯示不一致，不再重演）。
+        private const double UsdToTwd = ModelCostEstimator.UsdToTwd;
 
         private static readonly object _lock = new();
         private static string? _path;

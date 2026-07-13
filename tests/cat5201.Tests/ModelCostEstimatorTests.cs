@@ -43,5 +43,33 @@ namespace Cat5201.Tests
             Assert.True(ModelCostEstimator.ImageCostUsd(null, null) > 0);        // 退回預設
             Assert.True(ModelCostEstimator.ImageCostUsd("9999x9999", "weird") > 0);
         }
+
+        // ===== 價目表回歸釘（官方價核對 2026-07-13）=====
+        // 你的賣點是「成本可稽查」，價目寫錯＝直接打臉。改價時同步更新這裡。
+
+        [Theory]
+        [InlineData("claude-opus-4-8", 30.00)]  // $5 in + $25 out（曾錯寫 15/75 高估 3 倍）
+        [InlineData("gpt-5.5", 35.00)]          // $5 in + $30 out（曾錯寫 2.5/10 低估）
+        [InlineData("gemini-3.1-pro", 14.00)]   // $2 in + $12 out
+        public void FromUsage_OneMillionEach_MatchesOfficialPricing(string modelId, double expectedUsd)
+        {
+            var e = ModelCostEstimator.FromUsage(modelId, 1_000_000, 1_000_000);
+            Assert.Equal(expectedUsd, e.UsdCost, precision: 2);
+        }
+
+        [Fact]
+        public void FromUsage_Perplexity_IncludesPerRequestFee()
+        {
+            // token 費（0.1+0.1）之外要含 $0.008/次 的 search/request fee —— 只算 token 會系統性低估。
+            var e = ModelCostEstimator.FromUsage("pplx-sonar", 100_000, 100_000);
+            Assert.Equal(0.208, e.UsdCost, precision: 3);
+        }
+
+        [Fact]
+        public void FromUsage_ZeroUsage_NoPerRequestFee()
+        {
+            // 沒有任何用量＝沒真的呼叫，不得收固定費。
+            Assert.Equal(0, ModelCostEstimator.FromUsage("pplx-sonar", 0, 0).UsdCost);
+        }
     }
 }

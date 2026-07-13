@@ -152,11 +152,30 @@ namespace Cat5201
             if (raw == null)
                 return;
 
+            bool hasLegacyFormat = false;
             foreach (var kv in raw)
             {
+                if (!string.IsNullOrWhiteSpace(kv.Value) && !kv.Value.StartsWith("dpapi:", StringComparison.Ordinal))
+                    hasLegacyFormat = true;
+
                 string plain = TryUnprotect(kv.Value);
                 if (!string.IsNullOrWhiteSpace(plain))
                     _userKeys[kv.Key] = plain;
+            }
+
+            // 誠實化（Codex P0-6）：磁碟上只允許 dpapi: 格式。發現舊的 b64:/明文金鑰
+            // 立即重存 —— SaveLocked 會全部以 DPAPI 重寫，不安全格式當場從磁碟消失。
+            if (hasLegacyFormat)
+            {
+                try
+                {
+                    SaveLocked();
+                    AppLog.Info("ApiKey", "偵測到舊格式（Base64/明文）金鑰，已升級為 DPAPI 加密並重寫金鑰檔。");
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("ApiKey", "舊格式金鑰升級失敗（金鑰仍可用，但磁碟上仍是舊格式）", ex);
+                }
             }
         }
 
@@ -181,7 +200,9 @@ namespace Cat5201
             File.WriteAllText(_filePath, json);
         }
 
-        // DPAPI（CurrentUser）：只有同一 Windows 帳號能解密。失敗時退回 Base64（至少不是肉眼明文）。
+        // DPAPI（CurrentUser）：只有同一 Windows 帳號能解密。
+        // 誠實化（Codex P0-6）：UI 對使用者說「以 DPAPI 加密保存」，所以加密失敗＝禁止保存
+        // （拋明確錯誤，由呼叫端/全域錯誤處理浮現），絕不靜默降級成 Base64 —— Base64 不是加密。
         private static string Protect(string plain)
         {
             try
@@ -190,9 +211,11 @@ namespace Cat5201
                     Encoding.UTF8.GetBytes(plain), null, DataProtectionScope.CurrentUser);
                 return "dpapi:" + Convert.ToBase64String(enc);
             }
-            catch
+            catch (Exception ex)
             {
-                return "b64:" + Convert.ToBase64String(Encoding.UTF8.GetBytes(plain));
+                AppLog.Error("ApiKey", "DPAPI 加密失敗，金鑰未保存（不以未加密形式落地）", ex);
+                throw new InvalidOperationException(
+                    "無法以 Windows DPAPI 加密金鑰，已取消保存（不會以未加密形式寫入磁碟）。", ex);
             }
         }
 

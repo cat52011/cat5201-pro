@@ -1,4 +1,4 @@
-# cat5201-pro 商品級打包（§14 Package demo-ready version）
+﻿# cat5201-pro 商品級打包（§14 Package demo-ready version）
 # 用法：在 repo 根目錄執行  .\publish.ps1
 # 產出：publish\win-x64\cat5201.exe —— 自含式單一執行檔，目標機器**不需安裝 .NET**，複製即用。
 #
