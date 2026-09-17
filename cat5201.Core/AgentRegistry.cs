@@ -13,14 +13,14 @@ namespace Cat5201
                 Id = "general-agent",
                 Name = "General Agent",
                 Role = AgentRole.General,
-                DefaultModelId = AiModels.OpenAi_Gpt54,
+                DefaultModelId = AiModels.OpenAi_Gpt56,
                 DefaultTaskMode = NodeTaskMode.Chat,
                 SystemPrompt = "你是一個通用型節點代理，負責一般對話、整理與多用途任務。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46,
-                    AiModels.Claude_Opus46
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5,
+                    AiModels.Claude_Opus5
                 },
                 Capabilities =
                     AgentCapability.Chat |
@@ -64,7 +64,7 @@ PreferredCapabilityIds = new[]
                 {
                     AiModels.Perplexity_Sonar,
                     AiModels.Perplexity_SonarDeepResearch,
-                    AiModels.OpenAi_Gpt54
+                    AiModels.OpenAi_Gpt56
                 },
                 Capabilities =
                     AgentCapability.Research |
@@ -98,14 +98,14 @@ PreferredCapabilityIds = new[]
                 Id = "translation-agent",
                 Name = "Translation Agent",
                 Role = AgentRole.Translator,
-                DefaultModelId = AiModels.OpenAi_Gpt54,
+                DefaultModelId = AiModels.OpenAi_Gpt56,
                 DefaultTaskMode = NodeTaskMode.Translate,
                 SystemPrompt = "你是一個翻譯型代理，負責忠實翻譯、保留原意、整理格式與對照輸出。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46,
-                    AiModels.Claude_Opus46
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5,
+                    AiModels.Claude_Opus5
                 },
                 Capabilities =
                     AgentCapability.Translate |
@@ -131,14 +131,14 @@ PreferredCapabilityIds = new[]
                 Id = "code-agent",
                 Name = "Code Agent",
                 Role = AgentRole.Coder,
-                DefaultModelId = AiModels.Claude_Opus46,
+                DefaultModelId = AiModels.Claude_Opus5,
                 DefaultTaskMode = NodeTaskMode.Code,
                 SystemPrompt = "你是一個程式型代理，負責程式生成、除錯、架構修改與工程分析。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.Claude_Opus46,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46
+                    AiModels.Claude_Opus5,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5
                 },
                 Capabilities =
                     AgentCapability.Code |
@@ -173,13 +173,13 @@ PreferredCapabilityIds = new[]
                 Id = "image-agent",
                 Name = "Image Agent",
                 Role = AgentRole.General,
-                DefaultModelId = AiModels.OpenAi_Gpt54,
+                DefaultModelId = AiModels.OpenAi_Gpt56,
                 DefaultTaskMode = NodeTaskMode.Chat,
                 SystemPrompt = "你是一個圖片生成型代理，負責把使用者的描述交給圖片生成模型產圖，並用一句話確認任務。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5
                 },
                 Capabilities =
                     AgentCapability.Images |
@@ -208,14 +208,14 @@ PreferredCapabilityIds = new[]
                 Id = "report-agent",
                 Name = "Report Agent",
                 Role = AgentRole.Writer,
-                DefaultModelId = AiModels.Claude_Sonnet46,
+                DefaultModelId = AiModels.Claude_Sonnet5,
                 DefaultTaskMode = NodeTaskMode.Chat,
                 SystemPrompt = "你是書面報告撰寫代理，負責把研究與分析整理成結構清楚的正式報告（標題 / 段落 / 標準表格），輸出 .docx 與一致的 .pdf。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.Claude_Sonnet46,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Opus46
+                    AiModels.Claude_Sonnet5,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Opus5
                 },
                 Capabilities =
                     AgentCapability.Rewrite |
@@ -233,13 +233,13 @@ PreferredCapabilityIds = new[]
                 Id = "table-agent",
                 Name = "Table Agent",
                 Role = AgentRole.Writer,
-                DefaultModelId = AiModels.Claude_Sonnet46,
+                DefaultModelId = AiModels.Claude_Sonnet5,
                 DefaultTaskMode = NodeTaskMode.Chat,
                 SystemPrompt = "你是表格整理代理，負責把資料整理成乾淨的表格（標準 Markdown 表格），輸出 .xlsx 與一致的 .pdf。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.Claude_Sonnet46,
-                    AiModels.OpenAi_Gpt54
+                    AiModels.Claude_Sonnet5,
+                    AiModels.OpenAi_Gpt56
                 },
                 Capabilities =
                     AgentCapability.Extract |
@@ -257,14 +257,14 @@ PreferredCapabilityIds = new[]
                 Id = "presentation-agent",
                 Name = "Presentation Agent",
                 Role = AgentRole.Writer,
-                DefaultModelId = AiModels.Claude_Sonnet46,
+                DefaultModelId = AiModels.Claude_Sonnet5,
                 DefaultTaskMode = NodeTaskMode.Chat,
                 SystemPrompt = "你是簡報設計代理，負責把主題拆成投影片大綱並設計每張內容（封面 / 內容 / 來源），輸出 .pptx 與一致的 .pdf，必要時生成封面圖。",
                 AllowedModelIds = new[]
                 {
-                    AiModels.Claude_Sonnet46,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Opus46
+                    AiModels.Claude_Sonnet5,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Opus5
                 },
                 Capabilities =
                     AgentCapability.Rewrite |

@@ -28,7 +28,7 @@ namespace Cat5201
             try
             {
                 raw = await _router
-                    .GetOpenAiService("gpt-5.5")
+                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
                     .GenerateAsync(BuildSystemPrompt(), BuildUserPrompt(topText), 200, ct);
             }
             catch

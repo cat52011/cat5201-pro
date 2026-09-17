@@ -697,6 +697,20 @@
                              VerticalScrollBarVisibility="Disabled"
                              HorizontalScrollBarVisibility="Disabled"/>
 
+                    <!-- #6 渲染顯示：最終輸出用 FlowDocument 呈現真粗體/標題/清單（TextBox 做不到）。
+                         串流中與錯誤訊息仍走上面的 TextBox；資料真相在 _bottomRawText，這裡純顯示。 -->
+                    <RichTextBox x:Name="BottomRich"
+                                 Margin="20,10,20,10"
+                                 Visibility="Collapsed"
+                                 IsReadOnly="True"
+                                 IsDocumentEnabled="False"
+                                 FontSize="20"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 FocusVisualStyle="{x:Null}"
+                                 VerticalScrollBarVisibility="Disabled"
+                                 HorizontalScrollBarVisibility="Disabled"/>
+
                     <!-- 生成圖片：直接在輸出區內顯示，點擊可開啟原圖 -->
                     <Border x:Name="OutputImageHost"
                             Margin="20,4,20,10"

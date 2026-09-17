@@ -28,12 +28,12 @@ namespace Cat5201
         /// <summary>按「儲存並開始」時,使用者有輸入的金鑰（env 名 → 值）。</summary>
         public Dictionary<string, string> EnteredKeys { get; } = new();
 
-        private static readonly (string Env, string Name, string Hint)[] Providers =
+        private static readonly (string Env, string Name, string Hint, string SignupUrl)[] Providers =
         {
-            ("OPENAI_API_KEY",     "OpenAI",     "GPT 文字 · 圖片生成"),
-            ("ANTHROPIC_API_KEY",  "Claude",     "寫作 · 程式 · 簡報內容"),
-            ("GEMINI_API_KEY",     "Gemini",     "Google 生態 · Veo 影片"),
-            ("PERPLEXITY_API_KEY", "Perplexity", "即時聯網研究（驗證會發送一個極小請求）"),
+            ("OPENAI_API_KEY",     "OpenAI",     "GPT 文字 · 圖片生成",                     "https://platform.openai.com/api-keys"),
+            ("ANTHROPIC_API_KEY",  "Claude",     "寫作 · 程式 · 簡報內容",                   "https://console.anthropic.com/settings/keys"),
+            ("GEMINI_API_KEY",     "Gemini",     "Google 生態 · Veo 影片",                  "https://aistudio.google.com/apikey"),
+            ("PERPLEXITY_API_KEY", "Perplexity", "即時聯網研究（驗證會發送一個極小請求）", "https://www.perplexity.ai/settings/api"),
         };
 
         public OnboardingDialog(Window owner)
@@ -69,26 +69,61 @@ namespace Cat5201
             });
             root.Children.Add(new TextBlock
             {
-                Text = "本程式採 BYO-key：使用你自己的 API 金鑰，成本透明、資料不經第三方。\n填入至少一把即可開始（之後隨時可在 設定 → API 補齊）。金鑰以 Windows DPAPI 加密存本機。",
+                Text = "本程式採 BYO-key：使用你自己的 API 金鑰，成本透明、資料不經第三方。\n金鑰以 Windows DPAPI 加密存本機（之後隨時可在 設定 → API 補齊）。",
                 FontSize = 12, LineHeight = 18,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x90)),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 6),
+            });
+            // onboarding 是最大流失點（#17）：把「一把就能用」講到不可能漏看，
+            // 並在每家旁給「取得金鑰」直達連結，省去使用者自己找申請頁。
+            root.Children.Add(new TextBlock
+            {
+                Text = "👉 只要填「一把」金鑰就能開始用，沒填的功能會自動略過。",
+                FontSize = 12.5, FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 14),
             });
 
-            foreach (var (env, name, hint) in Providers)
+            foreach (var (env, name, hint, signupUrl) in Providers)
             {
                 // 標題列：名稱 + 用途 + 狀態
                 var head = new Grid { Margin = new Thickness(0, 4, 0, 3) };
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 var nm = new TextBlock { Text = name, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x30)) };
                 Grid.SetColumn(nm, 0); head.Children.Add(nm);
                 var hb = new TextBlock { Text = "　" + hint, FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0xA8, 0xA8, 0xAC)), VerticalAlignment = VerticalAlignment.Center };
                 Grid.SetColumn(hb, 1); head.Children.Add(hb);
+
+                // 「取得金鑰 ↗」：點了直接開該家申請頁 —— 別讓使用者自己 Google 去哪申請。
+                var link = new TextBlock
+                {
+                    Text = "取得金鑰 ↗",
+                    FontSize = 11,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0x6C, 0xF7)),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Cursor = Cursors.Hand,
+                    Margin = new Thickness(0, 0, 10, 0),
+                    ToolTip = signupUrl,
+                };
+                string urlCopy = signupUrl;
+                link.MouseLeftButtonDown += (_, __) =>
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(
+                            new System.Diagnostics.ProcessStartInfo(urlCopy) { UseShellExecute = true });
+                    }
+                    catch (Exception ex) { AppLog.Warn("Onboarding", "開啟金鑰申請頁失敗", ex); }
+                };
+                Grid.SetColumn(link, 2); head.Children.Add(link);
+
                 var st = new TextBlock { Text = "", FontSize = 11.5, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(st, 2); head.Children.Add(st);
+                Grid.SetColumn(st, 3); head.Children.Add(st);
                 _statuses[env] = st;
                 root.Children.Add(head);
 

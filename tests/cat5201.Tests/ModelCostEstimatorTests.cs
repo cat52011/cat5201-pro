@@ -48,8 +48,14 @@ namespace Cat5201.Tests
         // 你的賣點是「成本可稽查」，價目寫錯＝直接打臉。改價時同步更新這裡。
 
         [Theory]
-        [InlineData("claude-opus-4-8", 30.00)]  // $5 in + $25 out（曾錯寫 15/75 高估 3 倍）
-        [InlineData("gpt-5.5", 35.00)]          // $5 in + $30 out（曾錯寫 2.5/10 低估）
+        // 現役（官方價核對 2026-09-17）
+        [InlineData("claude-opus-5", 30.00)]    // $5 in + $25 out
+        [InlineData("claude-sonnet-5", 12.00)]  // $2 in + $10 out
+        [InlineData("gpt-5.6-sol", 24.00)]      // $4 in + $20 out（促銷價，至少到 2026-11-21）
+        [InlineData("gpt-6-astra", 60.00)]      // $10 in + $50 out
+        // 舊世代：價目必須保留，舊專案的歷史執行紀錄靠它算成本
+        [InlineData("claude-opus-4-8", 30.00)]
+        [InlineData("gpt-5.5", 35.00)]
         [InlineData("gemini-3.1-pro", 14.00)]   // $2 in + $12 out
         public void FromUsage_OneMillionEach_MatchesOfficialPricing(string modelId, double expectedUsd)
         {

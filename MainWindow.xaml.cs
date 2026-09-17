@@ -68,7 +68,6 @@ namespace Cat5201
         private bool _readUpstreamAttachments;
         public bool IsReadUpstreamAttachmentsEnabled() => _readUpstreamAttachments;
 
-        private readonly HashSet<string> _expandedDecisionStepKeys = new();
         private readonly Dictionary<Guid, NodeDecisionViewData> _liveDecisionViewsByNode = new();
 
         private readonly Dictionary<Guid, string> _autoFlowTemplatesByNode = new();
@@ -258,91 +257,7 @@ namespace Cat5201
 
         private readonly AiExecutionLogService _executionLogService = new();
 
-        private void ApplyActiveTimelineVisual(
-    Border cardBorder,
-    Border dotOuter,
-    Border dotInner,
-    NodeDecisionStepState state)
-        {
-            if (cardBorder == null || dotOuter == null || dotInner == null)
-                return;
-
-            var pulseBrush = GetStepBrush(state);
-
-            cardBorder.BorderThickness = new Thickness(1.6);
-
-            var shadow = cardBorder.Effect as DropShadowEffect;
-            if (shadow == null)
-            {
-                shadow = new DropShadowEffect
-                {
-                    BlurRadius = 16,
-                    ShadowDepth = 0,
-                    Opacity = 0.18,
-                    Color = Colors.Black
-                };
-                cardBorder.Effect = shadow;
-            }
-
-            shadow.Color = pulseBrush.Color;
-            shadow.BlurRadius = 22;
-            shadow.Opacity = 0.22;
-
-            var borderAnim = new ThicknessAnimation
-            {
-                From = new Thickness(1.6),
-                To = new Thickness(2.4),
-                Duration = TimeSpan.FromMilliseconds(900),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            cardBorder.BeginAnimation(Border.BorderThicknessProperty, borderAnim);
-
-            var shadowBlurAnim = new DoubleAnimation
-            {
-                From = 18,
-                To = 28,
-                Duration = TimeSpan.FromMilliseconds(900),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, shadowBlurAnim);
-
-            var shadowOpacityAnim = new DoubleAnimation
-            {
-                From = 0.14,
-                To = 0.28,
-                Duration = TimeSpan.FromMilliseconds(900),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            shadow.BeginAnimation(DropShadowEffect.OpacityProperty, shadowOpacityAnim);
-
-            var dotScale = new ScaleTransform(1.0, 1.0);
-            dotOuter.RenderTransformOrigin = new Point(0.5, 0.5);
-            dotOuter.RenderTransform = dotScale;
-
-            var dotScaleAnim = new DoubleAnimation
-            {
-                From = 1.0,
-                To = 1.18,
-                Duration = TimeSpan.FromMilliseconds(700),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            dotScale.BeginAnimation(ScaleTransform.ScaleXProperty, dotScaleAnim);
-            dotScale.BeginAnimation(ScaleTransform.ScaleYProperty, dotScaleAnim);
-
-            var innerOpacityAnim = new DoubleAnimation
-            {
-                From = 0.65,
-                To = 1.0,
-                Duration = TimeSpan.FromMilliseconds(700),
-                AutoReverse = true,
-                RepeatBehavior = RepeatBehavior.Forever
-            };
-            dotInner.BeginAnimation(UIElement.OpacityProperty, innerOpacityAnim);
-        }
+        // ApplyActiveTimelineVisual / ClearTimelineAnimations → 已搬到 DecisionTimelineRenderer(第 2 刀)。
 
         public bool NodeAcceptsAutoFlowInput(NodeControl node)
         {
@@ -354,34 +269,6 @@ namespace Cat5201
                 return false;
 
             return template.Contains("{{input}}", StringComparison.Ordinal);
-        }
-
-        private void ClearTimelineAnimations(Border cardBorder, Border dotOuter, Border dotInner)
-        {
-            if (cardBorder != null)
-            {
-                cardBorder.BeginAnimation(Border.BorderThicknessProperty, null);
-
-                if (cardBorder.Effect is DropShadowEffect shadow)
-                {
-                    shadow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, null);
-                    shadow.BeginAnimation(DropShadowEffect.OpacityProperty, null);
-                }
-            }
-
-            if (dotOuter?.RenderTransform is ScaleTransform scale)
-            {
-                scale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
-                scale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
-                scale.ScaleX = 1.0;
-                scale.ScaleY = 1.0;
-            }
-
-            if (dotInner != null)
-            {
-                dotInner.BeginAnimation(UIElement.OpacityProperty, null);
-                dotInner.Opacity = 1.0;
-            }
         }
         // AttachmentInfo 已提出至 cat5201.Core\AttachmentInfo.cs（B3b）——同命名空間,既有 bare 引用照常解析。
 
@@ -417,100 +304,13 @@ namespace Cat5201
                 PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
         }
 
-        private record NodeState(
-    string Id,
-    double X,
-    double Y,
-    double Width,
-    double Height,
-    string? TopText,
-    string? BottomText,
-    bool TopLocked,
-    double FontSize,
-    string? AgentId = null,
-    string? NodeModel = null,
-    string? TaskMode = null,
-    bool UnsupportedDownstreamNode = false,
-    List<string>? OutputFilePaths = null,
-    string? OutputImagePath = null
-);
+        // 專案檔資料模型(NodeState/ConnState/AttachmentState/ExecutionLogState/AppState)與格式版本
+        // 已抽出到 cat5201.Core\ProjectState.cs(第 1 刀,拆上帝物件);純 I/O 在 ProjectStore。
+        // 本類別只負責:畫布狀態的收集(SaveState)與重建(LoadState)+檔案清單 UI。
 
-        private record ConnState(string StartId, string EndId, string StartThumb, string EndThumb, bool FlowMode = false);
-
-        private record AttachmentState(
-    string NodeId,
-    string FileName,
-    string RelativePath,
-    string MimeType,
-    string Kind
-);
-
-
-
-        private record ExecutionLogState(
-            string NodeId,
-            DateTime StartedAtUtc,
-            DateTime EndedAtUtc,
-            long DurationMs,
-
-            string SelectionMode,
-            string Resolver,
-            string WorkspaceSummary,
-            List<string> WorkspaceArtifactDetails,
-            List<AgentWorkspaceArtifactRecord>? WorkspaceArtifacts,
-            string RequestedModelId,
-            string PlannedModelId,
-            string ActualModelId,
-
-            string TaskMode,
-            double Confidence,
-
-            string ResolverReason,
-            List<string> ResolverKeywords,
-
-            bool CapabilityAdjusted,
-            string CapabilityReason,
-
-            string CapabilityRequestedModelId,
-            string CapabilityResolvedModelId,
-            string CapabilityRequired,
-            string CapabilityMissing,
-            bool CapabilityStreamingAdjusted,
-
-            List<AgentCapabilityTraceItem> CapabilityTrace,
-
-            string RequestedAgentId,
-            string ActualAgentId,
-
-            bool RuntimeFallbackUsed,
-            string RuntimeFallbackSummary,
-
-            bool Success,
-            string ErrorMessage,
-
-            List<AiFallbackAttempt> FallbackAttempts,
-
-            int InputTokens = 0,
-            int OutputTokens = 0,
-            string CostDisplay = ""
-        );
-        private record AppState(
-            DateTime CreatedAt,
-            string? InitialNodeId,
-            List<NodeState> Nodes,
-            List<ConnState> Connections,
-            List<AttachmentState> Attachments,
-            List<ExecutionLogState>? ExecutionLogs = null,
-            bool FileNameLocked = false,
-            bool AutoModelSelectionEnabled = false,
-            bool AdvancedAutoResolverEnabled = false,
-            string DownstreamAutoMode = "OneClick",
-            string PresentationEngine = "Claude",
-            Dictionary<string, string>? TaskRoutingOverrides = null,
-            bool BlockOpus = false,
-            bool BlockDeepResearch = false,
-            int ManualTimeoutSeconds = 0
-        );
+        // 持久化 I/O 單一入口(存/讀/刪/改名/.bak/附件資料夾)。
+        private ProjectStore? _projectStoreInstance;
+        private ProjectStore Store => _projectStoreInstance ??= new ProjectStore(SavesDir);
 
         private static string DisplayNameFromPath(string path)
             => System.IO.Path.GetFileNameWithoutExtension(path);
@@ -1332,1295 +1132,21 @@ namespace Cat5201
             RenderDecisionTimeline(viewData.Steps);
         }
 
-        private void RenderDecisionTimeline(IReadOnlyList<NodeDecisionStepViewData> steps)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                if (DecisionTimelineHost == null)
-                    return;
-
-                DecisionTimelineHost.Children.Clear();
-
-                if (steps == null || steps.Count == 0)
+        // 決策窗 Timeline 渲染 → 已抽出到 DecisionTimelineRenderer.cs(第 2 刀)。
+        private DecisionTimelineRenderer? _decisionRendererInstance;
+        private DecisionTimelineRenderer DecisionRenderer => _decisionRendererInstance ??=
+            new DecisionTimelineRenderer(
+                DecisionTimelineHost, this, OpenGeneratedFile, () => GeneratedFilesDir,
+                refreshDecisionView: () =>
                 {
-                    var emptyBorder = new Border
-                    {
-                        Background = CreateBrush("#FAFAFA", "#FAFAFA"),
-                        BorderBrush = CreateBrush("#E9E9E9", "#E9E9E9"),
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(12),
-                        Padding = new Thickness(12),
-                        Child = new TextBlock
-                        {
-                            Text = "尚無 Decision Timeline",
-                            FontSize = 12,
-                            Foreground = CreateBrush("#7A7A7A", "#7A7A7A")
-                        }
-                    };
-
-                    DecisionTimelineHost.Children.Add(emptyBorder);
-                    return;
-                }
-
-                for (int i = 0; i < steps.Count; i++)
-                {
-                    var item = CreateDecisionTimelineItem(
-                        step: steps[i],
-                        index: i,
-                        isLast: i == steps.Count - 1,
-                        isFirst: i == 0);
-
-                    DecisionTimelineHost.Children.Add(item);
-                }
-            });
-        }
-
-        private FrameworkElement CreateDecisionTimelineItem(
-    NodeDecisionStepViewData step,
-    int index,
-    bool isLast,
-    bool isFirst)
-        {
-            string safeTitle = step?.Title ?? "";
-            string safeDetail = step?.Detail ?? "";
-            var safeState = step?.State ?? NodeDecisionStepState.Info;
-            bool safeHighlight = step?.Highlight == true;
-            bool safeIsActive = step?.IsActive == true;
-            bool safeIsExpandable = step?.IsExpandable == true;
-            var safeDetailLines = step?.DetailLines ?? Array.Empty<string>();
-            string stepKey = $"{index}:{safeTitle}:{safeDetail}";
-            bool isExpanded = _expandedDecisionStepKeys.Contains(stepKey);
-
-            var root = new Grid
-            {
-                Margin = new Thickness(0, 0, 0, isLast ? 0 : 12)
-            };
-
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
-            root.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-            // ===== 左側 timeline 區 =====
-            var timelineGrid = new Grid
-            {
-                Width = 20
-            };
-            timelineGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            timelineGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-
-            if (!isFirst)
-            {
-                var topLine = new Border
-                {
-                    Width = 2,
-                    Height = 10,
-                    Background = CreateBrush("#D9DDE4", "#D9DDE4"),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Top
-                };
-                Grid.SetRow(topLine, 0);
-                timelineGrid.Children.Add(topLine);
-            }
-
-            var dotOuter = new Border
-            {
-                Width = 14,
-                Height = 14,
-                CornerRadius = new CornerRadius(999),
-                Background = CreateBrush("#FFFFFF", "#FFFFFF"),
-                BorderBrush = GetStepBrush(safeState),
-                BorderThickness = new Thickness(2),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 2, 0, 0)
-            };
-
-            var dotInner = new Border
-            {
-                Width = 6,
-                Height = 6,
-                CornerRadius = new CornerRadius(999),
-                Background = GetStepBrush(safeState),
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            dotOuter.Child = dotInner;
-            Grid.SetRow(dotOuter, 0);
-            timelineGrid.Children.Add(dotOuter);
-
-            if (!isLast)
-            {
-                var bottomLine = new Border
-                {
-                    Width = 2,
-                    Background = CreateBrush("#D9DDE4", "#D9DDE4"),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    Margin = new Thickness(0, 8, 0, 0)
-                };
-                Grid.SetRow(bottomLine, 1);
-                timelineGrid.Children.Add(bottomLine);
-            }
-
-            Grid.SetColumn(timelineGrid, 0);
-            root.Children.Add(timelineGrid);
-
-            // ===== 右側卡片 =====
-            var cardBorder = new Border
-            {
-                Background = safeHighlight
-                    ? CreateBrush("#F6FAFF", "#F6FAFF")
-                    : CreateBrush("#FFFFFF", "#FFFFFF"),
-                BorderBrush = GetStepBorderBrush(safeState, safeHighlight || safeIsActive),
-                BorderThickness = new Thickness(safeIsActive ? 1.6 : 1),
-                CornerRadius = new CornerRadius(14),
-                Padding = new Thickness(12, 10, 12, 10),
-                Cursor = safeIsExpandable ? Cursors.Hand : Cursors.Arrow
-            };
-
-            var shadow = new DropShadowEffect
-            {
-                BlurRadius = safeIsActive ? 20 : (safeHighlight ? 14 : 10),
-                ShadowDepth = 0,
-                Opacity = safeIsActive ? 0.18 : (safeHighlight ? 0.14 : 0.08),
-                Color = safeIsActive ? GetStepBrush(safeState).Color : Colors.Black
-            };
-            cardBorder.Effect = shadow;
-
-            var contentPanel = new StackPanel();
-
-            var headerGrid = new Grid();
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-            var titleStack = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            var indexBadge = new Border
-            {
-                Background = GetStepSoftBrush(safeState),
-                CornerRadius = new CornerRadius(999),
-                Padding = new Thickness(7, 2, 7, 2),
-                Margin = new Thickness(0, 0, 8, 0),
-                Child = new TextBlock
-                {
-                    Text = (index + 1).ToString(),
-                    FontSize = 11,
-                    FontWeight = FontWeights.SemiBold,
-                    Foreground = GetStepBrush(safeState),
-                    VerticalAlignment = VerticalAlignment.Center
-                }
-            };
-
-            var titleText = new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(safeTitle) ? "-" : safeTitle,
-                FontSize = 12.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#232323", "#232323"),
-                TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center
-            };
-
-            titleStack.Children.Add(indexBadge);
-            titleStack.Children.Add(titleText);
-
-            Grid.SetColumn(titleStack, 0);
-            headerGrid.Children.Add(titleStack);
-
-            var stateBadge = new Border
-            {
-                Background = GetStepSoftBrush(safeState),
-                CornerRadius = new CornerRadius(999),
-                Padding = new Thickness(8, 3, 8, 3),
-                VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = safeIsActive ? "Running" : GetStepStateLabel(safeState),
-                    FontSize = 11,
-                    FontWeight = FontWeights.Medium,
-                    Foreground = GetStepBrush(safeState)
-                }
-            };
-
-            Grid.SetColumn(stateBadge, 1);
-            headerGrid.Children.Add(stateBadge);
-
-            contentPanel.Children.Add(headerGrid);
-
-            var detailText = new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(safeDetail) ? "-" : safeDetail,
-                FontSize = 12,
-                Margin = new Thickness(0, 8, 0, 0),
-                Foreground = CreateBrush("#5D5D5D", "#5D5D5D"),
-                TextWrapping = TextWrapping.Wrap
-            };
-            contentPanel.Children.Add(detailText);
-
-            if (safeIsExpandable)
-            {
-                var actionRow = new DockPanel
-                {
-                    Margin = new Thickness(0, 8, 0, 0),
-                    LastChildFill = false
-                };
-
-                var expandHint = new TextBlock
-                {
-                    Text = isExpanded ? "收合詳細資訊 ▲" : "展開詳細資訊 ▼",
-                    FontSize = 11.5,
-                    Foreground = CreateBrush("#6F6F6F", "#6F6F6F"),
-                    FontWeight = FontWeights.Medium
-                };
-
-                DockPanel.SetDock(expandHint, Dock.Right);
-                actionRow.Children.Add(expandHint);
-                contentPanel.Children.Add(actionRow);
-            }
-
-            if (isExpanded && safeDetailLines.Count > 0)
-            {
-                var detailHost = new StackPanel
-                {
-                    Margin = new Thickness(0, 10, 0, 0)
-                };
-
-                var separator = new Border
-                {
-                    Height = 1,
-                    Background = CreateBrush("#ECEFF4", "#ECEFF4"),
-                    Margin = new Thickness(0, 0, 0, 10)
-                };
-                detailHost.Children.Add(separator);
-
-                if (IsWorkspaceStep(step))
-                {
-                    var workspaceArtifacts = step?.WorkspaceArtifacts;
-                    if (workspaceArtifacts != null && workspaceArtifacts.Count > 0)
-                        detailHost.Children.Add(CreateWorkspaceProductSurface(workspaceArtifacts));
-                    else
-                        detailHost.Children.Add(CreateWorkspaceInspector(safeDetailLines));
-                }
-                else
-                {
-                    foreach (var line in safeDetailLines)
-                    {
-                        detailHost.Children.Add(new Border
-                        {
-                            Background = CreateBrush("#FAFBFD", "#FAFBFD"),
-                            BorderBrush = CreateBrush("#EEF1F4", "#EEF1F4"),
-                            BorderThickness = new Thickness(1),
-                            CornerRadius = new CornerRadius(8),
-                            Padding = new Thickness(8, 6, 8, 6),
-                            Margin = new Thickness(0, 0, 0, 6),
-                            Child = new TextBlock
-                            {
-                                Text = string.IsNullOrWhiteSpace(line) ? "-" : line,
-                                FontSize = 11.5,
-                                Foreground = CreateBrush("#666666", "#666666"),
-                                TextWrapping = TextWrapping.Wrap
-                            }
-                        });
-                    }
-                }
-
-                contentPanel.Children.Add(detailHost);
-            }
-
-            cardBorder.Child = contentPanel;
-
-            AttachCopyContextMenu(
-                cardBorder,
-                "複製此決策區塊",
-                () => BuildDecisionStepCopyText(step, index));
-
-            if (safeIsExpandable)
-            {
-                cardBorder.MouseLeftButtonUp += (_, __) =>
-                {
-                    if (_expandedDecisionStepKeys.Contains(stepKey))
-                        _expandedDecisionStepKeys.Remove(stepKey);
-                    else
-                        _expandedDecisionStepKeys.Add(stepKey);
-
                     var target = _lastDecisionNode ?? _hoveredDecisionNode;
                     if (target != null)
                         ShowDecisionForNode(target);
-                };
-
-                cardBorder.MouseEnter += (_, __) =>
-                {
-                    if (!safeIsActive)
-                    {
-                        cardBorder.Background = safeHighlight
-                            ? CreateBrush("#F0F7FF", "#F0F7FF")
-                            : CreateBrush("#FAFAFA", "#FAFAFA");
-                    }
-                };
-
-                cardBorder.MouseLeave += (_, __) =>
-                {
-                    if (!safeIsActive)
-                    {
-                        cardBorder.Background = safeHighlight
-                            ? CreateBrush("#F6FAFF", "#F6FAFF")
-                            : CreateBrush("#FFFFFF", "#FFFFFF");
-                    }
-                };
-            }
-
-            if (safeIsActive)
-            {
-                ApplyActiveTimelineVisual(cardBorder, dotOuter, dotInner, safeState);
-
-                cardBorder.Background = safeHighlight
-                    ? CreateBrush("#EEF6FF", "#EEF6FF")
-                    : CreateBrush("#F8FBFF", "#F8FBFF");
-            }
-            else
-            {
-                ClearTimelineAnimations(cardBorder, dotOuter, dotInner);
-            }
-
-            Grid.SetColumn(cardBorder, 2);
-            root.Children.Add(cardBorder);
-
-            return root;
-        }
-
-        private static bool IsWorkspaceStep(NodeDecisionStepViewData? step)
-        {
-            return string.Equals(step?.Title, "Workspace", StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string BuildDecisionStepCopyText(
-            NodeDecisionStepViewData? step,
-            int index)
-        {
-            if (step == null)
-                return "";
-
-            var lines = new List<string>
-            {
-                $"{index + 1}. {SafeCopy(step.Title)}",
-                $"State: {step.State}" + (step.IsActive ? " / Running" : ""),
-                $"Detail: {SafeCopy(step.Detail)}"
-            };
-
-            if (step.DetailLines != null && step.DetailLines.Count > 0)
-            {
-                lines.Add("");
-                lines.Add("Details:");
-                lines.AddRange(step.DetailLines.Where(x => !string.IsNullOrWhiteSpace(x)));
-            }
-
-            return string.Join(Environment.NewLine, lines);
-        }
-
-        private static string SafeCopy(string? text)
-            => string.IsNullOrWhiteSpace(text) ? "-" : text.Trim();
-
-        // Workspace v2：從結構化 artifact 紀錄渲染產品化卡片（非 re-parse 文字行）。
-        private FrameworkElement CreateWorkspaceProductSurface(IReadOnlyList<AgentWorkspaceArtifactRecord> records)
-        {
-            var root = new StackPanel();
-
-            var safe = (records ?? Array.Empty<AgentWorkspaceArtifactRecord>())
-                .Where(x => x != null)
-                .ToList();
-
-            if (safe.Count == 0)
-            {
-                root.Children.Add(CreateWorkspaceTextCard("本次沒有產出物。", muted: true));
-                return root;
-            }
-
-            var visible = safe.Where(x => x.IsUserVisible).ToList();
-            var internalItems = safe.Where(x => !x.IsUserVisible).ToList();
-
-            root.Children.Add(new TextBlock
-            {
-                Text = $"共 {safe.Count} 項產出物，{visible.Count} 項對使用者可見。",
-                FontSize = 11.5,
-                Foreground = CreateBrush("#57606A", "#57606A"),
-                Margin = new Thickness(0, 2, 0, 8),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            foreach (var r in visible)
-                root.Children.Add(CreateProductArtifactCard(r, dimmed: false));
-
-            if (internalItems.Count > 0)
-            {
-                root.Children.Add(CreateWorkspaceSectionLabel($"內部中繼資料（{internalItems.Count}）"));
-                foreach (var r in internalItems)
-                    root.Children.Add(CreateProductArtifactCard(r, dimmed: true));
-            }
-
-            return root;
-        }
-
-        private Border CreateProductArtifactCard(AgentWorkspaceArtifactRecord r, bool dimmed)
-        {
-            var (emoji, accentHex, accentSoftHex) = ArtifactKindVisual(r.ArtifactKind, r.ContentFormat, r.FormatLabel);
-
-            var panel = new StackPanel();
-
-            // ── 標題列：種類圖示 chip + 標題/小標 + 狀態徽章（靠右）──
-            var header = new DockPanel { LastChildFill = true };
-
-            var (statusBg, statusFg) = ArtifactStatus.Colors(r.Status);
-            var statusBadge = CreateWorkspaceBadge(
-                string.IsNullOrWhiteSpace(r.StatusLabel) ? ArtifactStatus.ToLabel(r.Status) : r.StatusLabel,
-                statusBg, statusFg);
-            statusBadge.Margin = new Thickness(6, 1, 0, 0);
-            statusBadge.VerticalAlignment = VerticalAlignment.Top;
-            DockPanel.SetDock(statusBadge, Dock.Right);
-            header.Children.Add(statusBadge);
-
-            var iconChip = new Border
-            {
-                Width = 34,
-                Height = 34,
-                CornerRadius = new CornerRadius(9),
-                Background = CreateBrush(accentSoftHex, accentSoftHex),
-                VerticalAlignment = VerticalAlignment.Top,
-                Margin = new Thickness(0, 0, 10, 0),
-                Child = new TextBlock
-                {
-                    Text = emoji,
-                    FontSize = 17,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center
-                }
-            };
-            DockPanel.SetDock(iconChip, Dock.Left);
-            header.Children.Add(iconChip);
-
-            var titleStack = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-            titleStack.Children.Add(new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(r.Title) ? r.KindLabel : r.Title,
-                FontSize = 13.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush(dimmed ? "#6B7280" : "#1A2333", "#1A2333"),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            // 小標：種類 · 格式 · 模型（淡色一行）
-            var subParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(r.KindLabel)) subParts.Add(r.KindLabel);
-            if (!string.IsNullOrWhiteSpace(r.FormatLabel)) subParts.Add(r.FormatLabel);
-            if (!string.IsNullOrWhiteSpace(r.ModelId)) subParts.Add(GetArtifactModelDisplay(r.ModelId));
-            if (subParts.Count > 0)
-            {
-                titleStack.Children.Add(new TextBlock
-                {
-                    Text = string.Join("   ·   ", subParts),
-                    FontSize = 11,
-                    Foreground = CreateBrush("#8A94A6", "#8A94A6"),
-                    Margin = new Thickness(0, 2, 0, 0),
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
-            header.Children.Add(titleStack);
-            panel.Children.Add(header);
-
-            // ── 次要徽章（事實數 / 內部）──
-            if (r.FactCount > 0 || !r.IsUserVisible)
-            {
-                var badges = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
-                if (r.FactCount > 0)
-                    badges.Children.Add(CreateWorkspaceBadge($"{r.FactCount} 項事實", "#FFF6E5", "#9A6700"));
-                if (!r.IsUserVisible)
-                    badges.Children.Add(CreateWorkspaceBadge("內部中繼", "#F2F4F7", "#888888"));
-                panel.Children.Add(badges);
-            }
-
-            // ── 預覽：嵌入式淡底卡 ──
-            if (!string.IsNullOrWhiteSpace(r.Preview))
-            {
-                panel.Children.Add(new Border
-                {
-                    Background = CreateBrush("#F8FAFC", "#F8FAFC"),
-                    BorderBrush = CreateBrush("#EDF1F6", "#EDF1F6"),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(10, 8, 10, 8),
-                    Margin = new Thickness(0, 9, 0, 0),
-                    Child = new TextBlock
-                    {
-                        Text = r.Preview,
-                        FontSize = 11.5,
-                        Foreground = CreateBrush(dimmed ? "#8A94A6" : "#43536C", "#43536C"),
-                        TextWrapping = TextWrapping.Wrap
-                    }
-                });
-            }
-
-            // ── 來源 / 時間：footer 淡字 ──
-            var metaParts = new List<string>();
-            if (!string.IsNullOrWhiteSpace(r.SourceAgentId))
-                metaParts.Add($"代理 {r.SourceAgentId}");
-            if (!string.IsNullOrWhiteSpace(r.CapabilityId))
-                metaParts.Add($"能力 {r.CapabilityId}");
-            if (!string.IsNullOrWhiteSpace(r.CreatedAtLocalText))
-                metaParts.Add(r.CreatedAtLocalText);
-
-            if (metaParts.Count > 0)
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = string.Join("   ·   ", metaParts),
-                    FontSize = 10.5,
-                    Foreground = CreateBrush("#9AA4B2", "#9AA4B2"),
-                    Margin = new Thickness(0, 8, 0, 0),
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
-
-            // ── 依賴 ──
-            if (r.DependsOn != null && r.DependsOn.Count > 0)
-            {
-                var dep = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
-                dep.Children.Add(new TextBlock
-                {
-                    Text = "依賴",
-                    FontSize = 10.5,
-                    Foreground = CreateBrush("#9AA4B2", "#9AA4B2"),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(0, 0, 6, 5)
-                });
-                foreach (var d in r.DependsOn.Where(x => !string.IsNullOrWhiteSpace(x)))
-                    dep.Children.Add(CreateWorkspaceBadge(ArtifactDependencyLabel(d), "#F4F0FF", "#6B4FBB"));
-                panel.Children.Add(dep);
-            }
-
-            // ── 動作 chips：複製 / 匯出 / 開啟檔案 ──
-            var actions = new WrapPanel { Margin = new Thickness(0, 11, 0, 0) };
-            actions.Children.Add(CreateWorkspaceActionButton("📋 複製", accentHex, () => CopyTextToClipboard(BuildArtifactCopyText(r))));
-            actions.Children.Add(CreateWorkspaceActionButton("💾 匯出", accentHex, () => ExportArtifactRecord(r)));
-            if (!string.IsNullOrWhiteSpace(r.FilePath) && File.Exists(r.FilePath))
-                actions.Children.Add(CreateWorkspaceActionButton("📂 開啟檔案", accentHex, () => OpenGeneratedFile(r.FilePath)));
-            panel.Children.Add(actions);
-
-            var card = new Border
-            {
-                Background = CreateBrush(dimmed ? "#FBFCFE" : "#FFFFFF", "#FFFFFF"),
-                BorderBrush = CreateBrush(dimmed ? "#EDF0F4" : "#E4EAF2", "#E4EAF2"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(12),
-                Padding = new Thickness(13),
-                Margin = new Thickness(0, 0, 0, 10),
-                Child = panel
-            };
-
-            if (!dimmed)
-            {
-                card.Effect = new DropShadowEffect
-                {
-                    Color = Colors.Black,
-                    BlurRadius = 10,
-                    ShadowDepth = 1,
-                    Direction = 270,
-                    Opacity = 0.07
-                };
-            }
-
-            AttachCopyContextMenu(card, "複製此產出物", () => BuildArtifactCopyText(r));
-
-            return card;
-        }
-
-        // 依產出物種類給一個視覺識別（emoji + 主色 + 淡底色），讓 Workspace 一眼分辨是簡報/圖片/影片/文件…
-        private static (string Emoji, string Accent, string AccentSoft) ArtifactKindVisual(
-            string? kind, string? format, string? formatLabel)
-        {
-            string k = (kind ?? "").Trim().ToLowerInvariant();
-            string f = (format ?? "").Trim().ToLowerInvariant();
-            string fl = formatLabel ?? "";
-
-            bool Has(params string[] needles) =>
-                needles.Any(n => k.Contains(n) || f.Contains(n));
-
-            if (Has("present", "pptx", "slide", "deck") || fl.Contains("簡報"))
-                return ("📊", "#7C3AED", "#F1ECFE");
-            if (Has("image", "png", "jpg", "jpeg") || fl.Contains("圖"))
-                return ("🖼", "#DB2777", "#FCE7F3");
-            if (Has("video", "media", "mp4") || fl.Contains("影片"))
-                return ("🎬", "#4F46E5", "#EAEBFE");
-            if (Has("doc", "pdf", "report", "word") || fl.Contains("文件") || fl.Contains("報告"))
-                return ("📄", "#2563EB", "#E6F0FE");
-            if (Has("fact", "valid", "verify") || fl.Contains("事實") || fl.Contains("驗證"))
-                return ("✅", "#059669", "#E4F6EE");
-            if (Has("code") || fl.Contains("程式"))
-                return ("💻", "#475569", "#EEF1F5");
-            if (Has("search", "research") || fl.Contains("搜尋"))
-                return ("🔍", "#0891B2", "#E2F5F9");
-            if (Has("plan", "workflow") || fl.Contains("計畫") || fl.Contains("流程"))
-                return ("🗂", "#B45309", "#FCEFDD");
-
-            return ("📦", "#475467", "#F1F4F8");
-        }
-
-        // 動作 chip：用 Border 自繪（避免預設 Button 灰底 chrome），帶 hover。
-        private FrameworkElement CreateWorkspaceActionButton(string label, string accentHex, Action onClick)
-        {
-            var bg = CreateBrush("#F4F7FC", "#F4F7FC");
-            var bgHover = CreateBrush("#E7EEFA", "#E7EEFA");
-
-            var chip = new Border
-            {
-                Background = bg,
-                BorderBrush = CreateBrush("#DCE5F2", "#DCE5F2"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(7),
-                Padding = new Thickness(11, 5, 11, 5),
-                Margin = new Thickness(0, 0, 7, 0),
-                Cursor = System.Windows.Input.Cursors.Hand,
-                Child = new TextBlock
-                {
-                    Text = label,
-                    FontSize = 11.5,
-                    FontWeight = FontWeights.Medium,
-                    Foreground = CreateBrush(accentHex, accentHex)
-                }
-            };
-
-            chip.MouseEnter += (_, __) => chip.Background = bgHover;
-            chip.MouseLeave += (_, __) => chip.Background = bg;
-            chip.MouseLeftButtonUp += (_, __) =>
-            {
-                try { onClick?.Invoke(); }
-                catch { /* 動作失敗不應讓決策窗崩潰 */ }
-            };
-
-            return chip;
-        }
-
-        private static string GetArtifactModelDisplay(string modelId)
-        {
-            var def = AiModelHelper.GetDefinition(modelId);
-            if (!string.IsNullOrWhiteSpace(def.DisplayName))
-                return def.DisplayName;
-            return string.IsNullOrWhiteSpace(modelId) ? "-" : modelId;
-        }
-
-        private static string ArtifactDependencyLabel(string itemType)
-        {
-            return (itemType ?? "").Trim().ToLowerInvariant() switch
-            {
-                "verified_facts" => "事實",
-                "search_summary" => "搜尋",
-                "final_synthesis" => "最終答案",
-                "reasoning_analysis" or "code_analysis" => "分析",
-                _ => string.IsNullOrWhiteSpace(itemType) ? "上游" : itemType
-            };
-        }
-
-        private void CopyTextToClipboard(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-                return;
-
-            try { Clipboard.SetText(text); }
-            catch { /* Clipboard 可能被其他程式暫時鎖住 */ }
-        }
-
-        private static string BuildArtifactCopyText(AgentWorkspaceArtifactRecord r)
-        {
-            if (r == null)
-                return "";
-
-            var lines = new List<string>
-            {
-                $"{r.Title}",
-                $"類型：{r.KindLabel} / {r.FormatLabel} / 狀態：{(string.IsNullOrWhiteSpace(r.StatusLabel) ? ArtifactStatus.ToLabel(r.Status) : r.StatusLabel)}"
-            };
-
-            var meta = new List<string>();
-            if (!string.IsNullOrWhiteSpace(r.SourceAgentId)) meta.Add($"代理 {r.SourceAgentId}");
-            if (!string.IsNullOrWhiteSpace(r.ModelId)) meta.Add($"模型 {r.ModelId}");
-            if (!string.IsNullOrWhiteSpace(r.CapabilityId)) meta.Add($"能力 {r.CapabilityId}");
-            if (!string.IsNullOrWhiteSpace(r.CreatedAtLocalText)) meta.Add(r.CreatedAtLocalText);
-            if (meta.Count > 0)
-                lines.Add("來源：" + string.Join(" · ", meta));
-
-            if (r.DependsOn != null && r.DependsOn.Count > 0)
-                lines.Add("依賴：" + string.Join(", ", r.DependsOn));
-
-            if (!string.IsNullOrWhiteSpace(r.FilePath))
-                lines.Add("檔案：" + r.FilePath);
-
-            if (!string.IsNullOrWhiteSpace(r.Preview))
-            {
-                lines.Add("");
-                lines.Add(r.Preview);
-            }
-
-            return string.Join(Environment.NewLine, lines);
-        }
-
-        // 把單一 artifact 匯出成 _generated 內的 .txt（產品化「匯出」動作）。
-        private void ExportArtifactRecord(AgentWorkspaceArtifactRecord r)
-        {
-            if (r == null)
-                return;
-
-            // 已落地成檔的 artifact：直接開啟既有檔案，不重複匯出。
-            if (!string.IsNullOrWhiteSpace(r.FilePath) && File.Exists(r.FilePath))
-            {
-                OpenGeneratedFile(r.FilePath);
-                return;
-            }
-
-            try
-            {
-                Directory.CreateDirectory(GeneratedFilesDir);
-
-                string baseName = string.IsNullOrWhiteSpace(r.Title) ? r.KindLabel : r.Title;
-                string safeName = SanitizeArtifactFileName(baseName);
-                string fileName = $"{safeName}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
-                string fullPath = System.IO.Path.Combine(GeneratedFilesDir, fileName);
-
-                File.WriteAllText(fullPath, BuildArtifactCopyText(r), new System.Text.UTF8Encoding(true));
-
-                OpenGeneratedFile(fullPath);
-            }
-            catch (Exception ex)
-            {
-                MenuConfirmDialog.ShowMessage(this, "錯誤", $"匯出產出物失敗：{ex.Message}", this);
-            }
-        }
-
-        private static string SanitizeArtifactFileName(string name)
-        {
-            string s = (name ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(s))
-                s = "artifact";
-
-            foreach (var c in System.IO.Path.GetInvalidFileNameChars())
-                s = s.Replace(c, '_');
-
-            return s.Length <= 40 ? s : s.Substring(0, 40);
-        }
-
-        private FrameworkElement CreateWorkspaceInspector(IReadOnlyList<string> lines)
-        {
-            var root = new StackPanel();
-
-            if (lines == null || lines.Count == 0)
-            {
-                root.Children.Add(CreateWorkspaceTextCard("-", muted: true));
-                return root;
-            }
-
-            var currentArtifactFacts = new StackPanel
-            {
-                Margin = new Thickness(0, 8, 0, 0)
-            };
-
-            Border? currentArtifactCard = null;
-            List<string>? currentArtifactLines = null;
-
-            foreach (var raw in lines)
-            {
-                string trimmed = (raw ?? "").Trim();
-
-                if (string.IsNullOrWhiteSpace(trimmed))
-                    continue;
-
-                if (trimmed.Equals("--- Artifacts ---", StringComparison.OrdinalIgnoreCase))
-                {
-                    root.Children.Add(CreateWorkspaceSectionLabel("Artifacts"));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("Artifact:", StringComparison.OrdinalIgnoreCase))
-                {
-                    var artifactLines = new List<string> { trimmed };
-                    currentArtifactLines = artifactLines;
-
-                    currentArtifactFacts = new StackPanel
-                    {
-                        Margin = new Thickness(0, 8, 0, 0)
-                    };
-
-                    currentArtifactCard = CreateArtifactCard(
-                        trimmed,
-                        currentArtifactFacts,
-                        () => string.Join(Environment.NewLine, artifactLines),
-                        trimmed.Contains("Type: downstream_node_plan", StringComparison.OrdinalIgnoreCase)
-                            ? () => TryMaterializeDownstreamNodePlanFromText(
-                                string.Join(Environment.NewLine, artifactLines))
-                            : null);
-
-                    root.Children.Add(currentArtifactCard);
-                    continue;
-                }
-
-                if (trimmed.StartsWith("VerifiedFacts:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentArtifactLines?.Add(trimmed);
-                    var target = currentArtifactCard == null ? root : currentArtifactFacts;
-                    target.Children.Add(CreateWorkspaceTextCard(trimmed, muted: true));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("Fact:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentArtifactLines?.Add(trimmed);
-                    var target = currentArtifactCard == null ? root : currentArtifactFacts;
-                    target.Children.Add(CreateFactCard(trimmed));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("Snapshot:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("SnapshotFile:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("SnapshotPreview:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentArtifactLines?.Add(trimmed);
-                    var target = currentArtifactCard == null ? root : currentArtifactFacts;
-                    target.Children.Add(CreateCodeSnapshotCard(trimmed));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("Diff:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("DiffBase:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("DiffFile:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("UnifiedDiff:", StringComparison.OrdinalIgnoreCase) ||
-                    trimmed.StartsWith("DiffNote:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentArtifactLines?.Add(trimmed);
-                    var target = currentArtifactCard == null ? root : currentArtifactFacts;
-                    target.Children.Add(CreateDiffTextCard(trimmed));
-                    continue;
-                }
-
-                if (trimmed.StartsWith("OwnerAgent:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentArtifactLines?.Add(trimmed);
-                    var target = currentArtifactCard == null ? root : currentArtifactFacts;
-                    target.Children.Add(CreateOwnershipTags(trimmed));
-                    continue;
-                }
-
-                currentArtifactLines?.Add(trimmed);
-                root.Children.Add(CreateWorkspaceTextCard(trimmed, muted: true));
-            }
-
-            return root;
-        }
-
-        private FrameworkElement CreateWorkspaceSectionLabel(string text)
-        {
-            return new TextBlock
-            {
-                Text = text,
-                FontSize = 11.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#57606A", "#57606A"),
-                Margin = new Thickness(0, 2, 0, 8)
-            };
-        }
-
-        private Border CreateArtifactCard(
-            string line,
-            StackPanel factsHost,
-            Func<string> copyTextProvider,
-            Action? applyDownstreamPlan = null)
-        {
-            var parts = line.Substring("Artifact:".Length).Trim()
-                .Split('/')
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            string kind = parts.Count > 0 ? parts[0] : "artifact";
-            string format = parts.Count > 1 ? parts[1] : "text";
-            string visibility = parts.Count > 2 ? parts[2] : "visible";
-            string meta = parts.Count > 3 ? string.Join(" / ", parts.Skip(3)) : "";
-
-            var panel = new StackPanel();
-
-            var header = new WrapPanel();
-            header.Children.Add(CreateWorkspaceBadge(kind, "#EAF4FF", "#245A9B"));
-            header.Children.Add(CreateWorkspaceBadge(format, "#F2F4F7", "#475467"));
-            header.Children.Add(CreateWorkspaceBadge(visibility, "#F7F7F7", "#666666"));
-            panel.Children.Add(header);
-
-            if (!string.IsNullOrWhiteSpace(meta))
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = meta,
-                    FontSize = 11.5,
-                    Foreground = CreateBrush("#4A4A4A", "#4A4A4A"),
-                    Margin = new Thickness(0, 6, 0, 0),
-                    TextWrapping = TextWrapping.Wrap
-                });
-            }
-
-            panel.Children.Add(factsHost);
-
-            var card = new Border
-            {
-                Background = CreateBrush("#FFFFFF", "#FFFFFF"),
-                BorderBrush = CreateBrush("#DDE7F2", "#DDE7F2"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
-                Padding = new Thickness(10),
-                Margin = new Thickness(0, 0, 0, 8),
-                Child = panel
-            };
-
-            AttachCopyContextMenu(
-                card,
-                "複製此主題區塊",
-                copyTextProvider,
-                applyDownstreamPlan);
-
-            return card;
-        }
-
-        private Border CreateCodeSnapshotCard(string line)
-        {
-            string label = "Snapshot";
-            string body = line;
-
-            int colon = line.IndexOf(':');
-            if (colon >= 0)
-            {
-                label = line.Substring(0, colon).Trim();
-                body = line.Substring(colon + 1).Trim();
-            }
-
-            var panel = new StackPanel();
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = label,
-                FontSize = 11.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#3B4A66", "#3B4A66"),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(body) ? "-" : body,
-                FontSize = 11.5,
-                Foreground = CreateBrush("#43536C", "#43536C"),
-                Margin = new Thickness(0, 3, 0, 0),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            return new Border
-            {
-                Background = CreateBrush("#F4F7FC", "#F4F7FC"),
-                BorderBrush = CreateBrush("#D7E1F0", "#D7E1F0"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8, 7, 8, 7),
-                Margin = new Thickness(0, 0, 0, 6),
-                Child = panel
-            };
-        }
-
-        private Border CreateDiffTextCard(string line)
-        {
-            string label = "Diff";
-            string body = line;
-
-            int colon = line.IndexOf(':');
-            if (colon >= 0)
-            {
-                label = line.Substring(0, colon).Trim();
-                body = line.Substring(colon + 1).Trim();
-            }
-
-            var panel = new StackPanel();
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = label,
-                FontSize = 11.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#2F5F52", "#2F5F52"),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = string.IsNullOrWhiteSpace(body) ? "-" : body,
-                FontSize = 11.5,
-                Foreground = CreateBrush("#365950", "#365950"),
-                Margin = new Thickness(0, 3, 0, 0),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            return new Border
-            {
-                Background = CreateBrush("#F0FAF6", "#F0FAF6"),
-                BorderBrush = CreateBrush("#BFE5D7", "#BFE5D7"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8, 7, 8, 7),
-                Margin = new Thickness(0, 0, 0, 6),
-                Child = panel
-            };
-        }
-
-        private Border CreateFactCard(string line)
-        {
-            string content = line.Substring("Fact:".Length).Trim();
-            string subject = content;
-            string value = "";
-
-            int equalsIndex = content.IndexOf('=');
-            if (equalsIndex >= 0)
-            {
-                subject = content.Substring(0, equalsIndex).Trim();
-                value = content.Substring(equalsIndex + 1).Trim();
-            }
-
-            var panel = new StackPanel();
-
-            panel.Children.Add(new TextBlock
-            {
-                Text = subject,
-                FontSize = 11.5,
-                FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#252525", "#252525"),
-                TextWrapping = TextWrapping.Wrap
-            });
-
-            if (!string.IsNullOrWhiteSpace(value))
-            {
-                var valueParts = value
-                    .Split(new[] { " / " }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(x => x.Trim())
-                    .Where(x => !string.IsNullOrWhiteSpace(x))
-                    .ToList();
-
-                if (valueParts.Count == 0)
-                    valueParts.Add(value);
-
-                panel.Children.Add(new TextBlock
-                {
-                    Text = valueParts[0],
-                    FontSize = 12,
-                    Foreground = CreateBrush("#245A9B", "#245A9B"),
-                    Margin = new Thickness(0, 4, 0, 0),
-                    TextWrapping = TextWrapping.Wrap
-                });
-
-                foreach (var meta in valueParts.Skip(1))
-                {
-                    panel.Children.Add(new TextBlock
-                    {
-                        Text = meta,
-                        FontSize = 11,
-                        Foreground = CreateBrush("#51606F", "#51606F"),
-                        Margin = new Thickness(0, 2, 0, 0),
-                        TextWrapping = TextWrapping.Wrap
-                    });
-                }
-            }
-
-            return new Border
-            {
-                Background = CreateBrush("#F8FBFF", "#F8FBFF"),
-                BorderBrush = CreateBrush("#D8E8F8", "#D8E8F8"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8, 7, 8, 7),
-                Margin = new Thickness(0, 0, 0, 6),
-                Child = panel
-            };
-        }
-
-        private FrameworkElement CreateOwnershipTags(string line)
-        {
-            var wrap = new WrapPanel
-            {
-                Margin = new Thickness(0, 0, 0, 6)
-            };
-
-            var parts = line
-                .Split('|')
-                .Select(x => x.Trim())
-                .Where(x => !string.IsNullOrWhiteSpace(x))
-                .ToList();
-
-            foreach (var part in parts)
-            {
-                bool numeric = part.Contains("numeric_fact_source", StringComparison.OrdinalIgnoreCase);
-                bool official = part.Contains("official", StringComparison.OrdinalIgnoreCase);
-                bool background = part.Contains("background_context", StringComparison.OrdinalIgnoreCase);
-
-                string bg = numeric ? "#EAF7EF" : official ? "#EEF4FF" : background ? "#FFF7E8" : "#F2F4F7";
-                string fg = numeric ? "#1F7A3A" : official ? "#245A9B" : background ? "#9A5A00" : "#475467";
-
-                wrap.Children.Add(CreateWorkspaceBadge(part, bg, fg));
-            }
-
-            return wrap;
-        }
-
-        private Border CreateWorkspaceBadge(string text, string bgHex, string fgHex)
-        {
-            return new Border
-            {
-                Background = CreateBrush(bgHex, bgHex),
-                CornerRadius = new CornerRadius(999),
-                Padding = new Thickness(7, 3, 7, 3),
-                Margin = new Thickness(0, 0, 5, 5),
-                Child = new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(text) ? "-" : text,
-                    FontSize = 10.5,
-                    FontWeight = FontWeights.Medium,
-                    Foreground = CreateBrush(fgHex, fgHex),
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-        }
-
-        private Border CreateWorkspaceTextCard(string text, bool muted)
-        {
-            return new Border
-            {
-                Background = CreateBrush(muted ? "#FAFBFD" : "#FFFFFF", "#FAFBFD"),
-                BorderBrush = CreateBrush("#EEF1F4", "#EEF1F4"),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(8, 6, 8, 6),
-                Margin = new Thickness(0, 0, 0, 6),
-                Child = new TextBlock
-                {
-                    Text = string.IsNullOrWhiteSpace(text) ? "-" : text,
-                    FontSize = 11.5,
-                    Foreground = CreateBrush(muted ? "#666666" : "#333333", "#666666"),
-                    TextWrapping = TextWrapping.Wrap
-                }
-            };
-        }
-
-        private void AttachCopyContextMenu(
-            FrameworkElement target,
-            string menuText,
-            Func<string> copyTextProvider,
-            Action? applyDownstreamPlan = null)
-        {
-            if (target == null || copyTextProvider == null)
-                return;
-
-            var item = new MenuItem
-            {
-                Header = string.IsNullOrWhiteSpace(menuText) ? "複製" : menuText,
-                Style = TryFindResource("FileMenuItemStyle") as Style
-            };
-
-            item.Click += (_, __) =>
-            {
-                string text = copyTextProvider() ?? "";
-                if (string.IsNullOrWhiteSpace(text))
-                    return;
-
-                try
-                {
-                    Clipboard.SetText(text);
-                }
-                catch
-                {
-                    // Clipboard may be temporarily locked by another process.
-                }
-            };
-
-            var menu = new ContextMenu
-            {
-                Style = TryFindResource("FileContextMenuStyle") as Style
-            };
-
-            menu.Items.Add(item);
-
-            if (applyDownstreamPlan != null)
-            {
-                var sepStyle = TryFindResource("FileSeparatorStyle") as Style;
-                var applyItem = new MenuItem
-                {
-                    Header = "套用到畫布",
-                    Style = TryFindResource("FileMenuItemStyle") as Style
-                };
-
-                applyItem.Click += (_, __) => applyDownstreamPlan();
-
-                menu.Items.Add(new Separator { Style = sepStyle });
-                menu.Items.Add(applyItem);
-            }
-
-            target.ContextMenu = menu;
-        }
-
-        private SolidColorBrush GetStepBrush(NodeDecisionStepState state)
-        {
-            return state switch
-            {
-                NodeDecisionStepState.Success => CreateBrush("#2E9B52", "#2E9B52"),
-                NodeDecisionStepState.Warning => CreateBrush("#D48A00", "#D48A00"),
-                NodeDecisionStepState.Error => CreateBrush("#C93C3C", "#C93C3C"),
-                _ => CreateBrush("#4F7EF7", "#4F7EF7")
-            };
-        }
-
-        private SolidColorBrush GetStepSoftBrush(NodeDecisionStepState state)
-        {
-            return state switch
-            {
-                NodeDecisionStepState.Success => CreateBrush("#EAF7EF", "#EAF7EF"),
-                NodeDecisionStepState.Warning => CreateBrush("#FFF5E7", "#FFF5E7"),
-                NodeDecisionStepState.Error => CreateBrush("#FDECEC", "#FDECEC"),
-                _ => CreateBrush("#EDF3FF", "#EDF3FF")
-            };
-        }
-
-        private SolidColorBrush GetStepBorderBrush(NodeDecisionStepState state, bool highlight)
-        {
-            if (highlight)
-            {
-                return state switch
-                {
-                    NodeDecisionStepState.Success => CreateBrush("#BFE3CB", "#BFE3CB"),
-                    NodeDecisionStepState.Warning => CreateBrush("#F1D39B", "#F1D39B"),
-                    NodeDecisionStepState.Error => CreateBrush("#E9B0B0", "#E9B0B0"),
-                    _ => CreateBrush("#C9D9FF", "#C9D9FF")
-                };
-            }
-
-            return state switch
-            {
-                NodeDecisionStepState.Success => CreateBrush("#D7EBDD", "#D7EBDD"),
-                NodeDecisionStepState.Warning => CreateBrush("#F3E2BA", "#F3E2BA"),
-                NodeDecisionStepState.Error => CreateBrush("#F0CCCC", "#F0CCCC"),
-                _ => CreateBrush("#E8ECF3", "#E8ECF3")
-            };
-        }
-
-        private static string GetStepStateLabel(NodeDecisionStepState state)
-        {
-            return state switch
-            {
-                NodeDecisionStepState.Success => "Success",
-                NodeDecisionStepState.Warning => "Warning",
-                NodeDecisionStepState.Error => "Error",
-                _ => "Info"
-            };
-        }
+                },
+                materializeDownstreamPlan: TryMaterializeDownstreamNodePlanFromText);
+
+        private void RenderDecisionTimeline(IReadOnlyList<NodeDecisionStepViewData> steps)
+            => DecisionRenderer.Render(steps);
         private void ApplyDecisionThemeByMode(
     string status,
     string mode,
@@ -2809,6 +1335,9 @@ namespace Cat5201
             // 花費帳本（花錢安全）：在任何執行之前載入，之後每筆 LLM/媒體成本都會累計。
             SpendLedger.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
 
+            // #10 長任務日誌：影片 operation 落地/恢復用（與帳本同資料夾）。
+            VideoJobJournal.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
+
             // 全域個人化偏好先載入（在同步開關之前），確保所有設定一律以個人化為準，跨專案、跨重啟一致。
             LoadPreferences();
             SyncDownstreamAutoModeRadios();
@@ -2825,6 +1354,9 @@ namespace Cat5201
 
             // P2-1 首次啟動精靈：四把主金鑰全空 → 引導輸入與驗證。
             ShowOnboardingIfNoKeys();
+
+            // #10：上次關程式前有已付費、未完成的影片任務 → 問使用者要不要接續取回（不重複付費）。
+            OfferResumePendingVideoJobs();
 
             SetRandomStartMessage();
             RefreshFileList();
@@ -3033,15 +1565,7 @@ namespace Cat5201
 
             try
             {
-                File.Delete(path);
-                TryDeleteSidecarBak(path); // AtomicFile 每次存檔留的 .json.bak，主檔刪了它就是孤兒垃圾，一起清。
-
-                var folder = GetAttachmentFolderForFile(path);
-                if (Directory.Exists(folder))
-                {
-                    try { Directory.Delete(folder, recursive: true); }
-                    catch (Exception ex) { AppLog.Warn("Project", "刪除專案資料夾失敗（可能有檔案被占用）", ex); }
-                }
+                Store.Delete(path); // 主檔+.bak+附件資料夾一次清（磁碟事務在 ProjectStore）
 
                 if (!string.IsNullOrEmpty(_currentFilePath) &&
                     string.Equals(_currentFilePath, path, StringComparison.OrdinalIgnoreCase))
@@ -3076,34 +1600,78 @@ namespace Cat5201
             }
         }
 
-        // AtomicFile 原子寫入時會把舊內容留成同名 .bak（斷電保護）。專案主檔一旦刪除/改名，
-        // 這個 .bak 就成了不會出現在清單、只在檔案總管現形的孤兒——刪除時清掉、改名時跟著搬。
-        private static void TryDeleteSidecarBak(string jsonPath)
-        {
-            try
-            {
-                var bak = jsonPath + ".bak";
-                if (File.Exists(bak))
-                    File.Delete(bak);
-            }
-            catch (Exception ex) { AppLog.Warn("Project", "清除 .bak 備份失敗", ex); }
-        }
 
-        private static void TryMoveSidecarBak(string oldJsonPath, string newJsonPath)
+        // ===== #10 長任務恢復：上次未完成的影片 operation（已付費）續輪詢取回 =====
+
+        private void OfferResumePendingVideoJobs()
         {
             try
             {
-                var oldBak = oldJsonPath + ".bak";
-                if (!File.Exists(oldBak))
+                var pending = VideoJobJournal.GetResumable();
+                if (pending.Count == 0)
                     return;
 
-                var newBak = newJsonPath + ".bak";
-                if (File.Exists(newBak))
-                    File.Delete(newBak);
+                string preview = string.Join("\n", pending.Take(3).Select(j =>
+                    "・" + VideoJobJournal.Summarize(j.Prompt)));
 
-                File.Move(oldBak, newBak);
+                bool ok = MenuConfirmDialog.ShowConfirm(
+                    owner: this,
+                    title: "未完成的影片任務",
+                    message: $"偵測到 {pending.Count} 個上次未完成的影片生成（費用已支付）：\n{preview}\n\n" +
+                             "要接續查詢並取回嗎？只是查詢雲端進度，不會重新付費。",
+                    resourceHost: this,
+                    confirmText: "取回",
+                    cancelText: "略過");
+
+                if (ok)
+                    _ = ResumePendingVideoJobsAsync(pending);
             }
-            catch (Exception ex) { AppLog.Warn("Project", "搬移 .bak 備份失敗", ex); }
+            catch (Exception ex) { AppLog.Warn("VideoJobs", "影片任務恢復提示失敗", ex); }
+        }
+
+        private async Task ResumePendingVideoJobsAsync(IReadOnlyList<VideoJobJournal.VideoJob> jobs)
+        {
+            int okCount = 0;
+            var failMsgs = new List<string>();
+
+            foreach (var job in jobs)
+            {
+                try
+                {
+                    var veo = new VeoVideoService();
+                    var result = await veo.ResumeAsync(job.OperationName, onProgress: null, CancellationToken.None);
+
+                    if (result.Success && result.Mp4Bytes.Length > 0)
+                    {
+                        var payload = GeneratedFileWriter.WriteVideo(
+                            GetGeneratedFilesDir(),
+                            title: string.IsNullOrWhiteSpace(job.Prompt)
+                                ? "恢復的影片"
+                                : "恢復的影片_" + VideoJobJournal.Summarize(job.Prompt, 24).TrimEnd('…'),
+                            content: result.Mp4Bytes,
+                            sourceSummary: "程式重啟後接續取回（Veo operation 續輪詢，未重新付費）");
+
+                        if (payload.Success) okCount++;
+                        else failMsgs.Add(payload.ErrorMessage);
+                    }
+                    else
+                    {
+                        failMsgs.Add(string.IsNullOrWhiteSpace(result.ErrorMessage) ? "未知原因" : result.ErrorMessage);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failMsgs.Add(ex.Message);
+                    AppLog.Warn("VideoJobs", $"影片任務恢復失敗：{job.OperationName}", ex);
+                }
+            }
+
+            string summary = okCount > 0 ? $"已取回 {okCount} 支影片到產出資料夾（_generated）。" : "";
+            if (failMsgs.Count > 0)
+                summary += $"\n{failMsgs.Count} 個未能取回：{failMsgs[0]}";
+
+            MenuConfirmDialog.ShowMessage(this, "影片任務恢復",
+                string.IsNullOrWhiteSpace(summary) ? "沒有可取回的影片。" : summary.Trim(), this);
         }
 
         // ===== 就地改名（右鍵→重新命名）：名稱原地變輸入框，Enter 確認 / Esc 取消 / 失焦確認 =====
@@ -3181,53 +1749,26 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(newName))
                 return;
 
-            var newPath = System.IO.Path.Combine(SavesDir, newName + ".json");
-
-            if (string.Equals(oldPath, newPath, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            if (File.Exists(newPath))
-            {
-                MenuConfirmDialog.ShowMessage(this, "重新命名失敗", "已存在同名檔案，請換一個名稱。", this);
-                return;
-            }
-
             try
             {
                 var oldBaseName = DisplayNameFromPath(oldPath);
-                var newBaseName = DisplayNameFromPath(newPath);
 
-                var oldFolder = GetAttachmentFolderForFile(oldPath);
-                var newFolder = GetAttachmentFolderForFile(newPath);
-
-                File.Move(oldPath, newPath);
-                TryMoveSidecarBak(oldPath, newPath); // 舊名的 .json.bak 跟著搬到新名，否則留在原名下變孤兒。
-
-                bool attachmentFolderHandled = MoveAttachmentFolderSafely(oldFolder, newFolder, out var folderMoveError);
-                if (!attachmentFolderHandled)
+                // 磁碟事務（Move+.bak+附件資料夾+路徑改寫+鎖定旗標+失敗回滾）整包在 ProjectStore。
+                var result = Store.Rename(oldPath, newName);
+                if (!result.Ok)
                 {
-                    try
-                    {
-                        if (File.Exists(newPath) && !File.Exists(oldPath))
-                            File.Move(newPath, oldPath);
-                    }
-                    catch (Exception ex) { AppLog.Warn("Project", "改名失敗後回滾檔名也失敗（檔名可能不一致）", ex); }
-
-                    MenuConfirmDialog.ShowMessage(this, "錯誤",
-                        $"重新命名失敗：附件資料夾無法同步搬移。\n{folderMoveError}", this);
+                    if (!string.IsNullOrWhiteSpace(result.Error))
+                        MenuConfirmDialog.ShowMessage(this, "重新命名失敗", result.Error, this);
                     return;
                 }
-
-                RewriteAttachmentRelativePathsOnDisk(newPath, oldBaseName, newBaseName);
-                MarkFileNameLockedOnDisk(newPath);
 
                 if (!string.IsNullOrEmpty(_currentFilePath) &&
                     string.Equals(_currentFilePath, oldPath, StringComparison.OrdinalIgnoreCase))
                 {
-                    _currentFilePath = newPath;
+                    _currentFilePath = result.NewPath;
                     _fileNameLockedByUser = true;
 
-                    UpdateAttachmentRelativePathsInMemory(oldBaseName, newBaseName);
+                    UpdateAttachmentRelativePathsInMemory(oldBaseName, DisplayNameFromPath(result.NewPath));
                     RefreshAllNodeAttachmentUIs();
 
                     CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
@@ -3236,7 +1777,7 @@ namespace Cat5201
                 }
 
                 RefreshFileList();
-                SelectFileInList(newPath);
+                SelectFileInList(result.NewPath);
             }
             catch (Exception ex)
             {
@@ -3244,66 +1785,7 @@ namespace Cat5201
             }
         }
 
-        private bool MoveAttachmentFolderSafely(string oldFolder, string newFolder, out string errorMessage)
-        {
-            errorMessage = "";
-
-            try
-            {
-                if (string.Equals(oldFolder, newFolder, StringComparison.OrdinalIgnoreCase))
-                    return true;
-
-                if (!Directory.Exists(oldFolder))
-                    return true;
-
-                if (!Directory.Exists(newFolder))
-                {
-                    Directory.Move(oldFolder, newFolder);
-                    return true;
-                }
-
-                Directory.CreateDirectory(newFolder);
-
-                foreach (var srcFile in Directory.GetFiles(oldFolder))
-                {
-                    var fileName = System.IO.Path.GetFileName(srcFile);
-                    var destFile = System.IO.Path.Combine(newFolder, fileName);
-
-                    if (File.Exists(destFile))
-                    {
-                        var uniqueName = $"{System.IO.Path.GetFileNameWithoutExtension(fileName)}_{Guid.NewGuid():N}{System.IO.Path.GetExtension(fileName)}";
-                        destFile = System.IO.Path.Combine(newFolder, uniqueName);
-                    }
-
-                    File.Move(srcFile, destFile);
-                }
-
-                foreach (var srcDir in Directory.GetDirectories(oldFolder))
-                {
-                    var dirName = System.IO.Path.GetFileName(srcDir);
-                    var destDir = System.IO.Path.Combine(newFolder, dirName);
-
-                    if (Directory.Exists(destDir))
-                    {
-                        destDir = System.IO.Path.Combine(newFolder, $"{dirName}_{Guid.NewGuid():N}");
-                    }
-
-                    Directory.Move(srcDir, destDir);
-                }
-
-                if (!Directory.EnumerateFileSystemEntries(oldFolder).Any())
-                {
-                    Directory.Delete(oldFolder, recursive: false);
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                errorMessage = ex.Message;
-                return false;
-            }
-        }
+        // MoveAttachmentFolderSafely / .bak sidecar / 附件路徑改寫 → 已抽出到 ProjectStore（第 1 刀）。
 
         private void RefreshAllNodeAttachmentUIs()
         {
@@ -4636,10 +3118,7 @@ namespace Cat5201
             => ReferenceEquals(_initialNode, node);
 
         private string GetAttachmentFolderForFile(string filePath)
-        {
-            var baseName = DisplayNameFromPath(filePath);
-            return System.IO.Path.Combine(AttachmentsRootDir, baseName);
-        }
+            => Store.GetAttachmentFolder(filePath);
 
         private string? GetCurrentAttachmentFolder()
         {
@@ -5172,61 +3651,16 @@ namespace Cat5201
             SaveState();
         }
 
-        private static string ReplaceAttachmentRelativeBase(string relativePath, string oldBaseName, string newBaseName)
-        {
-            if (string.IsNullOrWhiteSpace(relativePath))
-                return relativePath ?? "";
-
-            var normalized = relativePath.Replace('/', '\\');
-            var oldPrefix = oldBaseName + "\\";
-
-            if (normalized.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase))
-            {
-                return newBaseName + normalized.Substring(oldBaseName.Length);
-            }
-
-            var fileName = System.IO.Path.GetFileName(normalized);
-            if (string.IsNullOrWhiteSpace(fileName))
-                return System.IO.Path.Combine(newBaseName, normalized);
-
-            return System.IO.Path.Combine(newBaseName, fileName);
-        }
-
+        // 附件相對路徑改寫的磁碟版已在 ProjectStore;這裡只剩「已載入節點」的記憶體同步。
         private void UpdateAttachmentRelativePathsInMemory(string oldBaseName, string newBaseName)
         {
             foreach (var kv in _attachmentsByNode)
             {
                 foreach (var a in kv.Value)
                 {
-                    a.RelativePath = ReplaceAttachmentRelativeBase(a.RelativePath, oldBaseName, newBaseName);
+                    a.RelativePath = ProjectStore.ReplaceAttachmentRelativeBase(a.RelativePath, oldBaseName, newBaseName);
                 }
             }
-        }
-
-        private void RewriteAttachmentRelativePathsOnDisk(string filePath, string oldBaseName, string newBaseName)
-        {
-            try
-            {
-                if (!File.Exists(filePath)) return;
-
-                var json = File.ReadAllText(filePath);
-                var state = JsonSerializer.Deserialize<AppState>(json);
-                if (state == null) return;
-
-                var newAttachments = (state.Attachments ?? new List<AttachmentState>())
-                    .Select(a => new AttachmentState(
-                        a.NodeId,
-                        a.FileName,
-                        ReplaceAttachmentRelativeBase(a.RelativePath, oldBaseName, newBaseName),
-                        a.MimeType,
-                        a.Kind))
-                    .ToList();
-
-                var rewritten = state with { Attachments = newAttachments };
-                var newJson = JsonSerializer.Serialize(rewritten, new JsonSerializerOptions { WriteIndented = true });
-                AtomicFile.WriteAllText(filePath, newJson);
-            }
-            catch (Exception ex) { AppLog.Warn("Project", "改名後改寫專案附件路徑失敗", ex); }
         }
 
         private void SaveState()
@@ -5316,14 +3750,14 @@ namespace Cat5201
     TaskRoutingOverrides: _taskRoutingOverrides.ToStorage(),
     BlockOpus: AiAutoCostPolicy.BlockOpus,
     BlockDeepResearch: AiAutoCostPolicy.BlockDeepResearch,
-    ManualTimeoutSeconds: _manualTimeoutSeconds
+    ManualTimeoutSeconds: _manualTimeoutSeconds,
+    SchemaVersion: ProjectStore.CurrentSchemaVersion
 );
 
             if (string.IsNullOrEmpty(_currentFilePath))
-                _currentFilePath = System.IO.Path.Combine(SavesDir, DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".json");
+                _currentFilePath = Store.NewProjectPath();
 
-            var json = JsonSerializer.Serialize(state, new JsonSerializerOptions { WriteIndented = true });
-            AtomicFile.WriteAllText(_currentFilePath!, json); // 原子寫入：專案檔（使用者的畫布）絕不因崩潰毀損
+            Store.Save(state, _currentFilePath!);
 
             // 個人化偏好與專案檔分離，但任何一次存檔都順手把全域偏好也寫回，確保隨時最新。
             SavePreferences();
@@ -5335,8 +3769,8 @@ namespace Cat5201
         {
             if (!File.Exists(path)) return;
 
-            string json = File.ReadAllText(path);
-            var state = JsonSerializer.Deserialize<AppState>(json);
+            // Store.Load 含 .bak fallback:主檔毀損時自動退上一版備份(原本直接 ReadAllText 沒這層救)。
+            var state = Store.Load(path);
             if (state == null) return;
 
             StartUI.Visibility = Visibility.Collapsed;
@@ -5607,22 +4041,11 @@ namespace Cat5201
                 var oldBaseName = DisplayNameFromPath(_currentFilePath);
                 var newBaseName = DisplayNameFromPath(newPath);
 
-                var oldFolder = GetAttachmentFolderForFile(_currentFilePath);
-                var newFolder = GetAttachmentFolderForFile(newPath);
-
-                File.Move(_currentFilePath, newPath);
-
-                bool attachmentFolderHandled = MoveAttachmentFolderSafely(oldFolder, newFolder, out var folderMoveError);
-                if (!attachmentFolderHandled)
+                // 低階搬移（不鎖檔名——鎖了自動命名就再也不會跑）；.bak 與附件資料夾一起搬、失敗自動回滾。
+                var moved = Store.MoveProject(_currentFilePath, newPath);
+                if (!moved.Ok)
                 {
-                    try
-                    {
-                        if (File.Exists(newPath) && !File.Exists(originalPath))
-                            File.Move(newPath, originalPath);
-                    }
-                    catch (Exception ex) { AppLog.Warn("Project", "自動改名失敗後回滾也失敗（檔名可能不一致）", ex); }
-
-                    Debug.WriteLine("Auto rename aborted because attachment folder move failed: " + folderMoveError);
+                    Debug.WriteLine("Auto rename aborted because attachment folder move failed: " + moved.Error);
                     return;
                 }
 
@@ -5752,24 +4175,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             return desiredFullPath;
         }
 
-        private void MarkFileNameLockedOnDisk(string filePath)
-        {
-            try
-            {
-                if (!File.Exists(filePath)) return;
-
-                var json = File.ReadAllText(filePath);
-                var state = JsonSerializer.Deserialize<AppState>(json);
-                if (state == null) return;
-
-                if (state.FileNameLocked) return;
-
-                var locked = state with { FileNameLocked = true };
-                var newJson = JsonSerializer.Serialize(locked, new JsonSerializerOptions { WriteIndented = true });
-                AtomicFile.WriteAllText(filePath, newJson);
-            }
-            catch (Exception ex) { AppLog.Warn("Project", "寫入檔名鎖定旗標失敗", ex); }
-        }
+        private void MarkFileNameLockedOnDisk(string filePath) => Store.MarkFileNameLockedOnDisk(filePath);
 
         private void CenterOnInitialButton_Click(object sender, RoutedEventArgs e)
         {
@@ -7698,226 +6104,6 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
             await Task.WhenAll(branchTasks);
         }
-        internal static class MenuConfirmDialog
-        {
-            // 通用確認框（兩顆鈕）。回傳 true = 按下確認鈕。取代原生 MessageBox 的 Yes/No、OKCancel。
-            public static bool ShowConfirm(
-                Window owner, string title, string message, FrameworkElement resourceHost,
-                string confirmText = "確定", string cancelText = "取消", bool danger = false,
-                Action<Window>? onShown = null, int autoConfirmSeconds = 0)
-            {
-                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, confirmText, cancelText, danger, autoConfirmSeconds);
-                // 手機鏡像（§17 階段二）遠端回答用：把視窗參照交給呼叫端，讓手機也能設 DialogResult 關閉此框。
-                // 其他呼叫者不傳 onShown / autoConfirmSeconds，行為完全不變。
-                if (onShown != null)
-                    dlg.Loaded += (_, __) => onShown(dlg);
-                return dlg.ShowDialog() == true;
-            }
-
-            // 通用訊息框（單顆鈕，純告知）。取代原生 MessageBox 的 OK 訊息/錯誤/警告。
-            public static void ShowMessage(
-                Window owner, string title, string message, FrameworkElement resourceHost,
-                string okText = "確定")
-            {
-                var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, okText, null, false, 0);
-                dlg.ShowDialog();
-            }
-
-            // 刪除確認（紅色「刪除」鈕）。
-            public static bool ShowDeleteConfirm(Window owner, string title, string message, FrameworkElement resourceHost)
-            {
-                return ShowConfirm(owner, title, message, resourceHost, confirmText: "刪除", cancelText: "取消", danger: true);
-            }
-
-            private sealed class MenuConfirmWindow : Window
-            {
-                public MenuConfirmWindow(Window owner, string title, string message, FrameworkElement resourceHost,
-                    string confirmText, string? cancelText, bool danger, int autoConfirmSeconds = 0)
-                {
-                    Owner = owner;
-                    Title = title;
-
-                    WindowStyle = WindowStyle.None;
-                    ResizeMode = ResizeMode.NoResize;
-                    AllowsTransparency = true;
-                    Background = Brushes.Transparent;
-                    ShowInTaskbar = false;
-                    Topmost = true;
-                    WindowStartupLocation = WindowStartupLocation.CenterOwner;
-
-                    Width = 360;
-                    SizeToContent = SizeToContent.Height;   // 依內容自動長高，避免長訊息被截斷
-                    MaxHeight = 600;
-
-                    var bg = TryGetBrush(resourceHost, "FileMenuBg", "NodeMenuBg", Colors.White);
-                    var border = TryGetBrush(resourceHost, "FileMenuBorder", "NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#D6D6D6")!);
-                    var text = TryGetBrush(resourceHost, "FileMenuText", "NodeMenuText", (Color)ColorConverter.ConvertFromString("#222222")!);
-
-                    var outer = new Border
-                    {
-                        Background = bg,
-                        BorderBrush = border,
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(12),
-                        Padding = new Thickness(12),
-                        SnapsToDevicePixels = true
-                    };
-
-                    outer.MouseLeftButtonDown += (_, e) =>
-                    {
-                        if (e.ButtonState == MouseButtonState.Pressed)
-                        {
-                            try { DragMove(); } catch { }
-                        }
-                    };
-
-                    var root = new Grid();
-                    root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                    root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-                    root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-                    var titleText = new TextBlock
-                    {
-                        Text = title,
-                        Foreground = text,
-                        FontSize = 13,
-                        FontWeight = FontWeights.SemiBold,
-                        Margin = new Thickness(0, 0, 0, 8)
-                    };
-                    Grid.SetRow(titleText, 0);
-                    root.Children.Add(titleText);
-
-                    var msgText = new TextBlock
-                    {
-                        Text = message,
-                        Foreground = text,
-                        FontSize = 13,
-                        TextWrapping = TextWrapping.Wrap,
-                        TextAlignment = TextAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                        VerticalAlignment = VerticalAlignment.Center
-                    };
-                    Grid.SetRow(msgText, 1);
-                    root.Children.Add(msgText);
-
-                    var btnPanel = new StackPanel
-                    {
-                        Orientation = Orientation.Horizontal,
-                        HorizontalAlignment = HorizontalAlignment.Right,
-                        Margin = new Thickness(0, 12, 0, 0)
-                    };
-
-                    if (!string.IsNullOrEmpty(cancelText))
-                    {
-                        var cancel = CreateMenuButton(cancelText, text);
-                        cancel.IsCancel = true;
-                        cancel.Margin = new Thickness(0, 0, 8, 0);
-                        cancel.Click += (_, __) => { DialogResult = false; Close(); };
-                        btnPanel.Children.Add(cancel);
-                    }
-
-                    var confirmBrush = danger
-                        ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F")!)
-                        : text;
-                    var confirm = CreateMenuButton(confirmText, confirmBrush);
-                    confirm.IsDefault = true;
-                    confirm.Click += (_, __) => { DialogResult = true; Close(); };
-                    btnPanel.Children.Add(confirm);
-
-                    // 自動同意倒數（產檔確認框用）：按鈕顯示剩餘秒數，逾時未選擇＝按下確認。
-                    // 只有明確傳入 autoConfirmSeconds > 0 的呼叫者會啟用；刪除確認等其他對話框絕不自動同意。
-                    if (autoConfirmSeconds > 0)
-                    {
-                        int remaining = autoConfirmSeconds;
-                        confirm.Content = $"{confirmText}（{remaining}）";
-                        var countdown = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-                        countdown.Tick += (_, __) =>
-                        {
-                            remaining--;
-                            if (remaining <= 0)
-                            {
-                                countdown.Stop();
-                                try { DialogResult = true; } catch { }
-                                Close();
-                                return;
-                            }
-                            confirm.Content = $"{confirmText}（{remaining}）";
-                        };
-                        Closed += (_, __) => countdown.Stop(); // 任一方式關閉（含手機遠端回答）都停表
-                        countdown.Start();
-                    }
-
-                    Grid.SetRow(btnPanel, 2);
-                    root.Children.Add(btnPanel);
-
-                    outer.Child = root;
-                    Content = outer;
-
-                    PreviewKeyDown += (_, e) =>
-                    {
-                        if (e.Key == Key.Escape)
-                        {
-                            DialogResult = false;
-                            Close();
-                            e.Handled = true;
-                        }
-                        else if (e.Key == Key.Enter)
-                        {
-                            DialogResult = true;
-                            Close();
-                            e.Handled = true;
-                        }
-                    };
-                }
-
-                private static Button CreateMenuButton(string caption, Brush fg)
-                {
-                    var btn = new Button
-                    {
-                        Content = caption,
-                        FontSize = 13,
-                        Foreground = fg,
-                        Background = Brushes.Transparent,
-                        BorderThickness = new Thickness(0),
-                        Padding = new Thickness(8, 6, 8, 6),
-                        Cursor = Cursors.Hand
-                    };
-
-                    btn.MouseEnter += (_, __) => btn.Opacity = 0.85;
-                    btn.MouseLeave += (_, __) => btn.Opacity = 1.0;
-                    btn.PreviewMouseLeftButtonDown += (_, __) => btn.Opacity = 0.70;
-                    btn.PreviewMouseLeftButtonUp += (_, __) => btn.Opacity = 0.85;
-
-                    return btn;
-                }
-
-                public bool NodeAcceptsAutoFlowInput(NodeControl node)
-                {
-                    if (node == null)
-                        return false;
-
-                    if (node.GetTopLocked())
-                        return false;
-
-                    string template = node.GetTopText() ?? "";
-                    if (string.IsNullOrWhiteSpace(template))
-                        return false;
-
-                    return template.Contains("{{input}}", StringComparison.Ordinal);
-                }
-                private static Brush TryGetBrush(FrameworkElement host, string key1, string key2, Color fallback)
-                {
-                    try
-                    {
-                        if (host.TryFindResource(key1) is Brush b1) return b1;
-                        if (host.TryFindResource(key2) is Brush b2) return b2;
-                        if (Application.Current?.TryFindResource(key1) is Brush b3) return b3;
-                        if (Application.Current?.TryFindResource(key2) is Brush b4) return b4;
-                    }
-                    catch { }
-                    return new SolidColorBrush(fallback);
-                }
-            }
-        }
+        // MenuConfirmDialog / MenuConfirmWindow → 已搬到 MenuConfirmDialog.cs(第 3 刀)。
     }
 }

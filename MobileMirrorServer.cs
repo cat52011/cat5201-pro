@@ -58,7 +58,9 @@ namespace Cat5201
         {
             if (_app != null) return;
 
-            _token = Guid.NewGuid().ToString("N").Substring(0, 12);
+            // 128-bit 密碼學隨機權杖（P1-7 便宜半份）：舊的 12 hex＝48-bit 對區網暴力猜測太短。
+            // QR 掃碼連線,URL 長一點對使用者無感。
+            _token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 
             var builder = WebApplication.CreateBuilder();
             builder.Logging.ClearProviders();                 // WinExe 無主控台，關掉預設 log provider

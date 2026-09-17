@@ -797,6 +797,13 @@ namespace Cat5201
         {
             if (TopEditor != null) TopEditor.FontSize = size;
             if (BottomDisplay != null) BottomDisplay.FontSize = size;
+            if (BottomRich != null)
+            {
+                BottomRich.FontSize = size;
+                // 渲染中：標題字級是相對倍率算的，重建 Document 才會一起縮放。
+                if (BottomRich.Visibility == Visibility.Visible && _bottomRawText != null)
+                    ShowRenderedBottom(_bottomRawText);
+            }
         }
 
         private void UpdateAutoTaskPreview()
@@ -1021,7 +1028,7 @@ namespace Cat5201
                     if (System.IO.File.Exists(path))
                         System.IO.File.Delete(path);
                 }
-                catch { }
+                catch (Exception ex) { AppLog.Warn("Node", $"暫存檔清理失敗（磁碟會殘檔）：{path}", ex); }
             }
             _pendingFilePaths.Clear();
 
@@ -1227,7 +1234,7 @@ namespace Cat5201
 
             if (sender is Button btn && btn.Tag is AttachmentVm vm)
             {
-                bool ok = MainWindow.MenuConfirmDialog.ShowDeleteConfirm(
+                bool ok = MenuConfirmDialog.ShowDeleteConfirm(
                     owner: _parent,
                     title: "刪除確認",
                     message: $"確定要刪除附件？\n{vm.FileName}",
@@ -1436,7 +1443,7 @@ namespace Cat5201
 
             if (_parent.HasOutgoingConnections(this))
             {
-                var ok = MainWindow.MenuConfirmDialog.ShowDeleteConfirm(
+                var ok = MenuConfirmDialog.ShowDeleteConfirm(
                     owner: _parent,
                     title: "確認刪除",
                     message: "當前區塊不是末端區塊，是否確認刪除？",
@@ -1493,7 +1500,7 @@ namespace Cat5201
 
             if (_parent == null)
             {
-                MainWindow.MenuConfirmDialog.ShowMessage(Application.Current.MainWindow, "錯誤", "（找不到 MainWindow，無法上傳）", Application.Current.MainWindow);
+                MenuConfirmDialog.ShowMessage(Application.Current.MainWindow, "錯誤", "（找不到 MainWindow，無法上傳）", Application.Current.MainWindow);
                 return;
             }
 
@@ -1636,7 +1643,7 @@ namespace Cat5201
                 if (_parent == null)
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
-                    _bottomRawText = null;
+                    MarkBottomPlain();
                     BottomDisplay.Text = "找不到主視窗，目前無法呼叫 AI。請重新開啟節點再試。";
                     ApplyRunStatus(NodeRunStatus.Failed, "主視窗未連接");
                     return;
@@ -1645,7 +1652,7 @@ namespace Cat5201
                 if (_parent.NodeService == null)
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
-                    _bottomRawText = null;
+                    MarkBottomPlain();
                     BottomDisplay.Text = "AI 服務尚未準備好，請稍候幾秒再試一次。";
                     ApplyRunStatus(NodeRunStatus.Failed, "服務初始化中");
                     return;
@@ -1655,7 +1662,7 @@ namespace Cat5201
                 if (!_parent.CheckDailyBudgetAllows(out string budgetMessage))
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
-                    _bottomRawText = null;
+                    MarkBottomPlain();
                     BottomDisplay.Text = budgetMessage;
                     ApplyRunStatus(NodeRunStatus.Failed, "已達每日花費上限");
                     return;
@@ -1674,7 +1681,7 @@ namespace Cat5201
                         if (_isShowingLoadingText)
                             StopBottomLoadingAnimation(clearIfLoading: true);
 
-                        _bottomRawText = null; // 串流中：顯示=資料（結束後才換成清過記號的版本）
+                        MarkBottomPlain(); // 串流中：顯示=資料（結束後才換成清過記號的版本）
                         BottomDisplay.AppendText(delta);
                         BottomDisplay.ScrollToEnd();
                     });
@@ -1695,20 +1702,21 @@ namespace Cat5201
                     }
                     else
                     {
-                        _bottomRawText = null;
+                        MarkBottomPlain();
                         BottomDisplay.Text = "AI 這次沒有回傳內容，可能是請求被中斷或模型無回應。請再試一次。";
                         ApplyRunStatus(NodeRunStatus.Failed, "沒有回傳內容");
                     }
                 }
                 else
                 {
-                    // 資料留原文（下游/存檔/builder 用），顯示用清過 Markdown 記號的版本。
+                    // 資料留原文（下游/存檔/builder 用）；TextBox 存清過記號的版本保底，畫面切到 FlowDocument 真渲染。
                     _bottomRawText = finalReply.Trim();
                     string display = MarkdownDisplayText.Clean(_bottomRawText);
                     if (!string.Equals(BottomDisplay.Text, display, StringComparison.Ordinal))
                     {
                         BottomDisplay.Text = display;
                     }
+                    ShowRenderedBottom(_bottomRawText);
 
                     ApplyRunStatus(NodeRunStatus.Success);
                 }
@@ -1723,7 +1731,7 @@ namespace Cat5201
                 if (externalToken.IsCancellationRequested || _activeManualStop?.IsCancellationRequested == true)
                 {
                     // 使用者主動「停止」（工作流鏈，或手機遠端停止）：不是逾時，給對應訊息與狀態。
-                    _bottomRawText = null;
+                    MarkBottomPlain();
                     BottomDisplay.Text =
                         "已手動停止。這一步尚未完成。\n" +
                         "可右鍵「執行此節點與下游」從這裡重跑，或「略過此步、從下一步續跑」。";
@@ -1731,7 +1739,7 @@ namespace Cat5201
                 }
                 else
                 {
-                    _bottomRawText = null;
+                    MarkBottomPlain();
                     BottomDisplay.Text =
                         $"AI 回應逾時。這次任務超過 {FormatTimeout(executionTimeout)} 仍未完成，已自動取消。\n" +
                         "可以試著縮短問題、減少附件，或換一個較快的模型再試。";
@@ -1742,7 +1750,7 @@ namespace Cat5201
             {
                 StopBottomLoadingAnimation(clearIfLoading: true);
                 string friendly = BuildFriendlyError(ex);
-                _bottomRawText = null;
+                MarkBottomPlain();
                 BottomDisplay.Text = friendly;
                 ApplyRunStatus(NodeRunStatus.Failed, friendly);
             }
@@ -2032,28 +2040,14 @@ namespace Cat5201
             return TimeSpan.FromMinutes(3);
         }
 
-        // 生成圖片偵測：關鍵詞需與 OrchestrationPlanner.ResolveTaskType 的 ImageGeneration 清單保持一致。
+        // 生成圖片偵測（逾時策略用）：與 OrchestrationPlanner 共用 MediaTaskKeywords 單一真相，不再人工同步清單。
         private static bool IsImageTask(string? topText)
-        {
-            string text = topText ?? "";
-            string lower = text.ToLowerInvariant();
+            => MediaTaskKeywords.IsImageGenerationCommand(topText);
 
-            return ContainsAny(text, lower,
-                "圖片", "圖像", "生成圖片", "產生圖片",
-                "畫一張", "畫一隻", "畫一幅", "畫個", "畫張", "幫我畫", "請畫",
-                "image", "generate image", "draw");
-        }
-
-        // 生成影片偵測：關鍵詞需與 OrchestrationPlanner.ResolveTaskType 的 VideoGeneration 清單保持一致。
+        // 影片偵測（逾時策略用）：刻意用「寬鬆」清單——只是多給時間，寧誤勿漏；
+        // 觸發實際生成的嚴格清單在 OrchestrationPlanner（走 MediaTaskKeywords.VideoGenerationCommands）。
         private static bool IsVideoTask(string? topText)
-        {
-            string text = topText ?? "";
-            string lower = text.ToLowerInvariant();
-
-            return ContainsAny(text, lower,
-                "影片", "視頻", "生成影片", "產生影片", "預告片", "短片",
-                "video", "generate video", "trailer");
-        }
+            => MediaTaskKeywords.MentionsVideoForTimeout(topText);
 
         private static string FormatTimeout(TimeSpan timeout)
         {
@@ -2068,7 +2062,7 @@ namespace Cat5201
         private void StartBottomLoadingAnimation(bool imageTask)
         {
             _isShowingLoadingText = true;
-            _bottomRawText = null;
+            MarkBottomPlain();
             BottomDisplay.Text = "";
 
             _loadingIsImageTask = imageTask;
@@ -2176,7 +2170,7 @@ namespace Cat5201
 
             if (clearIfLoading && _isShowingLoadingText)
             {
-                _bottomRawText = null;
+                MarkBottomPlain();
                 BottomDisplay.Text = "";
             }
 
@@ -2192,9 +2186,9 @@ namespace Cat5201
         }
 
 
-        // 顯示與資料分離（P1-10 後半）：BottomDisplay 是 TextBox 無法渲染粗體，畫面上把 **/# 記號清掉；
-        // 但存檔、下游 prompt、檔案 builder 都要原始 Markdown（PDF 粗體靠它）。
-        // _bottomRawText = 原文；null = 顯示內容就是原文（錯誤訊息、串流中、清空狀態）。
+        // 顯示與資料分離（P1-10 後半）：資料真相＝_bottomRawText（原始 Markdown，存檔/下游/builder 用）。
+        // 顯示分兩態（#6）：最終輸出 → BottomRich(FlowDocument 真渲染粗體/標題/清單)；
+        // 串流中/錯誤訊息/清空 → BottomDisplay(TextBox 純文字)。null = 顯示內容就是原文。
         private string? _bottomRawText;
 
         public string GetBottomText() => _bottomRawText ?? (BottomDisplay.Text ?? "");
@@ -2202,7 +2196,34 @@ namespace Cat5201
         public void SetBottomText(string text)
         {
             _bottomRawText = text ?? "";
-            BottomDisplay.Text = MarkdownDisplayText.Clean(_bottomRawText);
+            BottomDisplay.Text = MarkdownDisplayText.Clean(_bottomRawText); // TextBox 同步保底（邏輯/量測仍讀它）
+            if (string.IsNullOrWhiteSpace(_bottomRawText))
+                ShowPlainBottom();
+            else
+                ShowRenderedBottom(_bottomRawText);
+        }
+
+        // 回到純文字顯示狀態（串流/錯誤/清空），並標記「顯示即資料」。
+        private void MarkBottomPlain()
+        {
+            _bottomRawText = null;
+            ShowPlainBottom();
+        }
+
+        private void ShowPlainBottom()
+        {
+            if (BottomRich != null) BottomRich.Visibility = Visibility.Collapsed;
+            if (BottomDisplay != null) BottomDisplay.Visibility = Visibility.Visible;
+        }
+
+        private void ShowRenderedBottom(string raw)
+        {
+            if (BottomRich == null || BottomDisplay == null)
+                return;
+
+            BottomRich.Document = MarkdownFlowDocumentBuilder.Build(raw, BottomDisplay.FontSize);
+            BottomRich.Visibility = Visibility.Visible;
+            BottomDisplay.Visibility = Visibility.Collapsed;
         }
 
         // 載入存檔時呼叫：節點已有輸出 → 維持閒置黑框外觀。
@@ -2218,7 +2239,7 @@ namespace Cat5201
         public void ClearBottomText()
         {
             ClearOutputFiles();
-            _bottomRawText = null;
+            MarkBottomPlain();
             BottomDisplay.Text = "";
         }
 
@@ -2227,7 +2248,7 @@ namespace Cat5201
             if (string.IsNullOrEmpty(delta))
                 return;
 
-            _bottomRawText = null; // 串流 append：顯示=資料
+            MarkBottomPlain(); // 串流 append：顯示=資料
             BottomDisplay.AppendText(delta);
             BottomDisplay.ScrollToEnd();
         }

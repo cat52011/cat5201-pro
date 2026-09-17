@@ -6,7 +6,7 @@ namespace Cat5201
     /// </summary>
     public enum PresentationEngine
     {
-        /// <summary>Claude（預設）：Claude Sonnet 4.6 依研究素材撰寫結構化簡報內容。</summary>
+        /// <summary>Claude（預設）：Claude Sonnet 5 依研究素材撰寫結構化簡報內容。</summary>
         Claude = 0,
 
         /// <summary>GPT：改用 OpenAI 模型撰寫簡報內容。</summary>
@@ -43,8 +43,8 @@ namespace Cat5201
         {
             return engine switch
             {
-                PresentationEngine.Gpt => AiModels.OpenAi_Gpt54,
-                _ => AiModels.Claude_Sonnet46
+                PresentationEngine.Gpt => AiModels.OpenAi_Gpt56,
+                _ => AiModels.Claude_Sonnet5
             };
         }
 

@@ -27,7 +27,7 @@ namespace Cat5201
         private readonly string _apiKey;
         private readonly string _model;
 
-        public OpenAIChatService(string model = "gpt-5.5")
+        public OpenAIChatService(string model = AiModels.OpenAi_Gpt56)
         {
             _model = model;
             _apiKey = ApiKeyStore.Resolve("OPENAI_API_KEY");
@@ -69,8 +69,10 @@ namespace Cat5201
 
         // GPT-5.x 是 reasoning model，Responses API 內部會夾 temperature，gpt-5.x 拒絕。
         // 加 reasoning_effort 可讓 API 切換到 reasoning 路徑並略過 temperature 注入。
+        // gpt-6-astra 同為 reasoning model（官方文件：Responses API、effort low~max 含 medium）。
         private bool IsReasoningModel =>
             _model.StartsWith("gpt-5", StringComparison.OrdinalIgnoreCase) ||
+            _model.StartsWith("gpt-6", StringComparison.OrdinalIgnoreCase) ||
             _model.StartsWith("o1", StringComparison.OrdinalIgnoreCase) ||
             _model.StartsWith("o3", StringComparison.OrdinalIgnoreCase) ||
             _model.StartsWith("o4", StringComparison.OrdinalIgnoreCase);

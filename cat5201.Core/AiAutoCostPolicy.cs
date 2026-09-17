@@ -16,9 +16,9 @@ namespace Cat5201
             string normalized = AiModelHelper.NormalizeNodeModel(modelId);
 
             if (BlockOpus &&
-                string.Equals(normalized, AiModels.Claude_Opus46, StringComparison.OrdinalIgnoreCase))
+                string.Equals(normalized, AiModels.Claude_Opus5, StringComparison.OrdinalIgnoreCase))
             {
-                resolvedModel = AiModels.Claude_Sonnet46;
+                resolvedModel = AiModels.Claude_Sonnet5;
                 return true;
             }
 

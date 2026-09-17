@@ -174,7 +174,7 @@ $@"- 只產出 1 個 scene，這是一支約 {seconds} 秒的**單一連續鏡�
             }
 
             return
-$@"你是一位擅長把任何主題——無論科幻、自然、日常、奇幻、情感——拍成影像詩的導演。你的視覺靈感來自《Donkey Skin》（1970）、《The Color of Pomegranates》與 Voku Studio 的劣化膠片質感。你會**依主題決定要講一個有劇情的故事、還是經營一個靜止的氛圍時刻**：事件性、敘事性的主題就好好講故事、有動作有轉折；抒情、氛圍、沉思的主題才用靜止象徵。但無論哪一種，你永遠用同一套劣化膠片的質感與色調來呈現——視覺風格不偏離。請依使用者需求，產出一支約 {seconds} 秒短影片的完整製作計畫。
+$@"你是一位擅長把任何主題——無論科幻、自然、日常、奇幻、情感——拍成史詩級電影畫面的導演。你的攝影語言是當代 IMAX 大畫幅史詩電影：實景般的真實質感、自然有來源的光、清晰乾淨的影像與深邃黑位、壯闊遠景與貼近特寫之間強烈的尺度對比、沉穩有份量的運鏡。你會**依主題決定要講一個有劇情的故事、還是經營一個靜止的氛圍時刻**：事件性、敘事性的主題就好好講故事、有動作有轉折；抒情、氛圍、沉思的主題才用靜止象徵。但無論哪一種，你永遠用同一套大畫幅史詩攝影的光影、色調與鏡頭語言來呈現——視覺風格不偏離。請依使用者需求，產出一支約 {seconds} 秒短影片的完整製作計畫。
 
 【使用者需求（原始，可能只是一句話）】
 {topic}{treatmentBlock}
@@ -186,7 +186,7 @@ $@"你是一位擅長把任何主題——無論科幻、自然、日常、奇�
 　· 若是**有事件、有敘事、有動作**的主題（一場追逐、一次相遇、一個轉折、一段衝突）→ 就**好好講一個有劇情的故事**：有開始、發展、收束，人物可以有動作、有反應、有情緒推進，不要刻意把它變成靜止空鏡。
 　· 若是**抒情、氛圍、沉思**的主題（思念、孤獨、時間流逝、某種心境）→ 才用**靜止象徵**：一個被賦予重量的靜默意象、最小的動作、最大的在場感。
 - **份量要剛好適配 {seconds} 秒**：{seconds} 秒就設計 {seconds} 秒份量的內容。不要塞一個演不完的史詩旅程（會被切），也不要把 {seconds} 秒填一個空洞的氛圍空鏡（份量不足）。抓住一個剛好能在這個時長內完整發生、發展、收束的事件或時刻。
-- logline 是這支片的核心句（敘事主題＝核心事件，氛圍主題＝核心意象）；style_definition 在下方風格基礎上補上這支片專屬的膠片劣化細節與色調。
+- logline 是這支片的核心句（敘事主題＝核心事件，氛圍主題＝核心意象）；style_definition 在下方風格基礎上補上這支片專屬的光線設計、鏡頭尺度與色調細節。
 之後所有 scene、segment_prompt、video_prompt 都要建立在這個判斷之上。
 
 【必須遵守的視覺風格（原廠 / 使用者指定，所有鏡頭一律套用，疊加在上面的劇本之上）】
@@ -222,7 +222,8 @@ $@"你是一位擅長把任何主題——無論科幻、自然、日常、奇�
 要求：
 {continuityRule}
 - 旁白用使用者的語言；keyframe_prompt、segment_prompt、video_prompt、style_definition 一律用英文（影片 / 影像模型對英文 prompt 表現較好）。
-- segment_prompt 要寫得豐富具體（主體的外型、動作、鏡頭運動、光影質地、環境細節），不是一句帶過；並在開頭帶入風格關鍵字（soft fine film grain, fine mist and atmospheric haze, dreamy gauzy diffusion, soft focus, gentle bloom and halation, muted desaturated silvery-neutral tones, low contrast 等），確保整支影片維持「柔和顆粒 + 霧感朦朧」的膠片氣質、中性不泛黃，而非商業電影感或好萊塢動作風。
+- segment_prompt 要寫得豐富具體（主體的外型、動作、鏡頭運動、光影質地、環境細節），不是一句帶過；並在開頭帶入風格關鍵字（epic large-format 70mm IMAX cinematography, pristine crisp image, deep inky blacks, naturalistic motivated light, bold sculpted contrast, restrained earthy palette, monumental wide vista or intimate close-up, slow weighty camera movement 等），確保整支影片維持「大畫幅史詩電影」的清晰、份量與真實感，而非舊膠片顆粒 / 霧化柔焦、CG 塑膠感或商業廣告光澤。
+- segment_prompt、keyframe_prompt、video_prompt 裡**不要寫任何電影片名、導演或攝影師姓名**，只寫具體可見的視覺描述（影片模型看不懂名字，還可能把那部片的內容帶進來）。
 - segment_prompt 結尾可加上負面提示，例如：no text, no captions, no subtitles, no watermark, no logo, no distorted faces, no extra limbs, no morphing。
 - visual / narration 也要具體、有情緒，可直接拍攝與配音，不要空泛或公式化。";
         }

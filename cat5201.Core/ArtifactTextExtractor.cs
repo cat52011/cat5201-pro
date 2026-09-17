@@ -247,7 +247,7 @@ namespace Cat5201
                     result.Add(img);
                 }
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("ArtifactExtract", $"PPTX 配圖抽取失敗（預覽/引用將無圖）：{path}", ex); }
             return result;
         }
 

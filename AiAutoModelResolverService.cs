@@ -42,7 +42,7 @@ namespace Cat5201
             try
             {
                 raw = await _router
-                    .GetOpenAiService("gpt-5.5")
+                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
                     .GenerateAsync(systemPrompt, userPrompt, 300, ct);
             }
             catch
@@ -80,7 +80,7 @@ namespace Cat5201
 
 {
   ""task_mode"": ""Chat | Research | Translate | Summarize | Rewrite | Extract | Code"",
-  ""recommended_model"": ""gpt-5.5 | claude-sonnet-4-6 | claude-opus-4-8 | pplx-sonar | pplx-sonar-deep-research"",
+  ""recommended_model"": ""gpt-5.6-sol | claude-sonnet-5 | claude-opus-5 | pplx-sonar | pplx-sonar-deep-research"",
   ""confidence"": 0.0
 }
 
@@ -96,19 +96,19 @@ namespace Cat5201
 
 【Translate】
 - 翻譯 / 菜單 / PDF / 文件
-→ gpt-5.5
+→ gpt-5.6-sol
 
 【Code】
 - 程式 / 架構 / debug
-→ claude-opus-4-8
+→ claude-opus-5
 
 【Rewrite / Summarize】
 - 改寫 / 潤稿 / 精簡
-→ claude-sonnet-4-6
+→ claude-sonnet-5
 
 【Chat】
 - 一般對話
-→ gpt-5.5
+→ gpt-5.6-sol
 
 重要規則：
 - 只輸出 JSON

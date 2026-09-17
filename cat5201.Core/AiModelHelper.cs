@@ -6,7 +6,8 @@ namespace Cat5201
     {
         public static string NormalizeNodeModel(string? model)
         {
-            var def = AiModelRegistry.Find(model);
+            // 舊世代 ID（舊專案/舊偏好存的）先轉成同廠牌後繼模型，再查表——否則會掉到預設模型、默默換廠牌。
+            var def = AiModelRegistry.Find(AiModelRegistry.ResolveAlias(model));
 
             // 休眠中的擴充點（IsAvailable=false，如尚未啟用的 Gemini）一律退回預設模型，
             // 避免實際路由到沒有 provider 實作的模型。
@@ -18,7 +19,7 @@ namespace Cat5201
 
         public static AiModelDefinition GetDefinition(string? model)
         {
-            return AiModelRegistry.Find(model) ?? AiModelRegistry.Default;
+            return AiModelRegistry.Find(AiModelRegistry.ResolveAlias(model)) ?? AiModelRegistry.Default;
         }
 
         public static bool IsOpenAiModel(string model)

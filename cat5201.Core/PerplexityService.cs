@@ -28,7 +28,7 @@ namespace Cat5201
         private readonly string _apiKey;
         private readonly string _agentModel;
 
-        public PerplexityService(string agentModel = "openai/gpt-5.5")
+        public PerplexityService(string agentModel = "openai/gpt-5.6-sol") // Perplexity Agent API 官方已支援（2026-09 核對）
         {
             _agentModel = agentModel;
             _apiKey = ApiKeyStore.Resolve("PERPLEXITY_API_KEY");

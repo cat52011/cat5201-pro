@@ -60,19 +60,28 @@ namespace Cat5201
         {
             modelId = AiModelHelper.NormalizeNodeModel(modelId);
 
-            if (string.Equals(modelId, AiModels.Claude_Opus46, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modelId, AiModels.Claude_Opus5, StringComparison.OrdinalIgnoreCase))
             {
                 return new[]
                 {
-                    AiModels.Claude_Sonnet46
+                    AiModels.Claude_Sonnet5
                 };
             }
 
-            if (string.Equals(modelId, AiModels.Claude_Sonnet46, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(modelId, AiModels.Claude_Sonnet5, StringComparison.OrdinalIgnoreCase))
             {
                 return new[]
                 {
-                    AiModels.Claude_Opus46
+                    AiModels.Claude_Opus5
+                };
+            }
+
+            // GPT-6 失敗 → 同廠牌降一級到 GPT-5.6。反方向刻意不設：GPT-5.6 失敗不自動升級到貴一倍的 GPT-6。
+            if (string.Equals(modelId, AiModels.OpenAi_Gpt6, StringComparison.OrdinalIgnoreCase))
+            {
+                return new[]
+                {
+                    AiModels.OpenAi_Gpt56
                 };
             }
 

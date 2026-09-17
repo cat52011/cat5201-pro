@@ -59,7 +59,11 @@ namespace Cat5201
                 if (File.Exists(path))
                     return File.ReadAllText(path);
             }
-            catch { /* 主檔毀損 → 試 .bak */ }
+            catch (Exception ex)
+            {
+                // 主檔毀損＝使用者資料事件，退 .bak 前留下線索（否則「設定莫名變舊」查無原因）。
+                AppLog.Warn("AtomicFile", $"主檔讀取失敗，改用 .bak 備份：{path}", ex);
+            }
 
             try
             {
@@ -67,7 +71,7 @@ namespace Cat5201
                 if (File.Exists(bak))
                     return File.ReadAllText(bak);
             }
-            catch { }
+            catch (Exception ex) { AppLog.Warn("AtomicFile", $".bak 備份也讀取失敗：{path}.bak", ex); }
 
             return null;
         }

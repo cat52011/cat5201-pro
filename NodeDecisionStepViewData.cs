@@ -32,5 +32,9 @@ namespace Cat5201
         public bool IsExpandable =>
             (DetailLines != null && DetailLines.Count > 0) ||
             (WorkspaceArtifacts != null && WorkspaceArtifacts.Count > 0);
+
+        // #16 資訊三層化：true＝技術細節步驟（Resolver/Capability/Workspace…），
+        // 決策窗預設收進「技術細節」抽屜；人看的（執行摘要/模型選擇/參與的 AI）保持直接可見。
+        public bool IsTechnical { get; init; }
     }
 }

@@ -57,13 +57,21 @@ namespace Cat5201
 
         private static readonly Price DefaultPrice = new(3.00, 15.00);
 
-        // 價目來源＝各家官方 pricing 頁，最後核對 2026-07-13。改價時三件事一起做：
+        // 價目來源＝各家官方 pricing 頁，最後核對 2026-09-17。改價時三件事一起做：
         // ①改數字 ②更新本註解日期 ③跑 ModelCostEstimatorTests（有釘關鍵價目防回歸）。
         private static readonly Dictionary<string, Price> PriceTable = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["gpt-5.5"] = new Price(5.00, 30.00),                       // OpenAI 官方（standard）
-            ["claude-sonnet-4-6"] = new Price(3.00, 15.00),             // Anthropic 官方
-            ["claude-opus-4-8"] = new Price(5.00, 25.00),               // Anthropic 官方（舊表 15/75 高估 3 倍）
+            // GPT-5.6 Sol：目前官方促銷價 $4/$20（標價 $5/$30），促銷「至少到 2026-11-21」——過後回來改。
+            ["gpt-5.6-sol"] = new Price(4.00, 20.00),
+            ["gpt-6-astra"] = new Price(10.00, 50.00),                  // OpenAI 官方（standard）
+            ["claude-sonnet-5"] = new Price(2.00, 10.00),               // Anthropic 官方
+            ["claude-opus-5"] = new Price(5.00, 25.00),                 // Anthropic 官方
+
+            // 舊世代：模型選單已移除，但舊專案的執行紀錄仍以這些 ID 算歷史成本——刪掉會退回預設價、歷史成本變錯。
+            ["gpt-5.5"] = new Price(5.00, 30.00),
+            ["claude-sonnet-4-6"] = new Price(3.00, 15.00),
+            ["claude-opus-4-8"] = new Price(5.00, 25.00),
+
             ["pplx-sonar"] = new Price(1.00, 1.00, 0.008),              // + $8/千次 request fee（medium context）
             // Deep research 除 token 外還有 citation tokens($2/M)、search queries($5/千次)、reasoning tokens($3/M)，
             // provider 未在 usage 回報 —— per-request 取保守常數近似（約 30 次 search + reasoning 的中檔情境）。

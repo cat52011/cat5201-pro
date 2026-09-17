@@ -128,24 +128,14 @@ namespace Cat5201
                 return OrchestrationTaskType.GenerateFile;
             }
 
-            if (ContainsAny(
-                    normalized,
-                    "圖片", "圖像", "生成圖片", "產生圖片",
-                    "畫一張", "畫一隻", "畫一幅", "畫個", "畫張", "幫我畫", "請畫",
-                    "照片", "相片", "photo",
-                    "image", "generate image", "draw"))
+            // 圖片/影片關鍵字單一真相＝MediaTaskKeywords（NodeControl 逾時判斷也用同一組，不再人工同步）。
+            if (MediaTaskKeywords.IsImageGenerationCommand(normalized))
             {
                 return OrchestrationTaskType.ImageGeneration;
             }
 
-            // 影片：必須是「明確要產生影片」的命令式說法，才判為 VideoGeneration。
-            // 不可只因內文出現「影片 / video」就觸發——那會把「他發了個影片限動」這種純聊天誤判成要生影片。
-            if (ContainsAny(
-                    normalized,
-                    "生成影片", "產生影片", "做一支影片", "做一部影片", "做個影片", "做成影片",
-                    "製作影片", "幫我做影片", "剪一支影片", "剪輯影片", "剪成影片",
-                    "拍一支影片", "拍一部影片", "拍個影片", "預告片", "短影片", "音樂影片",
-                    "generate video", "make a video", "create a video", "video clip", "trailer", "montage"))
+            // 影片：必須是「明確要產生影片」的命令式說法，才判為 VideoGeneration（清單見 MediaTaskKeywords）。
+            if (MediaTaskKeywords.IsVideoGenerationCommand(normalized))
             {
                 return OrchestrationTaskType.VideoGeneration;
             }

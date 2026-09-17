@@ -1718,8 +1718,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Illustration Brief (Claude)",
@@ -1836,8 +1836,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Illustration Plan (Claude)",
@@ -1991,8 +1991,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Image Brief (Claude)",
@@ -2227,8 +2227,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Image Edit Prompt (Claude)",
@@ -2361,7 +2361,7 @@ namespace Cat5201
 
             var planItem = AgentWorkspaceBuilder.FromCapabilityData(
                 workspace, node, "video-director(claude)", "video_plan", plan,
-                isUserVisibleOverride: true, modelId: AiModels.Claude_Sonnet46);
+                isUserVisibleOverride: true, modelId: AiModels.Claude_Sonnet5);
             workspace.Add(planItem);
 
             string videoPrompt = string.IsNullOrWhiteSpace(plan.VideoPromptForGenerator)
@@ -2427,7 +2427,7 @@ namespace Cat5201
             int actualSeconds = 0;   // 成品實際秒數（兩種模式各自計算）
 
             // ── I2V：連貫模式先生成一張「調好色的英雄圖」當 Veo 起始幀 ──
-            // 參考片（yzavoku）那種 look 的本質是「先有一張調好色的靜態圖 → 讓它動」。
+            // 穩定拿到指定 look 的做法是「先有一張調好色的靜態圖 → 讓它動」。
             // 純 T2V 會被 Veo 自己的訓練慣性拉回乾淨現代感；先出一張在 look 裡的英雄圖當第一幀，
             // Veo 從對的畫面開始動，產出的每一格都保有那個色調 / 質感。任一步失敗則自動退回純 T2V。
             byte[]? heroImage = null;
@@ -2943,8 +2943,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet46),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Video Director (Claude)",

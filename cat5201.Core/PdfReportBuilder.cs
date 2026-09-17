@@ -87,7 +87,7 @@ namespace Cat5201
                             col.Item().PaddingVertical(6).AlignCenter().MaxHeight(280).Image(imgBytes).FitArea();
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { AppLog.Warn("PdfBuilder", $"配圖嵌入失敗，PDF 將缺這張圖：{imgPath}", ex); }
                     continue;
                 }
 

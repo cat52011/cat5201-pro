@@ -10,7 +10,7 @@ namespace Cat5201
 
         public AgentRole Role { get; init; } = AgentRole.General;
 
-        public string DefaultModelId { get; init; } = AiModels.OpenAi_Gpt54;
+        public string DefaultModelId { get; init; } = AiModels.OpenAi_Gpt56;
         public NodeTaskMode DefaultTaskMode { get; init; } = NodeTaskMode.Chat;
 
         public string SystemPrompt { get; init; } = "";

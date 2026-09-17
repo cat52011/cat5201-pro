@@ -99,7 +99,8 @@ namespace Cat5201
             string email = doc.RootElement.GetProperty("user").GetProperty("emailAddress").GetString() ?? "";
             if (!string.IsNullOrWhiteSpace(email))
             {
-                try { File.WriteAllText(AccountPath, email); } catch { }
+                try { File.WriteAllText(AccountPath, email); }
+                catch (Exception ex) { AppLog.Warn("GoogleDrive", "信箱快取寫入失敗（UI 可能顯示不出已連結帳號）", ex); }
             }
             return email;
         }

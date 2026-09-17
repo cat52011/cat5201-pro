@@ -93,7 +93,25 @@ namespace Cat5201
                 return Fail($"建立 Veo 影片任務失敗：{ex.Message}");
             }
 
+            // #10 長任務日誌：operation 一建立=錢已付,先落地;中途關程式可從日誌恢復輪詢,不重複付費。
+            VideoJobJournal.Record(operationName, prompt);
+
             return await PollAndExtractAsync(operationName, onProgress, ct);
+        }
+
+        /// <summary>
+        /// #10 恢復模式：對「上次程式關閉前已建立、雲端可能已完成」的 operation 續輪詢並取回影片。
+        /// 不建立新 operation＝不重複付費;operation 已過期時 Google 會回錯誤,如實浮現。
+        /// </summary>
+        public Task<VeoResult> ResumeAsync(
+            string operationName,
+            Action<int, VideoGenerationStatus>? onProgress,
+            CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(operationName))
+                return Task.FromResult(Fail("缺少 operation name,無法恢復。"));
+
+            return PollAndExtractAsync(operationName, onProgress, ct);
         }
 
         /// <summary>
@@ -125,6 +143,8 @@ namespace Cat5201
 
             if (string.IsNullOrWhiteSpace(operationName))
                 return Fail("Veo 延伸 API 未回傳 operation name。");
+
+            VideoJobJournal.Record(operationName, $"(影片延伸) {prompt}"); // 延伸段也是已付費的 operation
 
             return await PollAndExtractAsync(operationName, onProgress, ct);
         }
@@ -185,6 +205,8 @@ namespace Cat5201
                                 : root.GetRawText();
                             return Fail($"Veo 回應沒有可用的影片內容。回應結構：{Truncate(raw, 500)}", operationName);
                         }
+
+                        VideoJobJournal.MarkDone(operationName); // #10：完成即結案，重啟不再提示恢復
 
                         return new VeoResult
                         {
@@ -400,7 +422,13 @@ namespace Cat5201
         }
 
         private static VeoResult Fail(string error, string op = "")
-            => new VeoResult { Success = false, Status = VideoGenerationStatus.Failed, ErrorMessage = error, OperationName = op };
+        {
+            // #10：有 operation name 的失敗＝雲端任務已明確終結，日誌結案（取消/關程式不走這裡，保持 pending 可恢復）。
+            if (!string.IsNullOrWhiteSpace(op))
+                VideoJobJournal.MarkFailed(op, error);
+
+            return new VeoResult { Success = false, Status = VideoGenerationStatus.Failed, ErrorMessage = error, OperationName = op };
+        }
 
         private static string Truncate(string s, int max)
         {

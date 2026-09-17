@@ -353,6 +353,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Task Mode",
+                IsTechnical = true,
                 Detail = $"{Safe(log.TaskMode)} / confidence {log.Confidence:0.00}",
                 State = NodeDecisionStepState.Info,
                 Highlight = true,
@@ -613,6 +614,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Resolver",
+                IsTechnical = true,
                 Detail = Safe(resolver),
                 State = apiFallbackUsed ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
                 DetailLines = lines
@@ -651,6 +653,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Capability",
+                IsTechnical = true,
                 Detail = detail,
                 State = state,
                 Highlight = !string.IsNullOrWhiteSpace(traceSummary) && traceSummary != "-",
@@ -667,6 +670,7 @@ namespace Cat5201
                 return new NodeDecisionStepViewData
                 {
                     Title = "Memory",
+                    IsTechnical = true,
                     Detail = "本次略過記憶",
                     State = NodeDecisionStepState.Info,
                     DetailLines = new List<string>
@@ -700,6 +704,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Memory",
+                IsTechnical = true,
                 Detail = detail,
                 State = recall.HasAny ? NodeDecisionStepState.Success : NodeDecisionStepState.Info,
                 Highlight = recall.HasAny,
@@ -781,6 +786,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Workspace",
+                IsTechnical = true,
                 Detail = detail,
                 State = state,
                 Highlight = detailLines.Count > 0 || artifactRecords.Count > 0,
@@ -853,6 +859,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Fallback",
+                IsTechnical = true,
                 Detail = detail,
                 State = (log.RuntimeFallbackUsed || apiFallbackUsed)
                     ? NodeDecisionStepState.Warning
@@ -896,6 +903,7 @@ namespace Cat5201
             return new NodeDecisionStepViewData
             {
                 Title = "Execution",
+                IsTechnical = true,
                 Detail = executionDetail,
                 State = log.Success ? NodeDecisionStepState.Success : NodeDecisionStepState.Error,
                 Highlight = !log.Success,
@@ -1051,6 +1059,11 @@ namespace Cat5201
 
         private static string GetModelLabel(string? modelId)
         {
+            // 歷史紀錄照實顯示當時跑的舊世代模型（GetDefinition 會把舊 ID 路由到後繼模型，標籤不能跟著改寫）。
+            var legacyName = AiModelRegistry.TryGetLegacyDisplayName(modelId);
+            if (legacyName != null)
+                return legacyName;
+
             var def = AiModelHelper.GetDefinition(modelId);
 
             if (!string.IsNullOrWhiteSpace(def.DisplayName))

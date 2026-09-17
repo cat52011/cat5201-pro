@@ -27,7 +27,33 @@ namespace Cat5201
         private readonly string _apiKey;
         private readonly string _model;
 
-        public ClaudeChatService(string model = "claude-sonnet-4-6")
+        // ===== Claude 5 思考策略（2026-09-17 升級 Sonnet 5 / Opus 5）=====
+        // Claude 5 家族「不帶 thinking 欄位＝自動開 adaptive 思考、預設 effort=high」（舊 4.6/4.8 是不思考）。
+        // max_tokens 是「思考＋回答」共用的硬上限，不處理會出兩個問題：
+        //   ①小預算的工具性呼叫（關鍵字/分段規劃等幾百 token）可能整包被思考吃光 → 回答變空；
+        //   ②主回答預設 high effort 思考太多 → 延遲與成本暴增、我們的續寫判斷也會誤判「被截斷」。
+        // 策略：主回答（預算夠大）開 adaptive＋medium effort（與 OpenAI 端 reasoning=medium 對稱）；
+        //      小預算呼叫關閉思考（disabled 在預設 high effort 下合法；xhigh/max 才會 400，我們不送）。
+        // 回應解析只挑 type=="text"/"text_delta"，思考區塊天然被忽略，不需改解析。
+        private const int ThinkingMinOutputTokens = 4000;
+
+        private static object BuildThinking(int maxOutputTokens)
+            => maxOutputTokens >= ThinkingMinOutputTokens
+                ? new { type = "adaptive" }
+                : new { type = "disabled" };
+
+        // effort 只在開思考時送（disabled 時沿用預設，避免誤觸 disabled+xhigh/max 的 400）。
+        private static object? BuildOutputConfig(int maxOutputTokens)
+            => maxOutputTokens >= ThinkingMinOutputTokens
+                ? new { effort = "medium" }
+                : null;
+
+        private static readonly JsonSerializerOptions PayloadJsonOptions = new()
+        {
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
+
+        public ClaudeChatService(string model = AiModels.DefaultClaudeModel)
         {
             _model = model;
             _apiKey = ApiKeyStore.Resolve("ANTHROPIC_API_KEY");
@@ -75,6 +101,8 @@ namespace Cat5201
             {
                 model = _model,
                 max_tokens = maxOutputTokens,
+                thinking = BuildThinking(maxOutputTokens),
+                output_config = BuildOutputConfig(maxOutputTokens),
                 system = instructions,
                 messages = new object[]
                 {
@@ -90,7 +118,7 @@ namespace Cat5201
             req.Headers.Add("x-api-key", _apiKey);
             req.Headers.Add("anthropic-version", "2023-06-01");
             req.Content = new StringContent(
-                JsonSerializer.Serialize(payload),
+                JsonSerializer.Serialize(payload, PayloadJsonOptions),
                 Encoding.UTF8,
                 "application/json");
 
@@ -162,6 +190,8 @@ namespace Cat5201
             {
                 model = _model,
                 max_tokens = maxOutputTokens,
+                thinking = BuildThinking(maxOutputTokens),
+                output_config = BuildOutputConfig(maxOutputTokens),
                 system = instructions,
                 stream = true,
                 messages = new object[]
@@ -179,7 +209,7 @@ namespace Cat5201
             req.Headers.Add("anthropic-version", "2023-06-01");
             req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
             req.Content = new StringContent(
-                JsonSerializer.Serialize(payload),
+                JsonSerializer.Serialize(payload, PayloadJsonOptions),
                 Encoding.UTF8,
                 "application/json");
 

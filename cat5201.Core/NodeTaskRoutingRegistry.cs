@@ -20,7 +20,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Chat 不強制指定固定首選模型，優先保留目前節點手動模型；若沒有可用模型則回退到 gpt-5.5。"
+                Notes = "Chat 不強制指定固定首選模型，優先保留目前節點手動模型；若沒有可用模型則回退到 gpt-5.6-sol。"
             },
 
             new NodeTaskRoutingProfile
@@ -32,8 +32,8 @@ namespace Cat5201
                 {
                     AiModels.Perplexity_Sonar,
                     AiModels.Perplexity_SonarDeepResearch,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5
                 },
                 PreferredCapabilities =
                     AiModelCapability.Search |
@@ -51,9 +51,9 @@ namespace Cat5201
                 Description = "翻譯 / 語言轉換 / 菜單翻譯 / 對照輸出",
                 PreferredModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46,
-                    AiModels.Claude_Opus46
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5,
+                    AiModels.Claude_Opus5
                 },
                 PreferredCapabilities =
                     AiModelCapability.Files |
@@ -63,7 +63,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Translate 首選 gpt-5.5，次選 claude-sonnet-4-6。"
+                Notes = "Translate 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
             },
 
             new NodeTaskRoutingProfile
@@ -73,8 +73,8 @@ namespace Cat5201
                 Description = "摘要 / 重點整理 / 濃縮",
                 PreferredModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5,
                     AiModels.Perplexity_Sonar
                 },
                 PreferredCapabilities =
@@ -83,7 +83,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Summarize 首選 gpt-5.5，次選 claude-sonnet-4-6。"
+                Notes = "Summarize 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
             },
 
             new NodeTaskRoutingProfile
@@ -93,9 +93,9 @@ namespace Cat5201
                 Description = "改寫 / 潤稿 / 語氣調整 / 重寫",
                 PreferredModelIds = new[]
                 {
-                    AiModels.Claude_Sonnet46,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Opus46
+                    AiModels.Claude_Sonnet5,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Opus5
                 },
                 PreferredCapabilities =
                     AiModelCapability.LongContext |
@@ -103,7 +103,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Rewrite 首選 claude-sonnet-4-6，次選 gpt-5.5。"
+                Notes = "Rewrite 首選 claude-sonnet-5，次選 gpt-5.6-sol。"
             },
 
             new NodeTaskRoutingProfile
@@ -113,8 +113,8 @@ namespace Cat5201
                 Description = "抽取欄位 / 提取資訊 / 結構化整理",
                 PreferredModelIds = new[]
                 {
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5,
                     AiModels.Perplexity_Sonar
                 },
                 PreferredCapabilities =
@@ -125,7 +125,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Extract 首選 gpt-5.5，次選 claude-sonnet-4-6。"
+                Notes = "Extract 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
             },
 
             new NodeTaskRoutingProfile
@@ -135,9 +135,9 @@ namespace Cat5201
                 Description = "程式 / 除錯 / 架構修改 / 可直接貼上",
                 PreferredModelIds = new[]
                 {
-                    AiModels.Claude_Opus46,
-                    AiModels.OpenAi_Gpt54,
-                    AiModels.Claude_Sonnet46
+                    AiModels.Claude_Opus5,
+                    AiModels.OpenAi_Gpt56,
+                    AiModels.Claude_Sonnet5
                 },
                 PreferredCapabilities =
                     AiModelCapability.Files |
@@ -146,7 +146,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Code 首選 claude-opus-4-8，次選 gpt-5.5。"
+                Notes = "Code 首選 claude-opus-5，次選 gpt-5.6-sol。"
             }
         };
 
@@ -199,17 +199,17 @@ namespace Cat5201
             return mode switch
             {
                 NodeTaskMode.Research => AiModels.Perplexity_Sonar,
-                NodeTaskMode.Translate => AiModels.OpenAi_Gpt54,
-                NodeTaskMode.Code => AiModels.Claude_Opus46,
-                NodeTaskMode.Summarize => AiModels.OpenAi_Gpt54,
-                NodeTaskMode.Rewrite => AiModels.Claude_Sonnet46,
-                NodeTaskMode.Extract => AiModels.OpenAi_Gpt54,
+                NodeTaskMode.Translate => AiModels.OpenAi_Gpt56,
+                NodeTaskMode.Code => AiModels.Claude_Opus5,
+                NodeTaskMode.Summarize => AiModels.OpenAi_Gpt56,
+                NodeTaskMode.Rewrite => AiModels.Claude_Sonnet5,
+                NodeTaskMode.Extract => AiModels.OpenAi_Gpt56,
 
                 NodeTaskMode.Chat => AiModelRegistry.IsKnown(currentSelectedModel)
                     ? AiModelHelper.NormalizeNodeModel(currentSelectedModel)
-                    : AiModels.OpenAi_Gpt54,
+                    : AiModels.OpenAi_Gpt56,
 
-                _ => AiModels.OpenAi_Gpt54
+                _ => AiModels.OpenAi_Gpt56
             };
         }
 
@@ -239,7 +239,7 @@ namespace Cat5201
 
             string models = profile.PreferredModelIds != null && profile.PreferredModelIds.Count > 0
                 ? string.Join(", ", profile.PreferredModelIds)
-                : "(use current manual model or fallback gpt-5.5)";
+                : "(use current manual model or fallback gpt-5.6-sol)";
 
             return
                 $"TaskMode = {profile.DisplayName}\n" +

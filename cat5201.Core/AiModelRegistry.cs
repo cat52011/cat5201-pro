@@ -10,41 +10,56 @@ namespace Cat5201
         {
             new AiModelDefinition
             {
-                Id = "gpt-5.5",
-                DisplayName = "GPT-5.5",
+                Id = AiModels.OpenAi_Gpt56,
+                DisplayName = "GPT-5.6 Sol",
                 IconPath = "pack://application:,,,/Assets/OpenAI_logo.png",
                 Provider = AiProviderType.OpenAI,
                 Capabilities = AiModelCapability.Streaming | AiModelCapability.Images | AiModelCapability.Files
                     | AiModelCapability.LongContext | AiModelCapability.ImageGeneration | AiModelCapability.Code,
                 CostTier = AiCostTier.Standard,
                 IsDefaultNodeModel = true,
-                ServiceModel = "gpt-5.5",
+                ServiceModel = AiModels.OpenAi_Gpt56,
+                IsDeepResearch = false
+            },
+            // GPT-6 Astra：OpenAI 旗艦（$10/$50，約 Opus 的兩倍價）。只供手動選擇——
+            // 刻意不放進 API Auto 的推薦清單，Auto 模式永遠不會自動升級到最貴的模型。
+            new AiModelDefinition
+            {
+                Id = AiModels.OpenAi_Gpt6,
+                DisplayName = "GPT-6 Astra",
+                IconPath = "pack://application:,,,/Assets/OpenAI_logo.png",
+                Provider = AiProviderType.OpenAI,
+                Capabilities = AiModelCapability.Streaming | AiModelCapability.Images | AiModelCapability.Files
+                    | AiModelCapability.LongContext | AiModelCapability.ImageGeneration | AiModelCapability.Code,
+                CostTier = AiCostTier.Premium,
+                IsDefaultNodeModel = false,
+                ServiceModel = AiModels.OpenAi_Gpt6,
                 IsDeepResearch = false
             },
             new AiModelDefinition
             {
-                Id = "claude-sonnet-4-6",
-                DisplayName = "Claude Sonnet 4.6",
+                Id = AiModels.Claude_Sonnet5,
+                DisplayName = "Claude Sonnet 5",
                 IconPath = "pack://application:,,,/Assets/Claude_logo.png",
                 Provider = AiProviderType.Claude,
                 Capabilities = AiModelCapability.Streaming | AiModelCapability.Images | AiModelCapability.Files
                     | AiModelCapability.LongContext | AiModelCapability.Code,
                 CostTier = AiCostTier.Standard,
                 IsDefaultNodeModel = false,
-                ServiceModel = "claude-sonnet-4-6",
+                ServiceModel = AiModels.Claude_Sonnet5,
                 IsDeepResearch = false
             },
             new AiModelDefinition
             {
-                Id = "claude-opus-4-8",
-                DisplayName = "Claude Opus 4.8",
+                Id = AiModels.Claude_Opus5,
+                DisplayName = "Claude Opus 5",
                 IconPath = "pack://application:,,,/Assets/Claude_logo.png",
                 Provider = AiProviderType.Claude,
                 Capabilities = AiModelCapability.Streaming | AiModelCapability.Images | AiModelCapability.Files
                     | AiModelCapability.LongContext | AiModelCapability.Code,
                 CostTier = AiCostTier.Premium,
                 IsDefaultNodeModel = false,
-                ServiceModel = "claude-opus-4-8",
+                ServiceModel = AiModels.Claude_Opus5,
                 IsDeepResearch = false
             },
             new AiModelDefinition
@@ -103,6 +118,43 @@ namespace Cat5201
                 IsDeepResearch = false
             }
         };
+
+        // ===== 舊世代模型 ID（2026-09-17 升級前）=====
+        // 使用者的舊專案檔（節點模型）、個人化偏好（任務→模型路由）、執行紀錄都存著這些 ID。
+        //  - 路由用 LegacyAliases：舊選擇自動改走同廠牌的後繼模型（選 Claude 的人不會被默默換成 GPT）；
+        //  - 顯示用 LegacyDisplayNames：歷史執行紀錄照實顯示「當時真正跑的模型」，
+        //    絕不把一筆 Sonnet 4.6 跑出來的紀錄改寫成「Claude Sonnet 5」——可稽查的底線。
+        private static readonly Dictionary<string, string> LegacyAliases = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["gpt-5.5"] = AiModels.OpenAi_Gpt56,
+            ["claude-sonnet-4-6"] = AiModels.Claude_Sonnet5,
+            ["claude-opus-4-8"] = AiModels.Claude_Opus5,
+        };
+
+        private static readonly Dictionary<string, string> LegacyDisplayNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["gpt-5.5"] = "GPT-5.5",
+            ["claude-sonnet-4-6"] = "Claude Sonnet 4.6",
+            ["claude-opus-4-8"] = "Claude Opus 4.8",
+        };
+
+        /// <summary>舊世代 ID → 後繼模型 ID；非舊 ID 原樣返回。只用於「要實際執行/路由」的場合。</summary>
+        public static string? ResolveAlias(string? modelId)
+        {
+            if (string.IsNullOrWhiteSpace(modelId))
+                return modelId;
+
+            return LegacyAliases.TryGetValue(modelId.Trim(), out var successor) ? successor : modelId;
+        }
+
+        /// <summary>舊世代 ID 的原始顯示名稱（歷史紀錄用）；非舊 ID 回 null。</summary>
+        public static string? TryGetLegacyDisplayName(string? modelId)
+        {
+            if (string.IsNullOrWhiteSpace(modelId))
+                return null;
+
+            return LegacyDisplayNames.TryGetValue(modelId.Trim(), out var name) ? name : null;
+        }
 
         public static IReadOnlyList<AiModelDefinition> All => _all;
 
