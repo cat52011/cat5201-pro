@@ -1408,10 +1408,16 @@ namespace Cat5201
 
             if (wantsDeck && pptx != null)
             {
-                deckDone = Emit(GeneratedFileWriter.WritePptx(genDir, deckTitle, pptx.Bytes, sourceSummary), "presentation-agent");
+                var deckFile = GeneratedFileWriter.WritePptx(genDir, deckTitle, pptx.Bytes, sourceSummary);
+                deckDone = Emit(deckFile, "presentation-agent");
                 var pdf = PdfFor(pptx);
+                GeneratedFilePayload? deckPdf = null;
                 if (deckDone && pdf != null)
-                    Emit(GeneratedFileWriter.WritePdf(genDir, deckTitle, pdf.Bytes, sourceSummary), "presentation-agent");
+                {
+                    deckPdf = GeneratedFileWriter.WritePdf(genDir, deckTitle, pdf.Bytes, sourceSummary);
+                    Emit(deckPdf, "presentation-agent");
+                }
+                if (deckDone) GeneratedFileCompanion.Register(deckFile.FilePath, deckPdf?.Success == true ? deckPdf.FilePath : null);
                 if (deckDone) orchestration.MarkSuccess("presentation_outline", $"Claude 文件技能 / {produced.Last()}");
             }
 
@@ -1722,14 +1728,19 @@ namespace Cat5201
                         sourceSummary: sourceSummary);
 
                     if (pptxResult.Success)
+                    {
+                        GeneratedFileCompanion.Register(pptxResult.FilePath, null);
                         workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
                             workspace, node, runtimeAgent?.Id ?? "presentation-agent",
                             "generated_file", pptxResult));
+                    }
                 }
                 catch (Exception ex) { AppLog.Warn("AgentRuntime", "簡報 PPTX 產出失敗（已略過，主答案不受影響）", ex); }
             }
 
-            // 簡報一律配一份「分頁 / 版面 / 封面圖都與 pptx 一致」的 deck.pdf（一張投影片一頁，同一份 outline + 同一張封面圖）。
+            // Native exports share a scene. A native PDF cannot represent Gamma's external design.
+            if (gammaUrl == null)
+            {
             try
             {
                 var pdfResult = GeneratedFileWriter.WritePdf(
@@ -1739,11 +1750,15 @@ namespace Cat5201
                     sourceSummary: sourceSummary);
 
                 if (pdfResult.Success)
+                {
+                    if (pptxResult?.Success == true) GeneratedFileCompanion.Register(pptxResult.FilePath, pdfResult.FilePath);
                     workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
                         workspace, node, runtimeAgent?.Id ?? "presentation-agent",
                         "generated_file", pdfResult));
+                }
             }
             catch (Exception ex) { AppLog.Warn("AgentRuntime", "簡報 PDF 對照產出失敗（已略過）", ex); }
+            }
 
             // §7 NotebookLM 匯出輔助（B 方案）：使用者要求時，附一份可匯入 NotebookLM 的來源文字包。
             string? notebookLmFile = null;
@@ -1846,6 +1861,8 @@ namespace Cat5201
                 if (!pptxGenerated.Success)
                     return null;
 
+                GeneratedFileCompanion.Register(pptxGenerated.FilePath, null);
+
                 workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
                     workspace, node, runtimeAgent?.Id ?? "presentation-agent",
                     "generated_file", pptxGenerated));
@@ -1915,14 +1932,16 @@ namespace Cat5201
 
                 // 「沒意義」的舊作法是把標題塞進死板模板；改成讓 Claude 讀簡報實際內容，
                 // 萃取「一個能代表整份簡報的具體象徵畫面」，再套統一的簡約資訊示意風格。
+                var art = DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}");
                 string brief = await BuildIllustrationBriefAsync(
-                    node, BuildCoverBriefMaterial(outline), "簡報封面", ct);
+                    node, BuildCoverBriefMaterial(outline), "簡報封面", ct, art);
                 if (string.IsNullOrWhiteSpace(brief))
-                    brief = $"A symbolic minimalist illustration representing the concept of: {subject}";
-                string prompt = IllustrationStyle.Compose(brief);
+                    return (null, null); // No meaningful brief: a typographic cover is preferable to an arbitrary image.
+                // 封面圖跟著簡報的藝術方向走，並用寬幅構圖（左側留白給大標題壓字）。
+                string prompt = IllustrationStyle.Compose(brief, art, isCover: true);
 
                 var imageService = new OpenAIImageService("gpt-image-2");
-                var image = await imageService.GenerateAsync(prompt, "1024x1024", ct);
+                var image = await imageService.GenerateAsync(prompt, "1536x1024", ct);
 
                 if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
                     return (null, null);
@@ -1950,7 +1969,7 @@ namespace Cat5201
         // 通用配圖 brief：把一段內容素材交給 Claude，萃取成「一個具體、單一焦點、可畫的英文畫面提示」，
         // 並套用統一的簡約資訊示意風格指示。封面、（後續）內容頁、報告章節配圖共用，確保調性一致。
         private async Task<string> BuildIllustrationBriefAsync(
-            INodeContext node, string material, string contextLabel, CancellationToken ct)
+            INodeContext node, string material, string contextLabel, CancellationToken ct, DeckArtDirection? art = null)
         {
             using var usagePurpose = UsageMeter.Purpose("配圖企劃");
             if (string.IsNullOrWhiteSpace(material))
@@ -1961,9 +1980,10 @@ namespace Cat5201
                 "請從中找出『一個最能代表它的核心概念』，寫成一段【具體、精煉、單一焦點】的英文圖片提示，描述畫面主體、構圖與象徵元素。\n\n" +
                 "嚴格規則：\n" +
                 "1. 只輸出最終英文圖片提示本身，不要任何解釋、前後綴、引號或 markdown。\n" +
-                "2. 聚焦單一清楚概念，用象徵 / 隱喻的視覺元素表達，讓人一眼看懂主題。\n" +
+                "2. 選擇內容中可具體描繪的景物、物件或作品。禁止用上升箭頭、硬幣、燈泡、握手或拼貼圖示代替內容；資料與趨勢留給原生圖表。若沒有合適主體，回傳空字串。\n" +
                 "3. 不要捏造任何文字、商標、數據或品牌名。\n" +
-                $"4. {IllustrationStyle.BriefStyleGuidance}\n\n" +
+                $"4. {(art == null ? IllustrationStyle.BriefStyleGuidance : IllustrationStyle.StyleFor(art))}\n" +
+                "5. 生成圖只能是示意，不冒充真實景點、作品或事件的證據；保留完整主體，不加入圖表、文字或數據。\n\n" +
                 "=== 內容 ===\n" + material;
 
             var decision = new NodeExecutionDecision
@@ -2016,6 +2036,7 @@ namespace Cat5201
         // 智慧內容頁配圖：由 Claude 從內容頁挑「最適合用圖表達」的頁並寫配圖提示，
         // 再用 gpt-image-2 生成與內容呼應的圖、填入 slide.ImageBytes（由 PptxBuilder / DeckPdfBuilder 嵌入）。
         // 缺 OPENAI_API_KEY / 任何失敗一律略過，不影響簡報主體。
+        // 內容頁配圖：與封面同一套藝術方向，色盤一致才像同一份作品。
         private async Task GenerateSlideIllustrationsAsync(
             INodeContext node, PresentationOutlinePayload outline, CancellationToken ct)
         {
@@ -2024,13 +2045,15 @@ namespace Cat5201
 
             var contentSlides = outline.Slides
                 .Where(s => string.Equals(s.Kind, "content", System.StringComparison.OrdinalIgnoreCase))
+                .Where(s => s.Bullets.Count(b => !string.IsNullOrEmpty(PptxBuilder.FindKeyFigure(b))) < 2)
                 .ToList();
             var sections = contentSlides
                 .Select(s => (s.Order, s.Heading ?? "",
                     string.Join("；", (s.Bullets ?? System.Array.Empty<string>()).Take(3))))
                 .ToList();
 
-            var plan = await PlanIllustrationsAsync(node, sections, MaxContentSlideImages, "簡報", ct);
+            var plan = await PlanIllustrationsAsync(node, sections, MaxContentSlideImages, "簡報", ct,
+                DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic));
             if (plan.Count == 0) return;
 
             OpenAIImageService imageService;
@@ -2046,7 +2069,8 @@ namespace Cat5201
 
                 try
                 {
-                    var img = await imageService.GenerateAsync(IllustrationStyle.Compose(brief), "1024x1024", ct);
+                    var img = await imageService.GenerateAsync(
+                        IllustrationStyle.Compose(brief, DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}")), "1024x1024", ct);
                     if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
                     {
                         slide.ImageBytes = img.PngBytes;
@@ -2062,7 +2086,7 @@ namespace Cat5201
         private async Task<Dictionary<int, string>> PlanIllustrationsAsync(
             INodeContext node,
             IReadOnlyList<(int id, string title, string body)> sections,
-            int maxCount, string contextLabel, CancellationToken ct)
+            int maxCount, string contextLabel, CancellationToken ct, DeckArtDirection? art = null)
         {
             using var usagePurpose = UsageMeter.Purpose("配圖企劃");
             var result = new Dictionary<int, string>();
@@ -2078,10 +2102,11 @@ namespace Cat5201
 
             string planPrompt =
                 $"你是{contextLabel}配圖總監。下面是內容區塊清單（每行開頭 [編號]）。\n" +
-                $"請挑選最多 {maxCount} 個『最適合用圖表達』的區塊（概念、流程、對比、情境類適合；純數據 / 純條列可不選），\n" +
-                "為每個選中的區塊寫一段具體、單一焦點的英文配圖提示，描述畫面主體與象徵元素，與該區塊內容呼應。\n" +
+                $"最多挑 {maxCount} 個有具體景物、物件、作品或可見場景的區塊，沒有合適的就回空陣列，禁止為湊數配圖。\n" +
+                "數據、成長率、市場比較、因果或流程頁不要生成象徵圖，讓文字與原生圖表解釋資訊。禁止上升箭頭、燈泡、硬幣和無關拼貼。\n" +
+                "英文提示直接描寫與該頁主張相關的單一主體；生成圖片是示意，不能冒充特定真實作品或現場照片。\n" +
                 "只輸出 JSON（不要 markdown 圍欄、不要多餘文字），格式：{\"items\":[{\"id\":編號,\"prompt\":\"英文提示\"}]}。\n" +
-                $"風格參考：{IllustrationStyle.BriefStyleGuidance}\n\n" +
+                $"風格參考：{(art == null ? IllustrationStyle.BriefStyleGuidance : IllustrationStyle.StyleFor(art))}\n\n" +
                 "=== 內容區塊 ===\n" + sb;
 
             var decision = new NodeExecutionDecision
@@ -2121,7 +2146,7 @@ namespace Cat5201
                         else if (!int.TryParse(o.GetString(), out id)) continue;
 
                         string prompt = (p.GetString() ?? "").Trim();
-                        if (!string.IsNullOrWhiteSpace(prompt))
+                        if (sections.Any(s => s.id == id) && !string.IsNullOrWhiteSpace(prompt))
                             result[id] = prompt;
                     }
                 }

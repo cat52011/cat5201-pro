@@ -1904,6 +1904,40 @@ namespace Cat5201
                 (delta, token) => _parent.NodeService.RegenerateAnswerStreamAsync(this, delta, token));
         }
 
+        /// <summary>
+        /// 預覽視窗的「重新生成」：沿用節點原本的需求，另外附上這次的修改指示重跑整個流程。
+        /// 不改動節點輸入框的內容（使用者的原始需求保持原樣）。
+        /// </summary>
+        public async Task<bool> RegenerateWithInstructionAsync(string? instruction, CancellationToken externalToken = default)
+        {
+            if (_isGenerating)
+                return false;
+
+            string top = GetTopText() ?? "";
+            if (string.IsNullOrWhiteSpace(top))
+                return false;
+
+            string runTop = BuildPromptForCurrentRun(top);
+            string extra = (instruction ?? "").Trim();
+            if (extra.Length > 0)
+            {
+                runTop = runTop.TrimEnd() +
+                         "\n\n【這次的修改要求（優先於原需求中的衝突部分，其餘沿用）】\n" + extra;
+            }
+
+            CommitEditingModel();
+            _isTopLocked = true;
+            EndEditBecauseSent();
+            ContentChanged?.Invoke(this, EventArgs.Empty);
+            _parent?.NotifyNodeSubmitted(this);
+
+            await GenerateBottomReplyFromTopAsync(runTop, externalToken: externalToken);
+
+            string bottom = GetBottomText() ?? "";
+            return !string.IsNullOrWhiteSpace(bottom) &&
+                   !bottom.TrimStart().StartsWith("（AI 產生失敗）", StringComparison.Ordinal);
+        }
+
         // §3：用相同輸入整段重播工作流。
         public async Task<bool> RunCurrentTopTextAsync(CancellationToken externalToken = default)
         {

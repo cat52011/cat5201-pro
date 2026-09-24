@@ -1948,6 +1948,71 @@ Margin="0,20,20,0">
                                   HorizontalScrollBarVisibility="Disabled"
                                   Margin="0,8,0,0">
                         <StackPanel Margin="0,8,4,0">
+                            <!-- 即時狀態：各服務現在能不能用 + 本機花費（各家都沒有查餘額的 API） -->
+                            <Grid Margin="0,0,0,6">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="服務即時狀態"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#444" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Content="重新檢查" Height="28" Padding="12,0" Margin="0,0,6,0"
+                                        FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
+                                        BorderThickness="0" Click="RefreshApiStatus_Click"/>
+                                <Button Grid.Column="2" Content="深入檢查" Height="28" Padding="12,0"
+                                        FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
+                                        BorderThickness="0" ToolTip="送一個最小請求，才查得出餘額不足（合計約 NT$0.3）"
+                                        Click="DeepCheckApiStatus_Click"/>
+                            </Grid>
+
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#B0B0B6" Margin="0,0,0,8">
+                                <Run Text="各家 AI 服務都沒有提供查餘額的 API，所以這裡用「每次實際呼叫的結果」即時更新狀態，並用本機帳本統計花費。填入儲值金額後可估算剩餘。"/>
+                            </TextBlock>
+
+                            <ItemsControl x:Name="ApiStatusList" Margin="0,0,0,16">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#FAFAFB" CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Top" Margin="0,5,10,0"
+                                                         Fill="{Binding Dot}"/>
+
+                                                <StackPanel Grid.Column="1">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="{Binding DisplayName}" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
+                                                        <TextBlock Text="{Binding State}" FontSize="12" Foreground="#666" Margin="8,0,0,0"/>
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="#9A9A9E"
+                                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                    <TextBlock Text="{Binding Spend}" FontSize="11" Foreground="#7A7A80" Margin="0,3,0,0"/>
+                                                </StackPanel>
+
+                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,6,0">
+                                                    <TextBlock Text="已儲值 US$" FontSize="11" Foreground="#9A9A9E" VerticalAlignment="Center"/>
+                                                    <TextBox Text="{Binding TopUp, UpdateSourceTrigger=PropertyChanged}"
+                                                             Width="58" Height="26" FontSize="11.5" Margin="4,0,0,0"
+                                                             VerticalContentAlignment="Center"
+                                                             LostFocus="ProviderTopUp_Changed"/>
+                                                </StackPanel>
+
+                                                <Button Grid.Column="3" Content="帳單頁" Height="26" Padding="10,0"
+                                                        FontSize="11" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
+                                                        BorderThickness="0" VerticalAlignment="Center"
+                                                        Tag="{Binding BillingUrl}" Click="OpenBillingPage_Click"/>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
                             <TextBlock Text="API 金鑰"
                                        FontSize="13"
                                        FontWeight="SemiBold"
@@ -2236,6 +2301,7 @@ Margin="0,20,20,0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <!-- 標題列 -->
@@ -2315,8 +2381,141 @@ Margin="0,20,20,0">
                         </Button>
                     </Grid>
 
+                    <!-- 重新生成：可直接在這裡補上或修改指示（例：第 3 頁改成表格、整體更活潑） -->
+                    <Border x:Name="PreviewRegenBar"
+                            Grid.Row="2"
+                            Visibility="Collapsed"
+                            Background="#F7F7F8"
+                            CornerRadius="0,0,16,16"
+                            BorderBrush="#ECECEC"
+                            BorderThickness="0,1,0,0"
+                            Padding="16,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Border Grid.Column="0"
+                                    Background="White"
+                                    CornerRadius="9"
+                                    BorderBrush="#E4E4E7"
+                                    BorderThickness="1"
+                                    Padding="10,6">
+                                <Grid>
+                                    <TextBlock x:Name="PreviewRegenHint"
+                                               Text="想改什麼？例如：第 3 頁改成比較表、整體更活潑、多加一頁結論（留空＝用原需求重做一次）"
+                                               FontSize="12"
+                                               Foreground="#B0B0B6"
+                                               IsHitTestVisible="False"
+                                               VerticalAlignment="Center"/>
+                                    <TextBox x:Name="PreviewRegenInput"
+                                             FontSize="12.5"
+                                             Foreground="#222"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             TextWrapping="Wrap"
+                                             MaxHeight="72"
+                                             VerticalScrollBarVisibility="Auto"
+                                             AcceptsReturn="True"
+                                             TextChanged="PreviewRegenInput_TextChanged"/>
+                                </Grid>
+                            </Border>
+
+                            <Border Grid.Column="1"
+                                    x:Name="PreviewPageBox"
+                                    Background="White"
+                                    CornerRadius="9"
+                                    BorderBrush="#E4E4E7"
+                                    BorderThickness="1"
+                                    Padding="10,6"
+                                    Margin="8,0,0,0"
+                                    VerticalAlignment="Center"
+                                    ToolTip="只重做某一頁時填頁碼；留空＝整份重做">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="第" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="PreviewRegenPage"
+                                             Width="30"
+                                             FontSize="12.5"
+                                             Foreground="#222"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             TextAlignment="Center"
+                                             VerticalContentAlignment="Center"
+                                             Margin="4,0,4,0"/>
+                                    <TextBlock Text="頁" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <Button x:Name="PreviewUndoButton"
+                                    Grid.Column="2"
+                                    Content="回到上一版"
+                                    Height="34"
+                                    Margin="8,0,0,0"
+                                    Padding="14,0"
+                                    FontSize="12.5"
+                                    Cursor="Hand"
+                                    Background="#F1F1F3"
+                                    Foreground="#555"
+                                    BorderThickness="0"
+                                    IsEnabled="False"
+                                    ToolTip="新版不如舊版時，退回上一個版本"
+                                    Click="PreviewUndo_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="pub" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="pub" Property="Background" Value="#E6E6E9"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="pub" Property="Opacity" Value="0.45"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="PreviewRegenButton"
+                                    Grid.Column="3"
+                                    Content="重新生成"
+                                    Height="34"
+                                    Margin="10,0,0,0"
+                                    Padding="18,0"
+                                    FontSize="12.5"
+                                    FontWeight="SemiBold"
+                                    Cursor="Hand"
+                                    Background="#111"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Click="PreviewRegenerate_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="prb" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="prb" Property="Background" Value="#333"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="prb" Property="Background" Value="#C9CDD4"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                    </Border>
+
                     <!-- 內容區：依檔案類型只顯示其中一個渲染器 -->
-                    <Border Grid.Row="1" Background="#FAFAFA" CornerRadius="0,0,16,16" ClipToBounds="True">
+                    <Border Grid.Row="1" Background="#FAFAFA" ClipToBounds="True">
                         <Grid x:Name="PreviewContentHost">
 
                             <ScrollViewer x:Name="PreviewImageScroll"

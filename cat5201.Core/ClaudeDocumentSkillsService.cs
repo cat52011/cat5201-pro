@@ -145,6 +145,7 @@ namespace Cat5201
                         continue;
                     }
 
+                    ProviderStatusMonitor.ReportFailure("anthropic", $"{(int)resp.StatusCode} {err}");
                     return Fail($"Claude 文件技能 API {(int)resp.StatusCode}：{Shorten(err, 400)}", round, toolSteps);
                 }
 
@@ -166,7 +167,10 @@ namespace Cat5201
                 RecordUsage(message);
 
                 if (!string.IsNullOrWhiteSpace(assembler.StreamError))
+                {
+                    ProviderStatusMonitor.ReportFailure("anthropic", assembler.StreamError);
                     return Fail($"Claude 文件技能串流錯誤：{assembler.StreamError}", round, toolSteps);
+                }
 
                 containerId = ReadContainerId(message) ?? containerId;
 

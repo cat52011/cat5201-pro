@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -1345,6 +1345,7 @@ namespace Cat5201
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
+            EnsureApiStatusRows();
 
             // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
             _ = AutoStartMobileMirrorIfEnabledAsync();
@@ -2094,23 +2095,135 @@ namespace Cat5201
                 return;
 
             int order;
+            string action;
+            string heading = "";
+            var bullets = new List<string>();
+
             try
             {
                 using var doc = JsonDocument.Parse(msg);
                 var root = doc.RootElement;
-                if (!root.TryGetProperty("action", out var a) ||
-                    !string.Equals(a.GetString(), "regen", StringComparison.OrdinalIgnoreCase))
-                    return;
+                action = root.TryGetProperty("action", out var a) ? (a.GetString() ?? "") : "";
                 if (!root.TryGetProperty("order", out var o) || !o.TryGetInt32(out order))
                     return;
+
+                if (root.TryGetProperty("heading", out var h))
+                    heading = h.GetString() ?? "";
+
+                if (root.TryGetProperty("bullets", out var bs) && bs.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var b in bs.EnumerateArray())
+                    {
+                        string text = b.GetString() ?? "";
+                        if (!string.IsNullOrWhiteSpace(text))
+                            bullets.Add(text.Trim());
+                    }
+                }
             }
             catch { return; }
 
-            await RegenerateSlideFromPreviewAsync(order);
+            if (string.Equals(action, "regen", StringComparison.OrdinalIgnoreCase))
+                await RegenerateSlideFromPreviewAsync(order, "");
+            else if (string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase))
+                await ApplySlideEditFromPreviewAsync(order, heading, bullets);
+        }
+
+        /// <summary>
+        /// 預覽裡就地編輯某一頁的文字 → 更新大綱、重建 .pptx，並讓對照 PDF 跟著更新（PDF 永遠跟著 pptx）。
+        /// 覆蓋前留一版，可用「回到上一版」退回。
+        /// </summary>
+        private async Task ApplySlideEditFromPreviewAsync(int order, string heading, List<string> bullets)
+        {
+            string path = _previewPath ?? "";
+            var node = _previewOwnerNode;
+
+            if (_previewSlideRegenBusy || node == null ||
+                string.IsNullOrWhiteSpace(path) || !File.Exists(path) ||
+                !path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _previewSlideRegenBusy = true;
+            try
+            {
+                var native = NativeDeckStorage.Read(path);
+                if (native == null) return; // Never flatten an external designer's slide structure.
+                var outline = native.Outline;
+
+                var slides = outline.Slides.Select(s => s.Order == order
+                    ? new PresentationSlidePayload
+                    {
+                        Order = s.Order,
+                        Kind = s.Kind,
+                        Heading = string.IsNullOrWhiteSpace(heading) ? s.Heading : heading,
+                        Bullets = bullets,
+                        ImageBytes = s.ImageBytes
+                    }
+                    : s).ToList();
+
+                var updated = new PresentationOutlinePayload
+                {
+                    Title = outline.Title,
+                    Topic = outline.Topic,
+                    Slides = slides,
+                    SlideCount = slides.Count,
+                    RequestedSlideCount = outline.RequestedSlideCount,
+                    PipelineId = outline.PipelineId,
+                    ModelId = outline.ModelId,
+                    AgentId = outline.AgentId,
+                    SourceSummary = outline.SourceSummary
+                };
+
+                WriteDeckFiles(path, updated, native.Cover);
+
+                node.UpdatePresentationOutline(updated);
+                SaveState();
+                AppLog.Info("Preview", $"就地編輯第 {order} 頁並存回");
+
+                if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
+                    OpenPreview(path, node);
+            }
+            catch (Exception ex)
+            {
+                MenuConfirmDialog.ShowMessage(this, "儲存修改", "存回簡報失敗：" + ex.Message, this);
+            }
+            finally
+            {
+                _previewSlideRegenBusy = false;
+            }
+
+            await Task.CompletedTask;
+        }
+
+        /// <summary>覆蓋 .pptx 並讓同一次產出的對照 PDF 跟著重建；兩者都先留上一版。</summary>
+        private void WriteDeckFiles(string pptxPath, PresentationOutlinePayload outline, byte[]? coverPng)
+        {
+            // Build both before replacing either; layout failure must not destroy a working deck.
+            byte[] pptx = PptxBuilder.Build(outline, coverPng);
+            byte[] pdf = DeckPdfBuilder.Build(outline, coverPng);
+            string companionPdf = GeneratedFileCompanion.FindCompanionPdf(pptxPath)
+                ?? System.IO.Path.ChangeExtension(pptxPath, ".pdf");
+            byte[] oldPptx = File.ReadAllBytes(pptxPath);
+            byte[]? oldPdf = File.Exists(companionPdf) ? File.ReadAllBytes(companionPdf) : null;
+            GeneratedFileHistory.SaveVersion(pptxPath);
+            GeneratedFileHistory.SaveVersion(companionPdf);
+            try
+            {
+                File.WriteAllBytes(pptxPath, pptx);
+                File.WriteAllBytes(companionPdf, pdf);
+                GeneratedFileCompanion.Register(pptxPath, companionPdf);
+            }
+            catch
+            {
+                File.WriteAllBytes(pptxPath, oldPptx);
+                if (oldPdf != null) File.WriteAllBytes(companionPdf, oldPdf);
+                throw;
+            }
         }
 
         // 在預覽視窗就地重生第 order 張：重建大綱 → 重生那張 → 覆蓋同一個 .pptx → 重新渲染預覽。
-        private async Task RegenerateSlideFromPreviewAsync(int order)
+        private async Task RegenerateSlideFromPreviewAsync(int order, string instruction)
         {
             string path = _previewPath ?? "";
             var node = _previewOwnerNode;
@@ -2125,17 +2238,28 @@ namespace Cat5201
             _previewSlideRegenBusy = true;
             try
             {
-                // 優先用節點保存的大綱（同 session，含真實使用者請求）；否則從現有 .pptx 重建。
-                var outline = string.Equals(node.GetPresentationPptxPath(), path, StringComparison.OrdinalIgnoreCase)
-                    ? node.GetPresentationOutline()
-                    : null;
-                outline ??= ReconstructOutlineFromPptx(path);
-                if (outline == null)
+                var native = NativeDeckStorage.Read(path);
+                if (native == null)
+                {
+                    MenuConfirmDialog.ShowMessage(this, "保留簡報設計", "這份簡報未包含可安全編輯的原始大綱。請用 PowerPoint 修改，或整份重新生成；不會用內建版型覆蓋原設計。", this);
                     return;
+                }
+                if (!CheckDailyBudgetAllows(out string budgetMessage))
+                {
+                    MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                    return;
+                }
+                var sourceOrder = NativeDeckStorage.SourceOrderForPage(native, order);
+                if (!sourceOrder.HasValue) return;
+                order = sourceOrder.Value;
+                var outline = native.Outline;
 
                 string userInput = !string.IsNullOrWhiteSpace(node.GetPresentationUserInput())
                     ? node.GetPresentationUserInput()
                     : outline.Title;
+
+                if (!string.IsNullOrWhiteSpace(instruction))
+                    userInput = userInput.TrimEnd() + "\n\n【這一頁的修改要求】\n" + instruction.Trim();
 
                 using var cts = new CancellationTokenSource();
                 var updated = await _nodeService.RegeneratePresentationSlideAsync(node, outline, order, userInput, cts.Token);
@@ -2144,29 +2268,22 @@ namespace Cat5201
                 {
                     // 重生失敗：重新渲染原檔（恢復按鈕可用狀態）。
                     if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                        await ShowHtmlContentAsync(
-                            ArtifactHtmlRenderer.BuildSlidesHtml(
-                                ArtifactTextExtractor.ExtractPptxSlides(path), allowRegen: true,
-                                slideImages: ArtifactTextExtractor.ExtractPptxSlideImages(path)), path);
+                        OpenPreview(path, node);
                     return;
                 }
 
                 // 重建前先保留既有封面圖，避免重生一張內容頁後封面圖被洗掉。
-                byte[]? coverPng = ArtifactTextExtractor.ExtractPptxFirstImage(path);
+                byte[]? coverPng = native.Cover;
 
-                // 重建 pptx，覆蓋「同一個」檔（路徑不變 → chip / 預覽都還指向同一份）。
-                byte[] bytes = PptxBuilder.Build(updated, coverPng);
-                File.WriteAllBytes(path, bytes);
+                // 覆蓋同一個檔（路徑不變 → chip / 預覽都還指向同一份）；先留上一版，PDF 跟著重建。
+                WriteDeckFiles(path, updated, coverPng);
 
                 node.UpdatePresentationOutline(updated);
                 SaveState();
 
                 // 重新渲染預覽（若使用者還停在這份）。
                 if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                    await ShowHtmlContentAsync(
-                        ArtifactHtmlRenderer.BuildSlidesHtml(
-                            ArtifactTextExtractor.ExtractPptxSlides(path), allowRegen: true,
-                            slideImages: ArtifactTextExtractor.ExtractPptxSlideImages(path)), path);
+                    OpenPreview(path, node);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -2179,44 +2296,15 @@ namespace Cat5201
             }
         }
 
-        // 從現有 .pptx 文字重建簡報大綱：第一張＝封面、標題為「資料來源」的＝來源頁、其餘＝內容。
-        private static PresentationOutlinePayload? ReconstructOutlineFromPptx(string path)
+        /// <summary>
+        /// 缺少 PDF 時以原生場景預覽；外部簡報不抽文字重建版面。
+        /// </summary>
+        private string BuildDeckPreviewHtml(string path)
         {
-            var slidesLines = ArtifactTextExtractor.ExtractPptxSlides(path);
-            if (slidesLines == null || slidesLines.Count == 0)
-                return null;
-
-            var slides = new List<PresentationSlidePayload>();
-            int order = 1;
-
-            for (int i = 0; i < slidesLines.Count; i++)
-            {
-                var lines = slidesLines[i] ?? new List<string>();
-                string heading = lines.Count > 0 ? lines[0] : "";
-                var bullets = lines.Skip(1).Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
-
-                string kind = i == 0
-                    ? "cover"
-                    : (heading.Trim() == "資料來源" ? "sources" : "content");
-
-                slides.Add(new PresentationSlidePayload
-                {
-                    Order = order++,
-                    Kind = kind,
-                    Heading = heading,
-                    Bullets = bullets
-                });
-            }
-
-            string title = slidesLines[0].Count > 0 ? slidesLines[0][0] : "簡報";
-
-            return new PresentationOutlinePayload
-            {
-                Title = title,
-                Topic = "",
-                Slides = slides,
-                SlideCount = slides.Count
-            };
+            var native = NativeDeckStorage.Read(path);
+            if (native != null)
+                return DeckHtmlRenderer.Build(native.Outline, new[] { native.Cover }, allowEdit: true);
+            return "<!doctype html><html lang='zh-TW'><meta charset='utf-8'><body style='font-family:Microsoft JhengHei;padding:48px'><h2>請開啟原始簡報查看設計</h2><p>這份檔案沒有對照 PDF，無法在此忠實呈現版面。請使用「外部開啟」查看 PPTX。</p></body></html>";
         }
 
         // 由節點目前的 prompt + task mode 重推導任務型別，建出「可實際執行」的下游工作流計畫。
@@ -3439,6 +3527,25 @@ namespace Cat5201
             HideAllPreviewRenderers();
             PreviewOverlay.Visibility = Visibility.Visible;
 
+            // 產出檔＋知道是哪個節點做的 → 可以就地重新生成（並補修改指示）。
+            bool canRegen = _previewOwnerNode != null &&
+                            System.IO.Path.GetExtension(targetFull).ToLowerInvariant()
+                                is ".pptx" or ".docx" or ".xlsx" or ".pdf" or ".png" or ".mp4";
+            if (PreviewRegenBar != null)
+            {
+                PreviewRegenBar.Visibility = canRegen ? Visibility.Visible : Visibility.Collapsed;
+                if (canRegen && PreviewRegenButton != null)
+                    PreviewRegenButton.IsEnabled = !_previewOwnerNode!.IsGenerating;
+
+                // 只有簡報能指定頁碼重生（其他檔案類型整份重做）。
+                if (PreviewPageBox != null)
+                    PreviewPageBox.Visibility = canRegen && targetFull.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)
+                        ? Visibility.Visible
+                        : Visibility.Collapsed;
+
+                RefreshPreviewUndoState();
+            }
+
             string ext = System.IO.Path.GetExtension(targetFull).TrimStart('.').ToLowerInvariant();
 
             try
@@ -3464,12 +3571,16 @@ namespace Cat5201
                         break;
 
                     case "pptx":
-                        await ShowHtmlContentAsync(
-                            ArtifactHtmlRenderer.BuildSlidesHtml(
-                                ArtifactTextExtractor.ExtractPptxSlides(targetFull),
-                                allowRegen: _previewOwnerNode != null,
-                                slideImages: ArtifactTextExtractor.ExtractPptxSlideImages(targetFull)),
-                            targetFull);
+                        string? deckPdf = GeneratedFileCompanion.FindCompanionPdf(targetFull);
+                        if (NativeDeckStorage.Read(targetFull) != null)
+                            await ShowHtmlContentAsync(BuildDeckPreviewHtml(targetFull), targetFull);
+                        else if (deckPdf != null)
+                            await ShowWebPreviewAsync(deckPdf, targetFull);
+                        else
+                            await ShowHtmlContentAsync(BuildDeckPreviewHtml(targetFull), targetFull);
+                        if (PreviewPageBox != null)
+                            PreviewPageBox.Visibility = canRegen && NativeDeckStorage.Read(targetFull) != null
+                                ? Visibility.Visible : Visibility.Collapsed;
                         break;
 
                     case "xlsx":
@@ -3522,7 +3633,7 @@ namespace Cat5201
             _previewMediaPlaying = true;
         }
 
-        private async Task ShowWebPreviewAsync(string path)
+        private async Task ShowWebPreviewAsync(string path, string? sourcePath = null)
         {
             PreviewLoading.Visibility = Visibility.Visible;
             PreviewWeb.Visibility = Visibility.Visible;
@@ -3533,7 +3644,7 @@ namespace Cat5201
 
                 // 等待初始化期間若已關閉或切換到別的檔案，放棄這次導覽。
                 if (PreviewOverlay.Visibility != Visibility.Visible ||
-                    !string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
+                    !string.Equals(_previewPath, sourcePath ?? path, StringComparison.OrdinalIgnoreCase))
                 {
                     return;
                 }
@@ -3630,6 +3741,105 @@ namespace Cat5201
         }
 
         private void ClosePreview_Click(object sender, RoutedEventArgs e) => ClosePreview();
+
+        private void PreviewRegenInput_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (PreviewRegenHint != null && PreviewRegenInput != null)
+                PreviewRegenHint.Visibility = string.IsNullOrEmpty(PreviewRegenInput.Text)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+        }
+
+        /// <summary>「回到上一版」按鈕的可用狀態：這個檔案（或它的對照 PDF）有備份才亮。</summary>
+        private void RefreshPreviewUndoState()
+        {
+            if (PreviewUndoButton == null)
+                return;
+
+            PreviewUndoButton.IsEnabled =
+                !string.IsNullOrWhiteSpace(_previewPath) && GeneratedFileHistory.HasPrevious(_previewPath);
+        }
+
+        // 新版不如舊版時退回：原檔與對照 PDF 一起退，預覽立刻重新整理。
+        private async void PreviewUndo_Click(object sender, RoutedEventArgs e)
+        {
+            string path = _previewPath ?? "";
+            if (string.IsNullOrWhiteSpace(path) || !GeneratedFileHistory.HasPrevious(path))
+                return;
+
+            bool ok = GeneratedFileHistory.RestorePrevious(path);
+            if (ok)
+            {
+                string? companion = GeneratedFileCompanion.FindCompanionPdf(path);
+                if (companion != null)
+                    GeneratedFileHistory.RestorePrevious(companion);
+
+                // 節點保存的大綱要跟著回到舊版，否則下次單頁重生會以新版為底本。
+                if (_previewOwnerNode != null && path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
+                {
+                    var restored = NativeDeckStorage.Read(path)?.Outline;
+                    if (restored != null)
+                        _previewOwnerNode.UpdatePresentationOutline(restored);
+                    SaveState();
+                }
+
+                AppLog.Info("Preview", "已退回上一版：" + System.IO.Path.GetFileName(path));
+                OpenPreview(path, _previewOwnerNode);
+            }
+            else
+            {
+                MenuConfirmDialog.ShowMessage(this, "回到上一版", "沒有可以退回的版本。", this);
+            }
+
+            RefreshPreviewUndoState();
+        }
+
+        // 預覽視窗「重新生成」：用原需求 + 這裡輸入的修改指示，重跑產生這個檔案的節點。
+        // 有填頁碼且是簡報 → 只重做那一頁（覆蓋同一個檔，先留上一版）。
+        private async void PreviewRegenerate_Click(object sender, RoutedEventArgs e)
+        {
+            var node = _previewOwnerNode;
+            if (node == null)
+                return;
+
+            if (node.IsGenerating)
+            {
+                MenuConfirmDialog.ShowMessage(this, "重新生成", "這個節點正在執行中，請等它跑完再重新生成。", this);
+                return;
+            }
+
+            if (!CheckDailyBudgetAllows(out string budgetMessage))
+            {
+                MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                return;
+            }
+
+            string instruction = PreviewRegenInput?.Text?.Trim() ?? "";
+            string pageText = PreviewRegenPage?.Text?.Trim() ?? "";
+
+            // 單頁重生：留在預覽裡就地更新，不必重跑整個節點。
+            if (!string.IsNullOrWhiteSpace(pageText) &&
+                int.TryParse(pageText, out int pageNumber) &&
+                pageNumber > 0 &&
+                (_previewPath ?? "").EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
+            {
+                await RegenerateSlideFromPreviewAsync(pageNumber, instruction);
+                if (PreviewRegenPage != null) PreviewRegenPage.Text = "";
+                if (PreviewRegenInput != null) PreviewRegenInput.Text = "";
+                RefreshPreviewUndoState();
+                return;
+            }
+
+            ClosePreview();
+            if (PreviewRegenInput != null)
+                PreviewRegenInput.Text = "";
+
+            AppLog.Info("Preview", string.IsNullOrWhiteSpace(instruction)
+                ? "預覽重新生成（無額外指示）"
+                : "預覽重新生成，附修改指示");
+
+            await node.RegenerateWithInstructionAsync(instruction);
+        }
 
         private void PreviewOverlay_BackgroundClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
             => ClosePreview();
@@ -3832,6 +4042,7 @@ namespace Cat5201
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
+            EnsureApiStatusRows();
             _lastAppliedAutoKeyword = "";
             _lastInitialTopSnapshot = "";
 
@@ -5240,6 +5451,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
+            EnsureApiStatusRows();
             SyncVideoStyleUI();
             BuildTaskRoutingPanel();
             SyncCostControls();

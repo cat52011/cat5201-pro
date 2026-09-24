@@ -312,7 +312,10 @@ namespace Cat5201
             string body = await resp.Content.ReadAsStringAsync(ct);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("google", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException(DescribeVeoError((int)resp.StatusCode, body));
+            }
 
             using var doc = JsonDocument.Parse(body);
             return doc.RootElement.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "";
@@ -353,7 +356,10 @@ namespace Cat5201
             string body = await resp.Content.ReadAsStringAsync(ct);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("google", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException(DescribeVeoError((int)resp.StatusCode, body));
+            }
 
             using var doc = JsonDocument.Parse(body);
             return doc.RootElement.TryGetProperty("name", out var n) ? (n.GetString() ?? "") : "";

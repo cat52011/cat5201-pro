@@ -50,7 +50,8 @@ namespace Cat5201
             List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
             bool DriveConvertToGoogleFormat = false,
             string LastProjectPath = "",                     // P2-2 會話還原：最後開啟的專案
-            string DocumentEngine = "ClaudeSkills"           // 文件產出引擎（預設 Claude 文件技能）
+            string DocumentEngine = "ClaudeSkills",          // 文件產出引擎（預設 Claude 文件技能）
+            Dictionary<string, string>? ProviderTopUp = null // 各服務儲值金額："金額|起算日"（估算剩餘用）
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -143,7 +144,8 @@ namespace Cat5201
                     DriveUploadTypes: _driveUploadTypes.ToList(),
                     DriveConvertToGoogleFormat: _driveConvertGoogle,
                     LastProjectPath: _currentFilePath ?? "",
-                    DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine)
+                    DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine),
+                    ProviderTopUp: BuildProviderTopUpStorage()
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -219,6 +221,7 @@ namespace Cat5201
                 _driveConvertGoogle = prefs.DriveConvertToGoogleFormat;
                 _lastProjectPathFromPrefs = prefs.LastProjectPath ?? "";
                 _documentEngine = DocumentEngineHelper.Parse(prefs.DocumentEngine);
+                LoadProviderTopUpStorage(prefs.ProviderTopUp);
             }
             catch (Exception ex)
             {

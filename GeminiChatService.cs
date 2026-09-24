@@ -71,7 +71,10 @@ namespace Cat5201
             string body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("google", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"Gemini API {(int)resp.StatusCode}：{Truncate(body, 400)}");
+            }
 
             string text = ExtractText(body);
             var (inTok, outTok) = ParseUsage(body);

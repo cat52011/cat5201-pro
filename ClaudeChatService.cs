@@ -130,7 +130,10 @@ namespace Cat5201
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("anthropic", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"Claude API 失敗 ({(int)resp.StatusCode}): {body}");
+            }
 
             string text = ExtractTextFromClaudeJson(body);
             var (inTok, outTok) = ParseUsage(body);
@@ -230,6 +233,7 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                ProviderStatusMonitor.ReportFailure("anthropic", $"{(int)resp.StatusCode} {err}");
                 throw new InvalidOperationException($"Claude API 串流失敗 ({(int)resp.StatusCode}): {err}");
             }
 

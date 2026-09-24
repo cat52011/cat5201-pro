@@ -147,6 +147,7 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                ProviderStatusMonitor.ReportFailure("perplexity", $"{(int)resp.StatusCode} {err}");
                 throw new InvalidOperationException($"Perplexity Sonar API 失敗 ({(int)resp.StatusCode}): {err}");
             }
 

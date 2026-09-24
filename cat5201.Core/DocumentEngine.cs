@@ -50,6 +50,10 @@ namespace Cat5201
             public string PreferenceBlock { get; init; } = "";
         }
 
+        /// <summary>依主題挑選的藝術方向（與內建排版共用同一套判斷，兩條路徑風格一致）。</summary>
+        public static DeckArtDirection ArtFor(Request r)
+            => DeckArtDirection.ForTopic(r.UserInput);
+
         public static IReadOnlyList<string> SkillIds(Request r)
         {
             var ids = new List<string>();
@@ -74,12 +78,20 @@ namespace Cat5201
 你有 Anthropic 官方的文件技能（pptx / docx / xlsx）與程式執行環境：開始前先讀對應技能的 SKILL.md，完整遵循它的工作流程與設計準則。
 
 品質標準：與使用者直接在 Claude App 請你做的成品同級，不是把文字貼進範本。
+- 先定藝術方向，再談內容排版：下方會給你依主題選定的視覺語言（色盤、字體個性、版面個性），整份必須一致地執行它。
+  設計、藝術、展覽、品牌、時尚類主題請做到雜誌編輯或展覽圖錄的水準——超大字級對比、明確網格、大量留白、滿版圖像、細緻分隔線、字距講究的小標。
 - 內容：以使用者提供的【主要內容】為依據。事實、數字、日期、引述只能來自提供的內容與來源，不可捏造；缺的資料就明確寫「未取得」。你可以重組結構、提煉洞察、寫出更好的標題與敘事。
 - 簡報設計：每頁一個清楚重點與「結論式標題」；依內容選版面（大數字、比較、圖表、表格、時間軸、流程、引言），避免整頁條列文字牆；整份色彩與字級一致，有封面、議程/摘要、結論與下一步、資料來源頁。
 - 圖表：有數據就用原生圖表或 matplotlib 畫清楚的圖，數值必須與提供的內容一致並標示單位與來源。
 - 報告：有封面、摘要、清楚的章節層次、必要的表格與圖、結論與建議、參考來源；是完整書面文章，不是投影片條列。
 - 中文：一律使用使用者的語言（預設繁體中文）。在 pptx/docx 內同時設定東亞字型（East Asian / a:ea）為 Microsoft JhengHei，讓 Windows 上正確顯示。
 - 視覺檢查：產出後把每頁轉成圖片檢查文字溢出、重疊、裁切、對比與中文缺字，修正後再交付。檢查 PDF 用的中文字型可用 `fc-list :lang=zh` 確認；沒有中文字型就不要交付會缺字的 PDF。
+
+執行環境紀律（很重要，違反會讓整個任務失敗）：
+- 絕不要把二進位檔或大檔的內容印出來（不要 cat/xxd .pptx、.pdf、圖片、字型）。
+- 每個指令的輸出控制在 50 行以內，需要看檔案就用 `head`、`tail`、`wc -l`、`ls -la`。
+- 縮圖檢查一次最多看 4 張，看完就繼續，不要重複產生整份縮圖。
+- 迴圈與批次指令要先確認輸出量；脈絡一旦被塞爆，整份文件就交付不出去。
 
 交付規則：
 - 每種檔案只交付一個最終版本，檔名用有意義的主題名稱（不要用 output、test 之類）。
@@ -101,6 +113,18 @@ namespace Cat5201
             sb.AppendLine("【使用者原始需求】");
             sb.AppendLine((r.UserInput ?? "").Trim());
             sb.AppendLine();
+
+            if (r.WantsDeck || r.WantsReport)
+            {
+                sb.AppendLine(ArtFor(r).BuildModelBrief(r.UserInput ?? ""));
+                sb.AppendLine();
+            }
+
+            if (r.WantsDeck)
+            {
+                sb.AppendLine(PresentationDesignBrief.Build(""));
+                sb.AppendLine("配圖必須解釋該頁內容，不可用上升箭頭、飛機房屋拼貼或泛用商業象徵圖代替數據。數據頁用可編輯圖表或數字與清楚的單位、時間。圖片和長文使用分離區域，不把主體裁掉。需要真實作品／景點圖片而缺素材時，使用有來源的內容與圖解，明示缺素材，不捏造照片。");
+            }
 
             sb.AppendLine("【需要產出的檔案】");
             if (r.WantsDeck)

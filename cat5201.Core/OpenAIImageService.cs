@@ -88,6 +88,7 @@ namespace Cat5201
 
                 if (!resp.IsSuccessStatusCode)
                 {
+                    ProviderStatusMonitor.ReportFailure("openai", $"{(int)resp.StatusCode} {body}");
                     return new ImageResult
                     {
                         Success = false,
@@ -219,11 +220,14 @@ namespace Cat5201
                 string body = await resp.Content.ReadAsStringAsync(ct);
 
                 if (!resp.IsSuccessStatusCode)
+                {
+                    ProviderStatusMonitor.ReportFailure("openai", $"{(int)resp.StatusCode} {body}");
                     return new ImageResult
                     {
                         Success = false,
                         ErrorMessage = $"OpenAI Images Edit API {(int)resp.StatusCode}：{Truncate(body, 400)}"
                     };
+                }
 
                 using var doc = JsonDocument.Parse(body);
                 if (!doc.RootElement.TryGetProperty("data", out var data) ||

@@ -96,7 +96,10 @@ namespace Cat5201
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("perplexity", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"Perplexity Agent API 失敗 ({(int)resp.StatusCode}): {body}");
+            }
 
             string text = ExtractAgentOutputText(body);
             RecordAgentUsage(ParseAgentUsage(body), instructions, text, enableWebSearch);
@@ -141,6 +144,7 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                ProviderStatusMonitor.ReportFailure("perplexity", $"{(int)resp.StatusCode} {err}");
                 throw new InvalidOperationException($"Perplexity Agent 串流失敗 ({(int)resp.StatusCode}): {err}");
             }
 
@@ -423,7 +427,10 @@ namespace Cat5201
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("perplexity", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"Perplexity Search API 失敗 ({(int)resp.StatusCode}): {body}");
+            }
 
             // Search API 按次收費（$5/千次），成功回應即計費——就算結果是空的也一樣。
             UsageMeter.RecordMetered(UsageKinds.Search, "perplexity-search", 1, "次",
@@ -526,7 +533,10 @@ namespace Cat5201
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("perplexity", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"Perplexity Embeddings API 失敗 ({(int)resp.StatusCode}): {body}");
+            }
 
             // Embeddings $0.004/百萬 token：金額極小，但照樣入帳（估算 token，用途＝記憶索引）。
             int embedTokens = inputArray.Sum(ModelCostEstimator.EstimateTokens);

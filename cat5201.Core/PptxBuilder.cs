@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using A = DocumentFormat.OpenXml.Drawing;
@@ -10,21 +12,25 @@ namespace Cat5201
 {
     /// <summary>
     /// Presentation 二進位匯出：把 PresentationOutlinePayload 轉成真正的 .pptx（Open XML）。
-    /// 為求穩定，每張投影片用手動定位的文字框（標題 + 內文）而非 layout placeholder，
-    /// 避免 slide master / layout placeholder 對應的複雜度。產生的檔案可被 PowerPoint / Keynote 開啟。
+    ///
+    /// 2026-09-24 改版：舊版每頁都是「深藍標題列＋小字條列」，四分之三頁面空白，任何主題長得一模一樣。
+    /// 現在改成：① 依主題選 <see cref="DeckArtDirection"/>（色盤／字體／個性）；
+    /// ② 依每頁內容挑版面（滿版封面、反白章節句、大數字、圖文半版、編號重點、來源頁）；
+    /// ③ 版面填滿整頁、字級階層明確、中文字型明確指定，PowerPoint 開啟不掉字。
+    /// 仍然手動定位（不依賴 layout placeholder），確保跨 PowerPoint / Keynote / LibreOffice 一致。
     /// </summary>
     public static class PptxBuilder
     {
-        // 16:9，EMU 單位（1 inch = 914400 EMU）。13.333in x 7.5in。
+        // 16:9，EMU（1 inch = 914400 EMU）：13.333in x 7.5in。
         private const long SlideWidth = 12192000;
         private const long SlideHeight = 6858000;
 
         public static byte[] Build(PresentationOutlinePayload outline)
             => Build(outline, null);
 
-        // coverImagePng：非 null 時，封面投影片下半部嵌入該圖（用於「圖片 → 簡報」）。
         public static byte[] Build(PresentationOutlinePayload outline, byte[]? coverImagePng)
         {
+            var art = DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic);
             using var stream = new MemoryStream();
 
             using (var doc = PresentationDocument.Create(stream, PresentationDocumentType.Presentation))
@@ -33,29 +39,15 @@ namespace Cat5201
                 presentationPart.Presentation = new P.Presentation();
 
                 var (slideMasterPart, slideLayoutPart) = CreateMasterAndLayout(presentationPart);
-                CreateThemePart(slideMasterPart);
+                CreateThemePart(slideMasterPart, art);
 
                 var slideIdList = new P.SlideIdList();
                 uint slideId = 256;
 
-                var models = BuildSlideModels(outline).ToList();
-                string deckTitle = string.IsNullOrWhiteSpace(outline?.Title) ? "" : outline!.Title!.Trim();
-                int total = models.Count;
-
+                var models = DeckScene.Build(outline, coverImagePng);
                 for (int i = 0; i < models.Count; i++)
                 {
-                    var slide = models[i];
-                    // 封面用 coverImagePng；內容頁用該頁自己的智慧配圖（slide.ImageBytes）。
-                    byte[]? imageForSlide = slide.IsCover ? coverImagePng : slide.ImageBytes;
-
-                    // 頁尾：封面不放；其餘顯示「標題 ｜ n / 總數」。
-                    string footer = slide.IsCover
-                        ? ""
-                        : (string.IsNullOrWhiteSpace(deckTitle)
-                            ? $"{i + 1} / {total}"
-                            : $"{deckTitle}　｜　{i + 1} / {total}");
-
-                    var slidePart = CreateSlidePart(presentationPart, slideLayoutPart, slide, imageForSlide, footer);
+                    var slidePart = CreateSceneSlide(presentationPart, slideLayoutPart, models[i]);
                     slideIdList.Append(new P.SlideId
                     {
                         Id = slideId++,
@@ -75,58 +67,234 @@ namespace Cat5201
                     new P.NotesSize { Cx = 6858000, Cy = (int)SlideWidth });
 
                 presentationPart.Presentation.Save();
+                NativeDeckStorage.Write(presentationPart, outline, coverImagePng);
             }
 
             return stream.ToArray();
         }
 
-        private sealed class SlideModel
+        private static SlidePart CreateSceneSlide(PresentationPart presentation, SlideLayoutPart layout, DeckPage page)
         {
-            public string Title = "";
-            public string[] Body = Array.Empty<string>();
-            public bool IsCover = false;
-            public byte[]? ImageBytes = null;
-        }
-
-        private static System.Collections.Generic.IEnumerable<SlideModel> BuildSlideModels(PresentationOutlinePayload outline)
-        {
-            if (outline?.Slides == null || outline.Slides.Count == 0)
+            var part = presentation.AddNewPart<SlidePart>();
+            var tree = new P.ShapeTree(
+                new P.NonVisualGroupShapeProperties(new P.NonVisualDrawingProperties { Id = 1U, Name = "" },
+                    new P.NonVisualGroupShapeDrawingProperties(), new P.ApplicationNonVisualDrawingProperties()),
+                new P.GroupShapeProperties(new A.TransformGroup()));
+            uint id = 2;
+            foreach (var e in page.Elements)
             {
-                yield return new SlideModel
-                {
-                    Title = string.IsNullOrWhiteSpace(outline?.Title) ? "簡報" : outline!.Title,
-                    Body = string.IsNullOrWhiteSpace(outline?.Topic) ? Array.Empty<string>() : new[] { outline!.Topic },
-                    IsCover = true
-                };
-                yield break;
-            }
-
-            foreach (var s in outline.Slides.OrderBy(x => x.Order))
-            {
-                if (string.Equals(s.Kind, "cover", StringComparison.OrdinalIgnoreCase))
-                {
-                    string sub = string.IsNullOrWhiteSpace(outline.Topic)
-                        ? (s.Bullets != null && s.Bullets.Count > 0 ? s.Bullets[0] : "")
-                        : outline.Topic;
-
-                    yield return new SlideModel
-                    {
-                        Title = string.IsNullOrWhiteSpace(s.Heading) ? outline.Title : s.Heading,
-                        Body = string.IsNullOrWhiteSpace(sub) ? Array.Empty<string>() : new[] { sub },
-                        IsCover = true
-                    };
-                }
+                long x = (long)(e.X * 12700), y = (long)(e.Y * 12700), w = (long)(e.W * 12700), h = (long)(e.H * 12700);
+                if (e.Kind == "rect") tree.Append(Rect(id++, "Color", x, y, w, h, e.Color));
+                else if (e.Kind == "image") tree.Append(FillPicture(part, id++, "Image", e.Image!, x, y, w, h));
                 else
                 {
-                    yield return new SlideModel
-                    {
-                        Title = s.Heading ?? "",
-                        Body = (s.Bullets ?? Array.Empty<string>()).ToArray(),
-                        ImageBytes = s.ImageBytes
-                    };
+                    var paragraph = new A.Paragraph(new A.ParagraphProperties(new A.NoBullet()),
+                        Run(e.Text, (int)(e.Size * 100), DeckScene.Font, DeckScene.Font, e.Color, e.Bold));
+                    tree.Append(TextBox(id++, "Text", x, y, w, h, new[] { paragraph }));
                 }
             }
+            part.Slide = new P.Slide(new P.CommonSlideData(tree), new P.ColorMapOverride(new A.MasterColorMapping()));
+            part.AddPart(layout);
+            return part;
         }
+
+        // 「帶單位的數字」才是簡報值得放大的主角：426 億元、8.4%、50,800 個。
+        private static readonly Regex KeyFigureRegex = new(
+            @"(?<value>[+−-]?[0-9]+(?:,[0-9]{3})*(?:\.[0-9]+)?)\s*(?<unit>%|％|倍|億美元|億澳元|億元|億|萬平方公里|萬人次|萬人|萬夜|萬|兆元|兆|美元|澳元|元|人次|人|個|家|天|夜|小時|分鐘|平方公里|公里)",
+            RegexOptions.Compiled);
+
+        /// <summary>找出該句的關鍵數字（含單位）；年份與沒有單位的數字不算，找不到回空字串。</summary>
+        internal static string FindKeyFigure(string? text)
+            => FindKeyFigureMatch(text)?.Value.Replace(" ", "") ?? "";
+
+        // 回傳原字串中的整段比對結果（含位置），SplitStat 才能精準把它從說明文字裡拿掉——
+        // 原句常寫成「426 億元」（中間有空格），用組合後的字串去 IndexOf 會找不到。
+        private static Match? FindKeyFigureMatch(string? text)
+        {
+            string t = (text ?? "").Trim();
+            foreach (Match m in KeyFigureRegex.Matches(t))
+            {
+                // 2025 年 / 2026 年度：是時間座標不是成績，放大毫無資訊。
+                // Years have no matched unit; a legitimate count such as 2025 人 must remain.
+
+                return m;
+            }
+            return null;
+        }
+
+        /// <summary>把「2025 年觀光收入 426 億元，年增 8.4%」拆成大數字（426 億元）與說明。</summary>
+        internal static (string Value, string Caption) SplitStat(string text)
+        {
+            string t = (text ?? "").Trim();
+            var match = FindKeyFigureMatch(t);
+            if (match == null)
+                return ("", t);
+
+            string figure = match.Value.Replace(" ", "");
+            string caption = t.Remove(match.Index, match.Length).Trim(' ', '，', ',', '：', ':', '、', '。', '-', '—');
+            caption = Regex.Replace(caption, @"[達為約至]\s*(?=[，,。；;]|$)", "");
+            return (figure, caption);
+        }
+
+        private static A.Run Run(
+            string text, int fontSize, string latinFont, string eaFont, string colorHex,
+            bool bold = false, int letterSpacing = 0)
+        {
+            var props = new A.RunProperties(
+                new A.SolidFill(new A.RgbColorModelHex { Val = colorHex }),
+                new A.LatinFont { Typeface = latinFont },
+                new A.EastAsianFont { Typeface = eaFont })
+            {
+                Language = "zh-TW",
+                FontSize = fontSize,
+                Bold = bold,
+                Dirty = false
+            };
+
+            if (letterSpacing > 0)
+                props.Spacing = letterSpacing;
+
+            return new A.Run(props, new A.Text(text ?? ""));
+        }
+
+        private static P.Shape TextBox(
+            uint shapeId, string name,
+            long x, long y, long cx, long cy,
+            A.Paragraph[] paragraphs,
+            int lineSpacingPercent = 0,
+            A.TextAnchoringTypeValues? anchor = null,
+            bool autoFit = false)
+        {
+            var bodyProps = new A.BodyProperties
+            {
+                Wrap = A.TextWrappingValues.Square,
+                LeftInset = 0,
+                RightInset = 0,
+                TopInset = 0,
+                BottomInset = 0
+            };
+            if (anchor.HasValue)
+                bodyProps.Anchor = anchor.Value;
+            if (autoFit)
+                bodyProps.Append(new A.NormalAutoFit()); // 內容偏長時讓 PowerPoint 自動縮字，不溢出版面
+
+            var textBody = new P.TextBody(bodyProps, new A.ListStyle());
+
+            foreach (var para in paragraphs)
+            {
+                if (lineSpacingPercent > 0)
+                {
+                    var props = para.GetFirstChild<A.ParagraphProperties>() ?? new A.ParagraphProperties();
+                    props.Append(new A.LineSpacing(new A.SpacingPercent { Val = lineSpacingPercent }));
+                    if (para.GetFirstChild<A.ParagraphProperties>() == null)
+                        para.InsertAt(props, 0);
+                }
+                textBody.Append(para);
+            }
+
+            return new P.Shape(
+                new P.NonVisualShapeProperties(
+                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
+                    new P.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
+                    new P.ApplicationNonVisualDrawingProperties()),
+                new P.ShapeProperties(
+                    new A.Transform2D(
+                        new A.Offset { X = x, Y = y },
+                        new A.Extents { Cx = cx, Cy = cy }),
+                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
+                textBody);
+        }
+
+        private static P.Shape Rect(
+            uint shapeId, string name, long x, long y, long cx, long cy, string fillHex, int alphaPercent = 100)
+        {
+            var fillColor = new A.RgbColorModelHex { Val = fillHex };
+            if (alphaPercent < 100)
+                fillColor.Append(new A.Alpha { Val = alphaPercent * 1000 });
+
+            return new P.Shape(
+                new P.NonVisualShapeProperties(
+                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
+                    new P.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
+                    new P.ApplicationNonVisualDrawingProperties()),
+                new P.ShapeProperties(
+                    new A.Transform2D(
+                        new A.Offset { X = x, Y = y },
+                        new A.Extents { Cx = cx, Cy = cy }),
+                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle },
+                    new A.SolidFill(fillColor),
+                    new A.Outline(new A.NoFill())),
+                new P.TextBody(
+                    new A.BodyProperties(),
+                    new A.ListStyle(),
+                    new A.Paragraph(new A.EndParagraphRunProperties { Language = "zh-TW" })));
+        }
+
+        /// <summary>滿版配圖：依實際長寬裁切成目標比例（不變形、不留白邊）。</summary>
+        private static P.Picture FillPicture(
+            SlidePart part, uint shapeId, string name, byte[] imageBytes,
+            long x, long y, long cx, long cy)
+        {
+            var imagePart = part.AddImagePart(ImagePartType.Png);
+            using (var ms = new MemoryStream(imageBytes))
+                imagePart.FeedData(ms);
+            string relId = part.GetIdOfPart(imagePart);
+
+            var blipFill = new P.BlipFill(new A.Blip { Embed = relId });
+
+            var size = TryReadPngSize(imageBytes);
+            if (size.HasValue && size.Value.Width > 0 && size.Value.Height > 0)
+            {
+                double target = (double)cx / cy;
+                double actual = (double)size.Value.Width / size.Value.Height;
+                var srcRect = new A.SourceRectangle();
+
+                if (actual > target)
+                {
+                    // 圖比框寬 → 左右各裁掉一半多餘
+                    int cut = (int)Math.Round((1 - target / actual) / 2 * 100000);
+                    srcRect.Left = cut;
+                    srcRect.Right = cut;
+                }
+                else if (actual < target)
+                {
+                    int cut = (int)Math.Round((1 - actual / target) / 2 * 100000);
+                    srcRect.Top = cut;
+                    srcRect.Bottom = cut;
+                }
+
+                blipFill.Append(srcRect);
+            }
+
+            blipFill.Append(new A.Stretch(new A.FillRectangle()));
+
+            return new P.Picture(
+                new P.NonVisualPictureProperties(
+                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
+                    new P.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = false }),
+                    new P.ApplicationNonVisualDrawingProperties()),
+                blipFill,
+                new P.ShapeProperties(
+                    new A.Transform2D(
+                        new A.Offset { X = x, Y = y },
+                        new A.Extents { Cx = cx, Cy = cy }),
+                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
+        }
+
+        /// <summary>PNG 標頭讀寬高（IHDR）；不是 PNG 或讀不到回 null，呼叫端退回不裁切。</summary>
+        internal static (int Width, int Height)? TryReadPngSize(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length < 24)
+                return null;
+            if (!(bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47))
+                return null;
+
+            int width = (bytes[16] << 24) | (bytes[17] << 16) | (bytes[18] << 8) | bytes[19];
+            int height = (bytes[20] << 24) | (bytes[21] << 16) | (bytes[22] << 8) | bytes[23];
+            return width > 0 && height > 0 ? (width, height) : null;
+        }
+
+        // ===== 樣板 / 主題（結構最小化，實際樣式都在每頁手動定位）=====
 
         private static (SlideMasterPart, SlideLayoutPart) CreateMasterAndLayout(PresentationPart presentationPart)
         {
@@ -175,35 +343,35 @@ namespace Cat5201
             return (slideMasterPart, slideLayoutPart);
         }
 
-        private static void CreateThemePart(SlideMasterPart slideMasterPart)
+        private static void CreateThemePart(SlideMasterPart slideMasterPart, DeckArtDirection art)
         {
             var themePart = slideMasterPart.AddNewPart<ThemePart>();
             themePart.Theme = new A.Theme(
                 new A.ThemeElements(
                     new A.ColorScheme(
-                        new A.Dark1Color(new A.SystemColor { Val = A.SystemColorValues.WindowText }),
-                        new A.Light1Color(new A.SystemColor { Val = A.SystemColorValues.Window }),
-                        new A.Dark2Color(new A.RgbColorModelHex { Val = "44546A" }),
-                        new A.Light2Color(new A.RgbColorModelHex { Val = "E7E6E6" }),
-                        new A.Accent1Color(new A.RgbColorModelHex { Val = "4472C4" }),
-                        new A.Accent2Color(new A.RgbColorModelHex { Val = "ED7D31" }),
-                        new A.Accent3Color(new A.RgbColorModelHex { Val = "A5A5A5" }),
-                        new A.Accent4Color(new A.RgbColorModelHex { Val = "FFC000" }),
-                        new A.Accent5Color(new A.RgbColorModelHex { Val = "5B9BD5" }),
-                        new A.Accent6Color(new A.RgbColorModelHex { Val = "70AD47" }),
-                        new A.Hyperlink(new A.RgbColorModelHex { Val = "0563C1" }),
-                        new A.FollowedHyperlinkColor(new A.RgbColorModelHex { Val = "954F72" }))
-                    { Name = "Office" },
+                        new A.Dark1Color(new A.RgbColorModelHex { Val = art.Ink }),
+                        new A.Light1Color(new A.RgbColorModelHex { Val = art.Background }),
+                        new A.Dark2Color(new A.RgbColorModelHex { Val = art.InverseBackground }),
+                        new A.Light2Color(new A.RgbColorModelHex { Val = art.Background }),
+                        new A.Accent1Color(new A.RgbColorModelHex { Val = art.Accent }),
+                        new A.Accent2Color(new A.RgbColorModelHex { Val = art.Muted }),
+                        new A.Accent3Color(new A.RgbColorModelHex { Val = art.Ink }),
+                        new A.Accent4Color(new A.RgbColorModelHex { Val = art.Accent }),
+                        new A.Accent5Color(new A.RgbColorModelHex { Val = art.Muted }),
+                        new A.Accent6Color(new A.RgbColorModelHex { Val = art.Ink }),
+                        new A.Hyperlink(new A.RgbColorModelHex { Val = art.Accent }),
+                        new A.FollowedHyperlinkColor(new A.RgbColorModelHex { Val = art.Muted }))
+                    { Name = "cat5201" },
                     new A.FontScheme(
                         new A.MajorFont(
-                            new A.LatinFont { Typeface = "Calibri Light" },
-                            new A.EastAsianFont { Typeface = "" },
+                            new A.LatinFont { Typeface = art.HeadingLatinFont },
+                            new A.EastAsianFont { Typeface = art.EastAsianFont },
                             new A.ComplexScriptFont { Typeface = "" }),
                         new A.MinorFont(
-                            new A.LatinFont { Typeface = "Calibri" },
-                            new A.EastAsianFont { Typeface = "" },
+                            new A.LatinFont { Typeface = art.BodyLatinFont },
+                            new A.EastAsianFont { Typeface = art.EastAsianFont },
                             new A.ComplexScriptFont { Typeface = "" }))
-                    { Name = "Office" },
+                    { Name = "cat5201" },
                     new A.FormatScheme(
                         new A.FillStyleList(
                             new A.SolidFill(new A.SchemeColor { Val = A.SchemeColorValues.PhColor }),
@@ -221,242 +389,8 @@ namespace Cat5201
                             new A.SolidFill(new A.SchemeColor { Val = A.SchemeColorValues.PhColor }),
                             new A.SolidFill(new A.SchemeColor { Val = A.SchemeColorValues.PhColor }),
                             new A.SolidFill(new A.SchemeColor { Val = A.SchemeColorValues.PhColor })))
-                    { Name = "Office" }))
-            { Name = "Office Theme" };
-        }
-
-        // 商業主題色：深藍標題列 / 色塊、青色強調線、深灰內文、灰頁尾、淺藍副標。
-        private const string ThemeNavy = "1F3864";
-        private const string ThemeAccent = "2E9CCA";
-        private const string ThemeBody = "262626";
-        private const string ThemeFooter = "9AA0A6";
-        private const string ThemeCoverSub = "C9D6E8";
-
-        private static SlidePart CreateSlidePart(
-            PresentationPart presentationPart,
-            SlideLayoutPart slideLayoutPart,
-            SlideModel slide,
-            byte[]? coverImagePng,
-            string footerText)
-        {
-            var slidePart = presentationPart.AddNewPart<SlidePart>();
-
-            var shapeTree = new P.ShapeTree(
-                new P.NonVisualGroupShapeProperties(
-                    new P.NonVisualDrawingProperties { Id = 1U, Name = "" },
-                    new P.NonVisualGroupShapeDrawingProperties(),
-                    new P.ApplicationNonVisualDrawingProperties()),
-                new P.GroupShapeProperties(new A.TransformGroup()));
-
-            bool hasImage = coverImagePng != null && coverImagePng.Length > 0;
-            string title = slide.Title ?? "";
-            string subtitle = slide.Body != null && slide.Body.Length > 0 ? slide.Body[0] : "";
-
-            if (slide.IsCover && hasImage)
-            {
-                // 封面（含配圖）：頂部深藍標題帶 + 青線，下方白底置中放圖。
-                const long bandH = 1645920; // 1.8 in
-                shapeTree.Append(MakeRectangle(2U, "CoverBand", 0, 0, SlideWidth, bandH, ThemeNavy));
-                shapeTree.Append(MakeRectangle(3U, "CoverAccent", 0, bandH, SlideWidth, 54000, ThemeAccent));
-                shapeTree.Append(MakeTextShape(
-                    4U, "CoverTitle", 685800, 0, SlideWidth - 1371600, bandH,
-                    new[] { new BodyLine(title, 0) },
-                    fontSize: 3200, bold: true, colorHex: "FFFFFF", anchorCenter: true));
-
-                if (!string.IsNullOrWhiteSpace(subtitle))
-                    shapeTree.Append(MakeTextShape(
-                        5U, "CoverSub", 685800, bandH + 182880, SlideWidth - 1371600, 640080,
-                        new[] { new BodyLine(subtitle, 0) },
-                        fontSize: 1800, bold: false, colorHex: ThemeNavy));
-
-                var imagePart = slidePart.AddImagePart(ImagePartType.Png);
-                using (var ms = new MemoryStream(coverImagePng!))
-                    imagePart.FeedData(ms);
-                string relId = slidePart.GetIdOfPart(imagePart);
-
-                const long side = 3017520;          // ~3.3 in 方形
-                long x = (SlideWidth - side) / 2;
-                const long y = 2697480;             // 帶 + 副標下方
-                shapeTree.Append(MakePicture(6U, "CoverImage", relId, x, y, side, side));
-            }
-            else if (slide.IsCover)
-            {
-                // 封面（無圖）：滿版深藍 + 置中白色大標 + 青色短線 + 副標。
-                shapeTree.Append(MakeRectangle(2U, "CoverBg", 0, 0, SlideWidth, SlideHeight, ThemeNavy));
-                shapeTree.Append(MakeTextShape(
-                    3U, "CoverTitle", 914400, 2286000, SlideWidth - 1828800, 1600200,
-                    new[] { new BodyLine(title, 0) },
-                    fontSize: 4400, bold: true, colorHex: "FFFFFF", alignCenter: true, anchorCenter: true));
-
-                const long lineW = 1828800;
-                shapeTree.Append(MakeRectangle(4U, "CoverAccent",
-                    (SlideWidth - lineW) / 2, 4023360, lineW, 54000, ThemeAccent));
-
-                if (!string.IsNullOrWhiteSpace(subtitle))
-                    shapeTree.Append(MakeTextShape(
-                        5U, "CoverSub", 914400, 4206240, SlideWidth - 1828800, 914400,
-                        new[] { new BodyLine(subtitle, 0) },
-                        fontSize: 2000, bold: false, colorHex: ThemeCoverSub, alignCenter: true));
-            }
-            else
-            {
-                // 內容頁：頂部深藍標題列 + 青線 + 內文重點 + 頁尾頁碼。
-                const long barH = 1188720; // 1.3 in
-                shapeTree.Append(MakeRectangle(2U, "TitleBar", 0, 0, SlideWidth, barH, ThemeNavy));
-                shapeTree.Append(MakeRectangle(3U, "TitleAccent", 0, barH, SlideWidth, 54000, ThemeAccent));
-                shapeTree.Append(MakeTextShape(
-                    4U, "Title", 685800, 0, SlideWidth - 1371600, barH,
-                    new[] { new BodyLine(title, 0) },
-                    fontSize: 2800, bold: true, colorHex: "FFFFFF", anchorCenter: true));
-
-                // 內容頁有智慧配圖時：內文佔左、圖置於右側（圖文並茂）；無圖時內文佔滿全寬。
-                bool contentHasImage = coverImagePng != null && coverImagePng.Length > 0;
-                const long imgSide = 3600000;                       // ~3.94 in 方形
-                const long imgX = SlideWidth - imgSide - 685800;    // 右側、留右邊距
-                const long imgY = 1900000;
-                long bodyWidth = contentHasImage
-                    ? imgX - 685800 - 274320                        // 左欄寬：到圖左緣前留間距
-                    : SlideWidth - 1371600;
-
-                if (slide.Body != null && slide.Body.Length > 0)
-                {
-                    var lines = slide.Body
-                        .Where(b => !string.IsNullOrWhiteSpace(b))
-                        .Select(b => new BodyLine(b.Trim(), 0))
-                        .ToArray();
-
-                    if (lines.Length > 0)
-                        shapeTree.Append(MakeTextShape(
-                            5U, "Body", 685800, 1554480, bodyWidth, SlideHeight - 2103120,
-                            paragraphs: lines,
-                            fontSize: 2000, bold: false, colorHex: ThemeBody, bulleted: true));
-                }
-
-                if (contentHasImage)
-                {
-                    var imagePart = slidePart.AddImagePart(ImagePartType.Png);
-                    using (var ms = new MemoryStream(coverImagePng!))
-                        imagePart.FeedData(ms);
-                    string relId = slidePart.GetIdOfPart(imagePart);
-                    shapeTree.Append(MakePicture(7U, "ContentImage", relId, imgX, imgY, imgSide, imgSide));
-                }
-
-                if (!string.IsNullOrWhiteSpace(footerText))
-                    shapeTree.Append(MakeTextShape(
-                        6U, "Footer", 685800, SlideHeight - 457200, SlideWidth - 1371600, 320040,
-                        new[] { new BodyLine(footerText, 0) },
-                        fontSize: 1100, bold: false, colorHex: ThemeFooter, alignRight: true));
-            }
-
-            slidePart.Slide = new P.Slide(new P.CommonSlideData(shapeTree), new P.ColorMapOverride(new A.MasterColorMapping()));
-            slidePart.AddPart(slideLayoutPart);
-
-            return slidePart;
-        }
-
-        // 純色矩形（標題列 / 色塊 / 強調線用），無框線、無文字。
-        private static P.Shape MakeRectangle(
-            uint shapeId, string name, long xEmu, long yEmu, long cxEmu, long cyEmu, string fillHex)
-        {
-            return new P.Shape(
-                new P.NonVisualShapeProperties(
-                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
-                    new P.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
-                    new P.ApplicationNonVisualDrawingProperties()),
-                new P.ShapeProperties(
-                    new A.Transform2D(
-                        new A.Offset { X = xEmu, Y = yEmu },
-                        new A.Extents { Cx = cxEmu, Cy = cyEmu }),
-                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle },
-                    new A.SolidFill(new A.RgbColorModelHex { Val = fillHex }),
-                    new A.Outline(new A.NoFill())),
-                new P.TextBody(
-                    new A.BodyProperties(),
-                    new A.ListStyle(),
-                    new A.Paragraph(new A.EndParagraphRunProperties { Language = "zh-TW" })));
-        }
-
-        private static P.Picture MakePicture(
-            uint shapeId, string name, string relId,
-            long xEmu, long yEmu, long cxEmu, long cyEmu)
-        {
-            return new P.Picture(
-                new P.NonVisualPictureProperties(
-                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
-                    new P.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = true }),
-                    new P.ApplicationNonVisualDrawingProperties()),
-                new P.BlipFill(
-                    new A.Blip { Embed = relId },
-                    new A.Stretch(new A.FillRectangle())),
-                new P.ShapeProperties(
-                    new A.Transform2D(
-                        new A.Offset { X = xEmu, Y = yEmu },
-                        new A.Extents { Cx = cxEmu, Cy = cyEmu }),
-                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
-        }
-
-        private readonly struct BodyLine
-        {
-            public readonly string Text;
-            public readonly int Level;
-            public BodyLine(string text, int level) { Text = text; Level = level; }
-        }
-
-        private static P.Shape MakeTextShape(
-            uint shapeId,
-            string name,
-            long xEmu, long yEmu, long cxEmu, long cyEmu,
-            BodyLine[] paragraphs,
-            int fontSize,
-            bool bold,
-            string colorHex,
-            bool bulleted = false,
-            bool alignCenter = false,
-            bool alignRight = false,
-            bool anchorCenter = false)
-        {
-            var bodyProps = new A.BodyProperties { Wrap = A.TextWrappingValues.Square };
-            if (anchorCenter)
-                bodyProps.Anchor = A.TextAnchoringTypeValues.Center; // 垂直置中（標題列用）
-
-            var textBody = new P.TextBody(bodyProps, new A.ListStyle());
-
-            foreach (var line in paragraphs)
-            {
-                var props = new A.ParagraphProperties { Level = line.Level };
-                if (alignCenter)
-                    props.Alignment = A.TextAlignmentTypeValues.Center;
-                else if (alignRight)
-                    props.Alignment = A.TextAlignmentTypeValues.Right;
-                if (!bulleted)
-                    props.Append(new A.NoBullet());
-
-                var para = new A.Paragraph(props);
-                para.Append(new A.Run(
-                    new A.RunProperties(
-                        new A.SolidFill(new A.RgbColorModelHex { Val = colorHex }))
-                    {
-                        Language = "zh-TW",
-                        FontSize = fontSize,
-                        Bold = bold,
-                        Dirty = false
-                    },
-                    new A.Text(line.Text ?? "")));
-
-                textBody.Append(para);
-            }
-
-            return new P.Shape(
-                new P.NonVisualShapeProperties(
-                    new P.NonVisualDrawingProperties { Id = shapeId, Name = name },
-                    new P.NonVisualShapeDrawingProperties(new A.ShapeLocks { NoGrouping = true }),
-                    new P.ApplicationNonVisualDrawingProperties()),
-                new P.ShapeProperties(
-                    new A.Transform2D(
-                        new A.Offset { X = xEmu, Y = yEmu },
-                        new A.Extents { Cx = cxEmu, Cy = cyEmu }),
-                    new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }),
-                textBody);
+                    { Name = "cat5201" }))
+            { Name = "cat5201 Deck" };
         }
     }
 }

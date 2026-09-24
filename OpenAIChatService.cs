@@ -120,7 +120,10 @@ namespace Cat5201
             var body = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
 
             if (!resp.IsSuccessStatusCode)
+            {
+                ProviderStatusMonitor.ReportFailure("openai", $"{(int)resp.StatusCode} {body}");
                 throw new InvalidOperationException($"OpenAI API 失敗 ({(int)resp.StatusCode}): {body}");
+            }
 
             string text = ExtractTextFromResponsesJson(body);
             var (inTok, outTok) = ParseUsage(body);
@@ -207,6 +210,7 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
             {
                 var err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                ProviderStatusMonitor.ReportFailure("openai", $"{(int)resp.StatusCode} {err}");
                 throw new InvalidOperationException($"OpenAI API 串流失敗 ({(int)resp.StatusCode}): {err}");
             }
 

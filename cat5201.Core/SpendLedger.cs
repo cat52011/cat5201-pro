@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace Cat5201
@@ -21,6 +22,8 @@ namespace Cat5201
         private static readonly object _lock = new();
         private static string? _path;
         private static Dictionary<string, double> _usdByDay = new();
+        // 分服務累計：day -> provider -> USD。用來即時顯示「哪一家花了多少」（各家都沒有餘額 API）。
+        private static Dictionary<string, Dictionary<string, double>> _usdByDayProvider = new();
 
         private static string TodayKey => DateTime.Now.ToString("yyyy-MM-dd");
 
@@ -33,16 +36,20 @@ namespace Cat5201
                 try
                 {
                     _path = Path.Combine(configDir, "_spend.json");
+                    _usdByDayProvider = new();
                     string? json = AtomicFile.ReadAllTextWithFallback(_path);
                     if (!string.IsNullOrWhiteSpace(json))
-                        _usdByDay = JsonSerializer.Deserialize<Dictionary<string, double>>(json) ?? new();
+                        LoadFromJsonLocked(json!);
                 }
                 catch { _usdByDay = new(); }
             }
         }
 
         /// <summary>累加一筆花費（USD）。kind 僅供日誌（llm / image / video…）。</summary>
-        public static void Add(double usd, string kind)
+        public static void Add(double usd, string kind) => Add(usd, kind, providerId: "");
+
+        /// <summary>累加一筆花費並歸戶到某個服務（anthropic / openai / google / perplexity）。</summary>
+        public static void Add(double usd, string kind, string providerId)
         {
             if (usd <= 0 || double.IsNaN(usd) || double.IsInfinity(usd))
                 return;
@@ -51,6 +58,15 @@ namespace Cat5201
             {
                 _usdByDay.TryGetValue(TodayKey, out double cur);
                 _usdByDay[TodayKey] = cur + usd;
+
+                if (!string.IsNullOrWhiteSpace(providerId))
+                {
+                    if (!_usdByDayProvider.TryGetValue(TodayKey, out var byProvider))
+                        _usdByDayProvider[TodayKey] = byProvider = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                    byProvider.TryGetValue(providerId, out double p);
+                    byProvider[providerId] = p + usd;
+                }
+
                 Persist();
             }
             AppLog.Info("Spend", $"+US${usd:0.####}（{kind}）→ 今日累計 US${TodayUsd:0.####}");
@@ -71,6 +87,40 @@ namespace Cat5201
             AppLog.Info("Spend", $"-US${usd:0.####}（沖銷：{kind}）→ 今日累計 US${TodayUsd:0.####}");
         }
 
+        /// <summary>今日某個服務的累計花費（USD）。</summary>
+        public static double TodayUsdFor(string providerId)
+        {
+            lock (_lock)
+            {
+                return _usdByDayProvider.TryGetValue(TodayKey, out var byProvider) &&
+                       byProvider.TryGetValue(providerId ?? "", out var v) ? v : 0;
+            }
+        }
+
+        /// <summary>本月某個服務的累計花費（USD）。</summary>
+        public static double MonthUsdFor(string providerId)
+        {
+            string prefix = DateTime.Now.ToString("yyyy-MM");
+            lock (_lock)
+            {
+                return _usdByDayProvider
+                    .Where(kv => kv.Key.StartsWith(prefix, StringComparison.Ordinal))
+                    .Sum(kv => kv.Value.TryGetValue(providerId ?? "", out var v) ? v : 0);
+            }
+        }
+
+        /// <summary>某個服務自指定日期（含）起的累計花費（USD）——配合使用者填的儲值金額估算剩餘。</summary>
+        public static double UsdForSince(string providerId, DateTime since)
+        {
+            string from = since.ToString("yyyy-MM-dd");
+            lock (_lock)
+            {
+                return _usdByDayProvider
+                    .Where(kv => string.CompareOrdinal(kv.Key, from) >= 0)
+                    .Sum(kv => kv.Value.TryGetValue(providerId ?? "", out var v) ? v : 0);
+            }
+        }
+
         /// <summary>今日累計花費（USD）。</summary>
         public static double TodayUsd
         {
@@ -89,6 +139,33 @@ namespace Cat5201
         public static bool IsOverDailyBudget(int budgetTwd)
             => budgetTwd > 0 && TodayTwd >= budgetTwd;
 
+        // 檔案格式：新版 {"days":{...},"providers":{day:{provider:usd}}}；
+        // 舊版是純 {day: usd}，照樣讀得進來（分服務資料從那天起才有）。
+        private static void LoadFromJsonLocked(string json)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+
+                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("days", out var daysEl))
+                {
+                    _usdByDay = JsonSerializer.Deserialize<Dictionary<string, double>>(daysEl.GetRawText()) ?? new();
+                    if (root.TryGetProperty("providers", out var provEl))
+                        _usdByDayProvider = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, double>>>(provEl.GetRawText()) ?? new();
+                    return;
+                }
+
+                _usdByDay = JsonSerializer.Deserialize<Dictionary<string, double>>(json) ?? new();
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Spend", "帳本格式無法解析，從零開始", ex);
+                _usdByDay = new();
+                _usdByDayProvider = new();
+            }
+        }
+
         private static void Persist()
         {
             try
@@ -102,7 +179,11 @@ namespace Cat5201
                         trimmed[kv.Key] = kv.Value;
                 _usdByDay = trimmed;
 
-                AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(_usdByDay, new JsonSerializerOptions { WriteIndented = true }));
+                foreach (var key in _usdByDayProvider.Keys.Where(k => string.CompareOrdinal(k, cutoff) < 0).ToList())
+                    _usdByDayProvider.Remove(key);
+
+                var payload = new { days = _usdByDay, providers = _usdByDayProvider };
+                AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch (Exception ex) { AppLog.Warn("Spend", "帳本寫入失敗", ex); }
         }

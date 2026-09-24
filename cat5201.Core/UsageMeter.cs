@@ -181,10 +181,16 @@ namespace Cat5201
                 ? record.Purpose
                 : $"{record.Purpose}・{record.ModelId}";
 
+            string providerId = ApiHealthChecker.ProviderIdForModel(record.ModelId);
+
             if (record.UsdCost > 0)
-                SpendLedger.Add(record.UsdCost, label);
+                SpendLedger.Add(record.UsdCost, label, providerId);
             else if (record.UsdCost < 0)
                 SpendLedger.Subtract(-record.UsdCost, label);
+
+            // 即時監控：這筆帳存在＝這家服務剛剛成功回應過。
+            if (record.UsdCost > 0)
+                ProviderStatusMonitor.ReportSuccess(providerId);
 
             _scope.Value?.Add(record);
         }

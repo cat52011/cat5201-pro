@@ -215,14 +215,23 @@ namespace Cat5201
 
             string durationText = FormatDuration(log.DurationMs);
 
+            var failure = FailureExplainer.Explain(log.ErrorMessage);
             string resultLine = log.Success
                 ? $"✅ 結果：成功 · {durationText}"
-                : $"❌ 結果：失敗 · {Safe(log.ErrorMessage)}";
+                : $"❌ 結果：失敗 · {(failure != null ? failure.Title : Safe(log.ErrorMessage))}";
 
             if (log.Success && !string.IsNullOrWhiteSpace(log.CostDisplay))
                 resultLine += $" · {log.CostDisplay}";
 
             lines.Add(resultLine);
+
+            // 失敗時：把「該怎麼辦」直接寫出來（餘額不足、金鑰無效、沒網路…原本只有翻日誌才知道）。
+            if (!log.Success && failure != null && !string.IsNullOrWhiteSpace(failure.Action))
+                lines.Add($"💡 怎麼辦：{failure.Action}");
+
+            // 哪個模型不能用、換成了誰（自動後備本來只寫在技術區的英文行裡）。
+            foreach (var attemptLine in FailureExplainer.DescribeAttempts(log.FallbackAttempts, GetModelLabel))
+                lines.Add($"⚠ {attemptLine}");
 
             // 成本可稽查：逐筆明細（用途 · 模型 · 用量 · 金額）。失敗的執行也照列——錢可能已經花了。
             var breakdown = UsageSummary.BuildBreakdownLines(log.UsageRecords);
@@ -392,26 +401,35 @@ namespace Cat5201
             else
                 summary = $"{requestedLabel} → {actualLabel}";
 
-            var lines = new List<string>
+            // 只留使用者看得懂的：選了誰、實際跑了誰、為什麼換、這個模型的等級與擅長。
+            var lines = new List<string>();
+
+            if (!string.Equals(requestedLabel, actualLabel, StringComparison.OrdinalIgnoreCase))
             {
-                $"Requested Model: {requestedLabel}",
-                $"Planned Model: {plannedLabel}",
-                $"Actual Model: {actualLabel}"
-            };
+                lines.Add($"原本要用：{requestedLabel}");
+                lines.Add($"實際執行：{actualLabel}");
+            }
+            else
+            {
+                lines.Add($"使用模型：{actualLabel}");
+            }
 
             if (log.CapabilityAdjusted &&
                 !string.IsNullOrWhiteSpace(log.CapabilityRequestedModelId) &&
                 !string.IsNullOrWhiteSpace(log.CapabilityResolvedModelId))
             {
-                lines.Add($"Capability Redirect: {GetModelLabel(log.CapabilityRequestedModelId)} → {GetModelLabel(log.CapabilityResolvedModelId)}");
+                string why = string.IsNullOrWhiteSpace(log.CapabilityReason) ? "這個任務需要的能力它沒有" : Safe(log.CapabilityReason);
+                lines.Add($"換模型原因：{why}");
             }
 
-            // Multi-Model v1：顯示實際模型的能力標籤與成本層級。
+            foreach (var attemptLine in FailureExplainer.DescribeAttempts(log.FallbackAttempts, GetModelLabel))
+                lines.Add($"⚠ {attemptLine}");
+
             var actualDef = AiModelHelper.GetDefinition(log.ActualModelId);
             if (actualDef != null)
             {
-                lines.Add($"成本層級：{actualDef.CostTierLabel}");
-                lines.Add($"能力：{actualDef.CapabilitySummary}");
+                lines.Add($"成本等級：{actualDef.CostTierLabel}");
+                lines.Add($"擅長：{actualDef.CapabilitySummary}");
             }
 
             var state =
@@ -422,7 +440,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "Model Selection",
+                Title = "使用的模型",
                 Detail = summary,
                 State = state,
                 Highlight = true,
