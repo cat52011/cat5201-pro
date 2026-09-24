@@ -256,8 +256,10 @@ namespace Cat5201
 
                 foreach (var node in MainCanvas.Children.OfType<NodeControl>())
                 {
-                    bool hasReal = node.TryGetRealTokenUsage(out int inTok, out int outTok);
-                    var (mediaUsd, _) = node.GetMediaCostUsd();
+                    var usage = UsageSummary.From(node.GetUsageRecords());
+                    int inTok = usage.InputTokens, outTok = usage.OutputTokens;
+                    bool hasReal = usage.LlmCalls > 0 && usage.LlmAllActual;
+                    double mediaUsd = usage.MeteredUsd;
                     var files = node.GetOutputFilePaths()
                         .Select(p => Path.GetFileName(p))
                         .Where(n => !string.IsNullOrWhiteSpace(n))

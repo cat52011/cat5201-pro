@@ -27,6 +27,7 @@ namespace Cat5201
             string raw;
             try
             {
+                using var usagePurpose = UsageMeter.Purpose("輸出意圖判斷");
                 raw = await _router
                     .GetOpenAiService(AiModels.OpenAi_Gpt56)
                     .GenerateAsync(BuildSystemPrompt(), BuildUserPrompt(topText), 200, ct);

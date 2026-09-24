@@ -72,14 +72,24 @@ namespace Cat5201
                 .OfType<VerifiedFactPayload>()
                 .ToList();
 
+            // 沒拿到資料的搜尋（服務失敗 / 沒結果）不能進「事實來源」區塊，只以狀態說明出現。
+            var failedSearchPayloads = items
+                .Where(x => string.Equals(x.ItemType, "search_summary", StringComparison.OrdinalIgnoreCase))
+                .Select(x => x.Payload)
+                .OfType<SearchSummaryPayload>()
+                .Where(x => x.Status != SearchStatus.Succeeded)
+                .ToList();
+
             var searchSummaryPayloads = items
                 .Where(x => string.Equals(x.ItemType, "search_summary", StringComparison.OrdinalIgnoreCase))
                 .Select(x => x.Payload)
                 .OfType<SearchSummaryPayload>()
+                .Where(x => x.Status == SearchStatus.Succeeded)
                 .ToList();
 
             var searchSummaryItems = items
-                .Where(x => string.Equals(x.ItemType, "search_summary", StringComparison.OrdinalIgnoreCase))
+                .Where(x => string.Equals(x.ItemType, "search_summary", StringComparison.OrdinalIgnoreCase) &&
+                            !(x.Payload is SearchSummaryPayload p && p.Status != SearchStatus.Succeeded))
                 .ToList();
 
             var analysisItems = items
@@ -90,6 +100,13 @@ namespace Cat5201
                 .ToList();
 
             var lines = new List<string>();
+
+            foreach (var failed in failedSearchPayloads)
+            {
+                lines.Add("【搜尋狀態】");
+                lines.Add($"{SearchStatus.ToLabel(failed.Status)}：{failed.StatusDetail}。這次沒有取得任何即時外部資料；不可聲稱已搜尋或已查證，也不可把訓練資料的舊數字當成最新值。");
+                lines.Add("");
+            }
 
             if (verifiedFactPayloads.Count > 0)
             {
@@ -473,8 +490,18 @@ namespace Cat5201
                         : x.Payload?.ToString() ?? "";
 
                     int factCount = 0;
+                    string verificationLabel = "";
                     if (x.Payload is VerifiedFactPayload verified)
+                    {
                         factCount = verified.Facts?.Count ?? 0;
+                        verificationLabel = FactOwnership.DescribeVerification(verified.Facts);
+                    }
+                    else if (x.Payload is SearchSummaryPayload searched)
+                    {
+                        verificationLabel = searched.HasUsableResults
+                            ? $"搜尋結果 {searched.Items.Count} 筆（摘錄，未逐筆查證）"
+                            : $"{SearchStatus.ToLabel(searched.Status)}（沒有即時資料）";
+                    }
 
                     string kind = string.IsNullOrWhiteSpace(x.ArtifactKind) ? "artifact" : x.ArtifactKind.Trim();
                     string format = string.IsNullOrWhiteSpace(x.ContentFormat) ? "text" : x.ContentFormat.Trim();
@@ -494,6 +521,7 @@ namespace Cat5201
                         Preview = Trim(preview, 220),
                         EstimatedSize = EstimateSize(x),
                         FactCount = factCount,
+                        VerificationLabel = verificationLabel,
                         CreatedAtUtc = x.CreatedAtUtc,
 
                         // Workspace v2：集中推導 status / source / 標籤 / 落地檔案 / 依賴。
@@ -534,6 +562,8 @@ namespace Cat5201
                         : ArtifactStatus.Validated;
                 case FinalSynthesisPayload finalSynthesis:
                     return finalSynthesis.Success ? ArtifactStatus.Ready : ArtifactStatus.Failed;
+                case SearchSummaryPayload search:
+                    return search.Status == SearchStatus.Succeeded ? ArtifactStatus.Ready : ArtifactStatus.Failed;
                 case CodeDiffArtifactPayload:
                 case WorkflowPlanPayload:
                 case DownstreamNodePlanPayload:

@@ -24,6 +24,12 @@ namespace Cat5201
             public string Status { get; set; } = "pending"; // pending / done / failed
             public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
             public string Note { get; set; } = "";
+
+            // 成本可稽查：送出時已入帳的秒數與金額。CostRecorded=false 的舊紀錄（本欄位出現前建立）
+            // 在恢復取回成功時才補記帳，避免漏記也避免重複記。
+            public double Seconds { get; set; }
+            public double CostUsd { get; set; }
+            public bool CostRecorded { get; set; }
         }
 
         // Veo operation 在 Google 端的保存期有限（延伸 API 文件明載來源影片兩天內）——
@@ -55,7 +61,7 @@ namespace Cat5201
         }
 
         /// <summary>operation 建立成功即記錄（此刻起「錢已經付了」，值得被記住）。</summary>
-        public static void Record(string operationName, string prompt)
+        public static void Record(string operationName, string prompt, double seconds = 0, double costUsd = 0, bool costRecorded = false)
         {
             if (string.IsNullOrWhiteSpace(operationName))
                 return;
@@ -64,7 +70,48 @@ namespace Cat5201
             {
                 if (_jobs.Any(j => j.OperationName == operationName))
                     return;
-                _jobs.Add(new VideoJob { OperationName = operationName, Prompt = prompt ?? "" });
+                _jobs.Add(new VideoJob
+                {
+                    OperationName = operationName,
+                    Prompt = prompt ?? "",
+                    Seconds = seconds,
+                    CostUsd = costUsd,
+                    CostRecorded = costRecorded
+                });
+                TrimAndSaveLocked();
+            }
+        }
+
+        /// <summary>取某個 operation 的紀錄副本（查不到回 null）。</summary>
+        public static VideoJob? Find(string operationName)
+        {
+            lock (_lock)
+            {
+                var job = _jobs.FirstOrDefault(j => j.OperationName == operationName);
+                return job == null ? null : new VideoJob
+                {
+                    OperationName = job.OperationName,
+                    Prompt = job.Prompt,
+                    Status = job.Status,
+                    CreatedAtUtc = job.CreatedAtUtc,
+                    Note = job.Note,
+                    Seconds = job.Seconds,
+                    CostUsd = job.CostUsd,
+                    CostRecorded = job.CostRecorded
+                };
+            }
+        }
+
+        /// <summary>恢復取回時補記了舊紀錄的成本後呼叫，之後不再重複記。</summary>
+        public static void MarkCostRecorded(string operationName, double costUsd)
+        {
+            lock (_lock)
+            {
+                var job = _jobs.FirstOrDefault(j => j.OperationName == operationName);
+                if (job == null)
+                    return;
+                job.CostUsd = costUsd;
+                job.CostRecorded = true;
                 TrimAndSaveLocked();
             }
         }
@@ -86,6 +133,15 @@ namespace Cat5201
                 job.Status = status;
                 job.Note = note ?? "";
                 TrimAndSaveLocked();
+            }
+        }
+
+        /// <summary>各狀態的任務數（診斷用，不含提示詞內容）。</summary>
+        public static IReadOnlyDictionary<string, int> GetStatusCounts()
+        {
+            lock (_lock)
+            {
+                return _jobs.GroupBy(j => j.Status).ToDictionary(g => g.Key, g => g.Count());
             }
         }
 

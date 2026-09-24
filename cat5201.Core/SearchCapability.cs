@@ -68,15 +68,28 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                // Perplexity 服務暫時不可用（5xx / 網路錯誤）→ 回傳 soft result，
-                // 讓主流程繼續用 AI 自身知識回答，不 throw 以避免觸發 Required 失敗路徑。
-                var fallbackPayload = new SearchSummaryPayload
-                {
-                    Query = originalQuery,
-                    Summary = $"⚠️ 搜尋服務暫時無法使用（{ex.Message}），以下回答基於 AI 訓練資料，不含即時外部資訊。"
-                };
-                return AgentCapabilityResult.WithData("search_summary", fallbackPayload);
+                // Perplexity 服務暫時不可用（5xx / 網路錯誤）→ 不 throw（避免 Required 失敗路徑直接中斷），
+                // 但明確標 Status=service_failed：下游（FreshDataAssessment）據此交付部分結果、決策窗顯示未查證，
+                // 不能因為「有 search_summary 物件」就被當成已取得即時資料。
+                AppLog.Warn("Search", "搜尋服務失敗", ex);
+                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                    originalQuery, SearchStatus.ServiceFailed, Shorten(ex.Message, 160)));
             }
+        }
+
+        private static SearchSummaryPayload Unavailable(string query, string status, string detail)
+            => new SearchSummaryPayload
+            {
+                Query = query ?? "",
+                Status = status,
+                StatusDetail = detail ?? "",
+                Summary = $"⚠️ {SearchStatus.ToLabel(status)}：{detail}。本區沒有任何即時資料，不可當作事實來源，也不可聲稱已查證。"
+            };
+
+        private static string Shorten(string? text, int max)
+        {
+            string s = (text ?? "").Replace('\n', ' ').Trim();
+            return s.Length <= max ? s : s.Substring(0, max) + "…";
         }
 
         private async Task<AgentCapabilityResult> ExecuteAuthoritativeFinanceResearchAsync(
@@ -182,8 +195,9 @@ Quote Source:
 
             if (string.IsNullOrWhiteSpace(answer))
             {
-                return AgentCapabilityResult.DirectHandle(
-                    "search-capability required authoritative finance research, but Perplexity returned empty result.");
+                // 舊版在這裡直接把一句英文錯誤當成節點最終答案、還標成功。改成「沒有結果」讓主流程交付部分結果。
+                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                    originalQuery, SearchStatus.NoResults, "金融研究沒有回傳任何內容"));
             }
 
             return await BuildAuthoritativeFinanceResultAsync(
@@ -204,7 +218,8 @@ Quote Source:
                 ct: ct);
 
             if (results == null || results.Count == 0)
-                return AgentCapabilityResult.NotHandled();
+                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                    originalQuery, SearchStatus.NoResults, "搜尋沒有找到相關結果"));
 
             var cleaned = results
                 .Where(x => x != null && !string.IsNullOrWhiteSpace(x.Title))
@@ -213,7 +228,8 @@ Quote Source:
                 .ToList();
 
             if (cleaned.Count == 0)
-                return AgentCapabilityResult.NotHandled();
+                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                    originalQuery, SearchStatus.NoResults, "搜尋結果沒有可用的標題或內容"));
 
             var items = cleaned
                 .Select(x => new SearchSummaryItem
@@ -304,6 +320,9 @@ Quote Source:
             var searchPayload = new SearchSummaryPayload
             {
                 Query = query ?? "",
+                // 沒解析出任何結構化事實＝實際上沒拿到資料，不能讓這個佔位摘要被當成成功。
+                Status = facts.Count > 0 ? SearchStatus.Succeeded : SearchStatus.NoResults,
+                StatusDetail = facts.Count > 0 ? "" : "金融研究回應中沒有可解析的事實欄位",
                 Summary = BuildFinanceSearchContextSummary(facts),
                 Items = new List<SearchSummaryItem>
                 {
@@ -1109,7 +1128,10 @@ Quote Source:
                 return "";
 
             var sb = new StringBuilder();
-            sb.AppendLine("已驗證事實如下：");
+            // 誠實標示查證程度：一般搜尋產生的是「搜尋摘錄」，不是逐筆獨立驗證過的事實。
+            sb.AppendLine(FactOwnership.IsSearchContextOnly(facts)
+                ? "搜尋摘錄如下（來自搜尋結果片段，未逐筆獨立查證）："
+                : $"事實如下（查證程度：{FactOwnership.DescribeVerification(facts)}）：");
 
             foreach (var fact in facts)
             {

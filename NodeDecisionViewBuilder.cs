@@ -200,6 +200,15 @@ namespace Cat5201
             else if (recall.HasAny)
                 lines.Add($"🧠 記憶：用了偏好 {recall.PreferenceCount} 條、相關歷史 {recall.EpisodicCount} 筆");
 
+            // 即時資料：照實呈現拿到了什麼（官方來源 / 搜尋摘錄 / 服務失敗），不讓決策窗看起來「已完成查證」。
+            var evidence = (log.WorkspaceArtifacts ?? Array.Empty<AgentWorkspaceArtifactRecord>())
+                .Where(x => x != null && !string.IsNullOrWhiteSpace(x.VerificationLabel))
+                .Select(x => x.VerificationLabel)
+                .Distinct()
+                .ToList();
+            if (evidence.Count > 0)
+                lines.Add("🔎 即時資料：" + string.Join("；", evidence));
+
             var files = CollectOutputFileNames(log);
             if (files.Count > 0)
                 lines.Add("📄 產出：" + string.Join("、", files));
@@ -214,6 +223,15 @@ namespace Cat5201
                 resultLine += $" · {log.CostDisplay}";
 
             lines.Add(resultLine);
+
+            // 成本可稽查：逐筆明細（用途 · 模型 · 用量 · 金額）。失敗的執行也照列——錢可能已經花了。
+            var breakdown = UsageSummary.BuildBreakdownLines(log.UsageRecords);
+            if (breakdown.Count > 0)
+            {
+                lines.Add("💰 成本明細：");
+                foreach (var item in breakdown)
+                    lines.Add("　・" + item);
+            }
 
             string detail = (string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? "手動" : "自動")
                             + $" · {actual} · " + (log.Success ? "成功" : "失敗");
@@ -456,7 +474,13 @@ namespace Cat5201
 
                     case "facts":
                     case "verified_facts":
-                        RoleFor("research", "🔍", "研究 AI", 1).Add("查證事實", a.ModelId);
+                        // 只有含官方/報價/新聞等級來源才叫「查證事實」；全是搜尋摘錄就照實寫。
+                        string verification = a.VerificationLabel ?? "";
+                        bool searchOnly = verification.Length > 0 &&
+                                          !verification.Contains("官方") &&
+                                          !verification.Contains("報價") &&
+                                          !verification.Contains("新聞");
+                        RoleFor("research", "🔍", "研究 AI", 1).Add(searchOnly ? "整理搜尋摘錄" : "查證事實", a.ModelId);
                         break;
 
                     case "search":
@@ -895,7 +919,14 @@ namespace Cat5201
             };
 
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
-                lines.Add($"成本估算：{log.CostDisplay}（輸入 ≈ {log.InputTokens} / 輸出 ≈ {log.OutputTokens} tokens）");
+                lines.Add($"成本：{log.CostDisplay}（輸入 {log.InputTokens} / 輸出 {log.OutputTokens} tokens）");
+
+            foreach (var r in log.UsageRecords ?? Array.Empty<UsageRecord>())
+            {
+                string amount = r.Kind == UsageKinds.Llm ? $"in {r.InputTokens} / out {r.OutputTokens}" : $"{r.Quantity:0.##} {r.Unit}";
+                string note = string.IsNullOrWhiteSpace(r.Note) ? "" : $" ({r.Note})";
+                lines.Add($"Usage: {r.AtUtc:HH:mm:ss} {r.Kind} {r.Purpose} {r.ModelId} {amount} US${r.UsdCost:0.#####}{(r.IsActual ? "" : " est")}{note}");
+            }
 
             if (!string.IsNullOrWhiteSpace(log.ErrorMessage))
                 lines.Add($"Error: {log.ErrorMessage}");

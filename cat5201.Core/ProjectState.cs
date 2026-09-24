@@ -81,7 +81,9 @@ namespace Cat5201
 
         int InputTokens = 0,
         int OutputTokens = 0,
-        string CostDisplay = ""
+        string CostDisplay = "",
+        // 逐筆帳目（2026-09-17 起）；舊專案檔沒有此欄位 → null，顯示時只剩總額文字。
+        List<UsageRecord>? UsageRecords = null
     );
 
     public record AppState(

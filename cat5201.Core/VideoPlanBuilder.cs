@@ -121,6 +121,15 @@ namespace Cat5201
             return segments < 1 ? 1 : (segments > MaxSegments ? MaxSegments : segments);
         }
 
+        /// <summary>
+        /// I2V 英雄圖尺寸：必須「剛好」等於影片比例。2026-09-17 實測：用 1024x1536（2:3）餵 9:16 影片，
+        /// Veo 把圖縮進畫面、上下各補 100px 黑邊，還把黑邊當社群轉貼模板自己填上標題字（假浮水印）。
+        /// gpt-image-2 支援自訂尺寸（寬高 16 的倍數、總像素 ≥ 655,360）→ 864x1536 / 1536x864 是精確 9:16 / 16:9，
+        /// 像素比 1024x1536 還少，成本不會變高。
+        /// </summary>
+        public static string HeroStillSizeFor(string? aspectRatio)
+            => aspectRatio == "16:9" ? "1536x864" : "864x1536";
+
         public static string BuildDirectorPrompt(
             string userInput, int targetSeconds, string stylePrompt,
             string? treatment = null, VideoCutMode cutMode = VideoCutMode.Continuous)
@@ -222,9 +231,10 @@ $@"你是一位擅長把任何主題——無論科幻、自然、日常、奇�
 要求：
 {continuityRule}
 - 旁白用使用者的語言；keyframe_prompt、segment_prompt、video_prompt、style_definition 一律用英文（影片 / 影像模型對英文 prompt 表現較好）。
-- segment_prompt 要寫得豐富具體（主體的外型、動作、鏡頭運動、光影質地、環境細節），不是一句帶過；並在開頭帶入風格關鍵字（epic large-format 70mm IMAX cinematography, pristine crisp image, deep inky blacks, naturalistic motivated light, bold sculpted contrast, restrained earthy palette, monumental wide vista or intimate close-up, slow weighty camera movement 等），確保整支影片維持「大畫幅史詩電影」的清晰、份量與真實感，而非舊膠片顆粒 / 霧化柔焦、CG 塑膠感或商業廣告光澤。
+- segment_prompt 要寫得豐富具體（主體的外型、動作、鏡頭運動、光影質地、環境細節），不是一句帶過；並在開頭帶入風格關鍵字（epic cinematic photography, clear crisp image with a subtle fine grain, soft atmospheric haze in the distance, deep inky blacks, naturalistic motivated light, bold sculpted contrast, restrained earthy palette, vast wide shot or intimate close-up, slow weighty camera movement 等），確保整支影片維持「史詩電影」的清晰、份量與真實感，帶淡淡顆粒與遠景薄霧，而非舊膠片刮痕、遮住細節的濃霧柔焦、CG 塑膠感或商業廣告光澤。
 - segment_prompt、keyframe_prompt、video_prompt 裡**不要寫任何電影片名、導演或攝影師姓名**，只寫具體可見的視覺描述（影片模型看不懂名字，還可能把那部片的內容帶進來）。
-- segment_prompt 結尾可加上負面提示，例如：no text, no captions, no subtitles, no watermark, no logo, no distorted faces, no extra limbs, no morphing。
+- **不要寫片幅或攝影機規格**（IMAX、70mm、large-format、widescreen、letterbox、anamorphic、2.39:1）：影片模型會把它們畫成畫面上的字，或在畫面上下補黑邊。畫面一律填滿整個畫框。
+- segment_prompt **不要寫否定清單**（no text / no captions / no logo 之類）：影片模型沒有否定欄位，這些名詞反而會被當成要畫的東西。想避免什麼就用正面描述取代（例如 a clean, unobstructed picture filling the entire frame; natural, anatomically correct hands and faces）。
 - visual / narration 也要具體、有情緒，可直接拍攝與配音，不要空泛或公式化。";
         }
 

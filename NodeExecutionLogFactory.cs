@@ -21,36 +21,19 @@ namespace Cat5201
                     ? decision.ModelId
                     : decision.ActualModelId);
 
-            // Token / 成本：優先用 API 回傳的真實 usage（含系統提示/記憶/上下文，數字才準）；
-            // 該模型尚未接真實 usage 時，退回用節點輸入（top）/輸出（bottom）字元數推估。
-            var costEst = node.TryGetRealTokenUsage(out int realIn, out int realOut)
-                ? ModelCostEstimator.FromUsage(actualModelId, realIn, realOut)
-                : ModelCostEstimator.Compute(actualModelId, node.GetTopText(), node.GetBottomText());
-
-            // 媒體生成費用（圖片/影片以張或秒計費，與 LLM token 費用分開記錄，但合計顯示）。
-            var (mediaCostUsd, mediaCostLabel) = node.GetMediaCostUsd();
-            string costDisplay;
-            if (mediaCostUsd > 0)
-            {
-                double totalUsd = costEst.UsdCost + mediaCostUsd;
-                double totalTwd = totalUsd * 32.0;
-                string tokenPart = costEst.IsActual
-                    ? $"實際 {FormatTokens(costEst.TotalTokens)} tokens（LLM）"
-                    : $"估算 ≈ {FormatTokens(costEst.TotalTokens)} tokens（LLM）";
-                costDisplay = $"{tokenPart} + {mediaCostLabel} · 合計約 NT${totalTwd:0.00}";
-            }
-            else
-            {
-                costDisplay = costEst.Display;
-            }
+            // 成本可稽查：逐筆帳目（每次呼叫各自的模型 × 用量 × 單價）加總，不再用「總 token × 最後模型單價」。
+            var usageRecords = node.GetUsageRecords();
+            var usage = UsageSummary.From(usageRecords);
+            string costDisplay = usage.BuildCostDisplay();
 
             return new AiExecutionLogEntry
             {
                 NodeId = node.Id.ToString(),
 
-                InputTokens = costEst.InputTokens,
-                OutputTokens = costEst.OutputTokens,
+                InputTokens = usage.InputTokens,
+                OutputTokens = usage.OutputTokens,
                 CostDisplay = costDisplay,
+                UsageRecords = usageRecords.ToList(),
 
                 StartedAtUtc = startedAtUtc,
                 EndedAtUtc = endedAtUtc,
@@ -99,9 +82,6 @@ namespace Cat5201
                 OutputIntentSummary = decision.OutputIntentSummary ?? "",
             };
         }
-
-        private static string FormatTokens(int tokens) =>
-            tokens >= 1000 ? (tokens / 1000.0).ToString("0.0") + "k" : tokens.ToString();
 
         private static string GetSelectionModeLabel(NodeExecutionDecision decision)
         {

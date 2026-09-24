@@ -25,21 +25,11 @@ namespace Cat5201
     public partial class MainWindow
     {
 
-        // 即時執行用：記 log + 計成本。
-        public void AddExecutionLog(AiExecutionLogEntry entry) => AddExecutionLog(entry, recordCost: true);
-
-        // recordCost=false：載入專案歷史 log 時只還原顯示，「不得」再次計入 SpendLedger。
-        // 否則同一組歷史成本會在每次重開專案時被重複累加，導致當日花費虛高、每日上限提前封鎖（Codex P0-3）。
-        public void AddExecutionLog(AiExecutionLogEntry entry, bool recordCost)
+        // 只登記執行紀錄，不碰帳本：花費由 UsageMeter 在每次 AI 呼叫完成當下入帳。
+        // 因此載入專案歷史 log 時天然不會重複計費（Codex P0-3 的根因從結構上消失）。
+        public void AddExecutionLog(AiExecutionLogEntry entry)
         {
             _executionLogService.Add(entry);
-
-            // 花錢安全：每次「新」執行的 LLM 文字成本進全域帳本（與決策窗同一 tokens×價目表）。
-            if (recordCost && entry != null && (entry.InputTokens > 0 || entry.OutputTokens > 0))
-            {
-                var est = ModelCostEstimator.FromUsage(entry.ActualModelId, entry.InputTokens, entry.OutputTokens);
-                SpendLedger.Add(est.UsdCost, "llm");
-            }
         }
 
         // 第一層意圖閘門（Auto 模式）：實際產生影片/圖片/檔案前的二次確認。
@@ -68,7 +58,7 @@ namespace Cat5201
                     AddTarget("🖌️", "圖片編輯", "gpt-image");
                     break;
                 case OrchestrationTaskType.Presentation:
-                    AddTarget("📊", "簡報", "PPTX＋PDF 對照");
+                    AddTarget("📊", "簡報", DocumentDetail("PPTX＋PDF 對照"));
                     break;
                 case OrchestrationTaskType.GenerateFile:
                     AddTarget("📁", "檔案", "");
@@ -77,9 +67,9 @@ namespace Cat5201
 
             if (outputIntent != null)
             {
-                if (outputIntent.WantsPresentation) AddTarget("📊", "簡報", "PPTX＋PDF 對照");
-                if (outputIntent.WantsReport) AddTarget("📄", "書面報告", "Word／PDF");
-                if (outputIntent.WantsTable) AddTarget("📑", "表格", "Excel");
+                if (outputIntent.WantsPresentation) AddTarget("📊", "簡報", DocumentDetail("PPTX＋PDF 對照"));
+                if (outputIntent.WantsReport) AddTarget("📄", "書面報告", DocumentDetail("Word／PDF"));
+                if (outputIntent.WantsTable) AddTarget("📑", "表格", DocumentDetail("Excel"));
                 if (outputIntent.WantsImage) AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
                 if (outputIntent.WantsVideo) AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
             }
@@ -112,6 +102,12 @@ namespace Cat5201
 
             return Task.FromResult(ok);
         }
+
+        // 文件類產出的確認框說明：最佳品質模式要讓使用者事先知道會花幾分鐘、費用較高。
+        private string DocumentDetail(string formats)
+            => _documentEngine == DocumentEngine.ClaudeSkills
+                ? $"{formats} · Claude 文件技能，約需數分鐘、依用量計費"
+                : formats;
 
         // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
         // MVP 安全預設＝NT$100/天（只在沒有偏好檔時生效；使用者存過的值一律優先）。

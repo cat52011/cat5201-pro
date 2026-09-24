@@ -21,9 +21,7 @@ namespace Cat5201.Tests
         {
             public Guid Id { get; } = Guid.NewGuid();
             public List<string> Hints { get; } = new();
-            public double MediaUsd { get; private set; }
             public void SetLoadingHint(string? hint) { if (hint != null) Hints.Add(hint); }
-            public void AddMediaCostUsd(double usd, string label) => MediaUsd += usd;
         }
 
         private sealed class FakeHost : IAgentHost
@@ -35,6 +33,7 @@ namespace Cat5201.Tests
             public bool IsAutoModelSelectionEnabled() => AutoMode;
             public bool IsAdvancedAutoResolverEnabled() => false;
             public PresentationEngine GetPresentationEngine() => PresentationEngine.Claude;
+            public DocumentEngine GetDocumentEngine() => DocumentEngine.Builtin;
             public VeoModelTier GetVeoModelTier() => VeoModelTier.Lite;
             public string GetEffectiveVeoModel() => "";
             public string GetEffectiveVideoStylePrompt() => "";

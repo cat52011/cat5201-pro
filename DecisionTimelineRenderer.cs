@@ -734,7 +734,9 @@ namespace Cat5201
             {
                 var badges = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
                 if (r.FactCount > 0)
-                    badges.Children.Add(CreateWorkspaceBadge($"{r.FactCount} 項事實", "#FFF6E5", "#9A6700"));
+                    badges.Children.Add(CreateWorkspaceBadge(
+                        string.IsNullOrWhiteSpace(r.VerificationLabel) ? $"{r.FactCount} 項事實" : r.VerificationLabel,
+                        "#FFF6E5", "#9A6700"));
                 if (!r.IsUserVisible)
                     badges.Children.Add(CreateWorkspaceBadge("內部中繼", "#F2F4F7", "#888888"));
                 panel.Children.Add(badges);

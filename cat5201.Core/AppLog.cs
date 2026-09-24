@@ -32,6 +32,9 @@ namespace Cat5201
             }
         }
 
+        /// <summary>日誌資料夾（建立失敗時為 null）。「回報問題」打包用。</summary>
+        public static string? DirectoryPath => LogDir;
+
         /// <summary>一般資訊（啟動/關閉/重要狀態轉換）。</summary>
         public static void Info(string source, string message) => Write("INFO", source, message, null);
 

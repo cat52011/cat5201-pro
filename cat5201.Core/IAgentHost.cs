@@ -15,6 +15,7 @@ namespace Cat5201
         bool IsAutoModelSelectionEnabled();
         bool IsAdvancedAutoResolverEnabled();
         PresentationEngine GetPresentationEngine();
+        DocumentEngine GetDocumentEngine();
         VeoModelTier GetVeoModelTier();
         string GetEffectiveVeoModel();
         string GetEffectiveVideoStylePrompt();

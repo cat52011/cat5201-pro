@@ -46,6 +46,7 @@ namespace Cat5201
     NodeTaskMode taskMode,
     CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.PurposeIfUnset("主回覆");
             var memory = ShouldSuppressMemoryForFreshFinance(topText, taskMode)
                 ? new MemoryQueryResult()
                 : _memoryService.RecallRelevant(currentNode, agentId, topText, taskMode);
@@ -80,6 +81,7 @@ namespace Cat5201
      Action<string> onDelta,
      CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.PurposeIfUnset("主回覆");
             var memory = ShouldSuppressMemoryForFreshFinance(topText, taskMode)
                 ? new MemoryQueryResult()
                 : _memoryService.RecallRelevant(currentNode, agentId, topText, taskMode);
@@ -133,7 +135,6 @@ namespace Cat5201
 
                 var request = await buildRequestFactory(followUp);
                 var response = await provider.GenerateAsync(request, ct);
-                currentNode.RecordTokenUsage(response.InputTokens, response.OutputTokens);
                 string reply = response.Text;
 
                 if (string.IsNullOrWhiteSpace(reply))
@@ -221,14 +222,12 @@ namespace Cat5201
                 if (round == 0)
                 {
                     var streamed = await provider.GenerateStreamAsync(request, delta => onDelta?.Invoke(delta), ct);
-                    currentNode.RecordTokenUsage(streamed.InputTokens, streamed.OutputTokens);
                     reply = streamed.Text;
                     roundOutputTokens = streamed.OutputTokens;
                 }
                 else
                 {
                     var normal = await provider.GenerateAsync(request, ct);
-                    currentNode.RecordTokenUsage(normal.InputTokens, normal.OutputTokens);
                     reply = normal.Text;
                     roundOutputTokens = normal.OutputTokens;
                 }

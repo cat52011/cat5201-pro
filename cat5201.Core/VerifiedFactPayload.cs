@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Cat5201
 {
@@ -60,6 +61,41 @@ namespace Cat5201
                    string.Equals(factType, "eps", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(factType, "gross_margin", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(factType, "guidance", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>
+        /// 事實的「實際查證程度」白話標籤。payload 名稱叫 verified_facts 是歷史包袱（程式內部 key 不改），
+        /// 但對使用者顯示時必須說清楚：搜尋摘錄不是逐筆獨立驗證過的事實。
+        /// </summary>
+        public static string DescribeAuthority(string? authorityLevel) => (authorityLevel ?? "").Trim().ToLowerInvariant() switch
+        {
+            AuthorityOfficial => "官方來源",
+            AuthorityMarketQuote => "報價資料",
+            AuthorityTrustedNews => "新聞來源",
+            AuthoritySearchContext => "搜尋摘錄（未獨立查證）",
+            AuthorityModelGenerated => "模型生成（未查證）",
+            _ => "來源等級未標示"
+        };
+
+        /// <summary>例：「官方來源 3・報價資料 2・搜尋摘錄（未獨立查證） 1」。</summary>
+        public static string DescribeVerification(IEnumerable<VerifiedFactItem>? facts)
+        {
+            var groups = new List<(int Rank, string Label, int Count)>();
+            foreach (var g in (facts ?? Array.Empty<VerifiedFactItem>())
+                         .Where(x => x != null)
+                         .GroupBy(x => (x.AuthorityLevel ?? "").Trim().ToLowerInvariant()))
+            {
+                groups.Add((AuthorityRank(g.Key), DescribeAuthority(g.Key), g.Count()));
+            }
+
+            return string.Join("・", groups.OrderByDescending(x => x.Rank).Select(x => $"{x.Label} {x.Count}"));
+        }
+
+        /// <summary>全部都只是搜尋摘錄（或更低）＝沒有任何一筆是有權威來源的事實。</summary>
+        public static bool IsSearchContextOnly(IEnumerable<VerifiedFactItem>? facts)
+        {
+            var list = (facts ?? Array.Empty<VerifiedFactItem>()).Where(x => x != null).ToList();
+            return list.Count > 0 && list.All(x => AuthorityRank(x.AuthorityLevel) <= AuthorityRank(AuthoritySearchContext));
         }
 
         public static string ResolveFinanceUsageRole(string factType)

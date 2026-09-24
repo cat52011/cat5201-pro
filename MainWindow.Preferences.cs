@@ -49,7 +49,8 @@ namespace Cat5201
             bool GoogleAutoUploadDrive = false,
             List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
             bool DriveConvertToGoogleFormat = false,
-            string LastProjectPath = ""                      // P2-2 會話還原：最後開啟的專案
+            string LastProjectPath = "",                     // P2-2 會話還原：最後開啟的專案
+            string DocumentEngine = "ClaudeSkills"           // 文件產出引擎（預設 Claude 文件技能）
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -141,7 +142,8 @@ namespace Cat5201
                     GoogleAutoUploadDrive: _googleAutoUploadDrive,
                     DriveUploadTypes: _driveUploadTypes.ToList(),
                     DriveConvertToGoogleFormat: _driveConvertGoogle,
-                    LastProjectPath: _currentFilePath ?? ""
+                    LastProjectPath: _currentFilePath ?? "",
+                    DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine)
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -216,6 +218,7 @@ namespace Cat5201
                     : new HashSet<string>(prefs.DriveUploadTypes);
                 _driveConvertGoogle = prefs.DriveConvertToGoogleFormat;
                 _lastProjectPathFromPrefs = prefs.LastProjectPath ?? "";
+                _documentEngine = DocumentEngineHelper.Parse(prefs.DocumentEngine);
             }
             catch (Exception ex)
             {

@@ -52,6 +52,7 @@ namespace Cat5201
             NodeTaskMode taskMode,
             CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("翻譯");
             var segments = await TryDiscoverSegmentsAsync(currentNode, topText, model, ct);
             if (segments.Count <= 1)
                 return await _singlePassAsync(currentNode, topText, model, taskMode, ct);
@@ -124,6 +125,7 @@ $@"【系統判定任務模式】
             Action<string> onDelta,
             CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("翻譯");
             var segments = await TryDiscoverSegmentsAsync(currentNode, topText, model, ct);
             if (segments.Count <= 1)
                 return await _singlePassStreamAsync(currentNode, topText, model, taskMode, onDelta, ct);

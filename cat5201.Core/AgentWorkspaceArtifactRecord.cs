@@ -29,6 +29,10 @@ namespace Cat5201
 
         public int FactCount { get; init; }
 
+        // 查證程度白話標籤（例：「官方來源 3・搜尋摘錄（未獨立查證） 2」、「搜尋服務失敗（沒有即時資料）」）。
+        // verified_facts 這個內部名稱不代表每筆都獨立驗證過，顯示一律用這個標籤。
+        public string VerificationLabel { get; init; } = "";
+
         public DateTime CreatedAtUtc { get; init; }
 
         // Workspace v2：標準化 source metadata + status + dependencies + 友善標籤。

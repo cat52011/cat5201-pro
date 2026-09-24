@@ -4,10 +4,9 @@ using System.Collections.Generic;
 namespace Cat5201
 {
     /// <summary>
-    /// Product UX v1：Token / 成本「估算」。
-    /// 目前底層串流服務沒有回傳 API 的 usage 區塊，因此這裡用字元數推估 token，
-    /// 再依各模型每百萬 token 價目表估算成本。所有顯示都標明「估算」，
-    /// 之後若把真實 usage 串回來，只要改 Estimate 的來源即可，呼叫端不用動。
+    /// 價目表與成本計算的單一真相。各 AI 服務回報真實 usage 時用 FromUsage；
+    /// 拿不到 usage 時才用 Compute 依字元數推估（顯示一律標「估算」）。
+    /// 實際記帳由 UsageMeter 在每次呼叫完成時進行，這裡只負責「多少錢」。
     /// </summary>
     public static class ModelCostEstimator
     {
@@ -72,6 +71,10 @@ namespace Cat5201
             ["claude-sonnet-4-6"] = new Price(3.00, 15.00),
             ["claude-opus-4-8"] = new Price(5.00, 25.00),
 
+            // Perplexity Agent API 代跑第三方模型：官方寫明「依原廠直售價、不加價」，且列的是 GPT-5.6 Sol 標價 $5/$30
+            // （不是 OpenAI 直連的促銷價）。web_search 工具費另計，見 PerplexityAgentWebSearchUsd。
+            ["openai/gpt-5.6-sol"] = new Price(5.00, 30.00),
+
             ["pplx-sonar"] = new Price(1.00, 1.00, 0.008),              // + $8/千次 request fee（medium context）
             // Deep research 除 token 外還有 citation tokens($2/M)、search queries($5/千次)、reasoning tokens($3/M)，
             // provider 未在 usage 回報 —— per-request 取保守常數近似（約 30 次 search + reasoning 的中檔情境）。
@@ -79,6 +82,10 @@ namespace Cat5201
             ["gemini-3.1-pro"] = new Price(2.00, 12.00),                // Google 官方（舊表 1.25/10 低估）
             ["gemini-3.5-flash"] = new Price(1.50, 9.00),               // Google 官方
         };
+
+        // Perplexity 按次計價（官方 pricing 頁核對 2026-09-17）：Search API $5/千次；Agent API 的 web_search 工具 $0.0025/次。
+        public const double PerplexitySearchRequestUsd = 0.005;
+        public const double PerplexityAgentWebSearchUsd = 0.0025;
 
         // 約略匯率，僅用於估算顯示。公開＝全 App 單一真相（SpendLedger 也引用這裡，
         // 兩處各養一個匯率曾造成 10 倍級顯示錯誤，不再重演）。
@@ -97,6 +104,9 @@ namespace Cat5201
             ["1024x1536:high"] = 0.25,
             ["1792x1024:high"] = 0.25,
             ["1024x1792:high"] = 0.25,
+            // I2V 英雄圖精確 9:16 / 16:9：像素比 1024x1536 少，保守沿用同價（寧可高估不低估）。
+            ["864x1536:high"] = 0.25,
+            ["1536x864:high"] = 0.25,
         };
 
         private const double DefaultImageUsd = 0.17; // 1024 高品質估算
@@ -194,6 +204,26 @@ namespace Cat5201
                 (c >= '＀' && c <= '￯');     // 全形符號
         }
 
+        /// <summary>
+        /// 服務端送出的模型 ID → 價目表用的 ID。例：sonar → pplx-sonar、gemini-3.1-pro-preview → gemini-3.1-pro。
+        /// 對不到就原樣回傳（BuildEstimate 會退回預設價，至少不會記 0 元）。
+        /// </summary>
+        public static string ResolvePricingModelId(string? modelId)
+        {
+            string id = (modelId ?? "").Trim();
+            if (id.Length == 0 || PriceTable.ContainsKey(id))
+                return id;
+
+            foreach (var def in AiModelRegistry.All)
+            {
+                if (string.Equals(def.ServiceModel, id, StringComparison.OrdinalIgnoreCase))
+                    return def.Id;
+            }
+
+            string alias = AiModelRegistry.ResolveAlias(id) ?? id;
+            return PriceTable.ContainsKey(alias) ? alias : id;
+        }
+
         private static Price ResolvePrice(string? modelId)
         {
             if (!string.IsNullOrWhiteSpace(modelId) &&
@@ -205,7 +235,7 @@ namespace Cat5201
             return DefaultPrice;
         }
 
-        private static string FormatTokens(int tokens)
+        public static string FormatTokens(int tokens)
         {
             if (tokens >= 1000)
                 return (tokens / 1000.0).ToString("0.0") + "k";
@@ -213,7 +243,7 @@ namespace Cat5201
             return tokens.ToString();
         }
 
-        private static string FormatTwd(double usd)
+        public static string FormatTwd(double usd)
         {
             double twd = usd * UsdToTwd;
 

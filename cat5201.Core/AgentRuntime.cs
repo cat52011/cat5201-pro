@@ -360,6 +360,8 @@ namespace Cat5201
                     AgentCapabilityResult capabilityResult;
                     try
                     {
+                        using var capabilityPurpose = UsageMeter.Purpose(
+                            capability.Id == "search-capability" ? "搜尋研究" : $"能力層：{capability.Id}");
                         capabilityResult = await capability.ExecuteAsync(
                             capabilityContext,
                             request.CancellationToken);
@@ -446,6 +448,14 @@ namespace Cat5201
 
                         System.Diagnostics.Debug.WriteLine(
                             $"[Workspace] Types={string.Join(", ", workspace.GetAll().Select(x => x.ItemType))}");
+                        // 搜尋服務失敗 / 沒有結果時仍會帶一個 search_summary 讓流程繼續——但那不是成功，
+                        // stage 與 trace 必須如實標失敗，決策窗才不會顯示「查證完成」。
+                        var unusableSearch = capabilityResult.Data.TryGetValue("search_summary", out var searchValue) &&
+                                             searchValue is SearchSummaryPayload searchPayload &&
+                                             searchPayload.Status != SearchStatus.Succeeded
+                            ? (SearchSummaryPayload)searchValue
+                            : null;
+
                         capabilityTrace.Add(new AgentCapabilityTraceItem
                         {
                             CapabilityId = capability.Id,
@@ -454,12 +464,25 @@ namespace Cat5201
                             Executed = true,
                             Handled = false,
                             AugmentedPrompt = false,
-                            Success = true,
-                            Summary = $"data produced: {string.Join(", ", capabilityResult.Data.Keys)}"
+                            Success = unusableSearch == null,
+                            Summary = unusableSearch == null
+                                ? $"data produced: {string.Join(", ", capabilityResult.Data.Keys)}"
+                                : $"{SearchStatus.ToLabel(unusableSearch.Status)}：{unusableSearch.StatusDetail}",
+                            ErrorMessage = unusableSearch == null ? "" : unusableSearch.StatusDetail
                         });
-                        orchestration.MarkCapabilitySuccess(
-                            capability.Id,
-                            $"data: {string.Join(", ", capabilityResult.Data.Keys)}");
+
+                        if (unusableSearch == null)
+                        {
+                            orchestration.MarkCapabilitySuccess(
+                                capability.Id,
+                                $"data: {string.Join(", ", capabilityResult.Data.Keys)}");
+                        }
+                        else
+                        {
+                            orchestration.MarkCapabilityFailed(
+                                capability.Id,
+                                $"{SearchStatus.ToLabel(unusableSearch.Status)}：{unusableSearch.StatusDetail}");
+                        }
                     }
 
                     if (capabilityResult.Handled &&
@@ -557,18 +580,17 @@ namespace Cat5201
                     }
                 }
             }
-            if (runCapabilityLayer &&
-                orchestrationPlan.RequiresFreshFacts &&
-    !capabilityData.ContainsKey("verified_facts") &&
-    !capabilityData.ContainsKey("search_summary"))
+            // 需要最新資料的任務：看「實際拿到什麼」（FreshDataAssessment），不是看有沒有 search_summary 物件。
+            // 資料不足 → 不再整個節點失敗，而是交付「部分結果」：最終答案頂端由程式加警告、模型收到硬規則不得假裝查證。
+            FreshDataAssessment? freshDataShortfall = null;
+            if (runCapabilityLayer && orchestrationPlan.RequiresFreshFacts)
             {
-                orchestration.CompleteRun(
-                    executionSuccess: false,
-                    failureDetail: "requires fresh facts but none produced");
-                orchestrationItem.TextSummary = AgentWorkspaceBuilder.BuildTextSummary(orchestrationPlan);
-
-                throw new InvalidOperationException(
-                    "This task requires fresh facts, but search-capability did not produce verified_facts or search_summary.");
+                var freshData = FreshDataAssessment.Evaluate(capabilityData);
+                if (!freshData.HasUsableData)
+                {
+                    freshDataShortfall = freshData;
+                    AppLog.Info("AgentRuntime", $"需要即時資料但未取得（{freshData.Status}）：{freshData.Detail}");
+                }
             }
 
             // 2.5 parallel multi-agent execution
@@ -585,6 +607,7 @@ namespace Cat5201
 
                 if (parallelTasks.Count > 0)
                 {
+                    using var parallelPurpose = UsageMeter.Purpose("平行代理");
                     parallelResult = await parallelRunner.RunAsync(
                         new AgentParallelExecutionRequest
                         {
@@ -745,7 +768,8 @@ namespace Cat5201
                     workspace,
                     decision,
                     request.PreferenceBlock,
-                    request.CancellationToken);
+                    request.CancellationToken,
+                    freshDataShortfall?.BuildSynthesisNotice() ?? "");
 
                 if (synthesisExecution != null)
                 {
@@ -905,6 +929,14 @@ namespace Cat5201
                     finalInput;
             }
 
+            string freshDataBanner = freshDataShortfall?.BuildUserBanner() ?? "";
+            if (freshDataShortfall != null &&
+                orchestrationPlan.TaskType != OrchestrationTaskType.ImageGeneration &&
+                orchestrationPlan.TaskType != OrchestrationTaskType.ImageEdit)
+            {
+                finalInput += "\n\n" + freshDataShortfall.BuildSynthesisNotice();
+            }
+
             // 5. execution
             orchestration.MarkRunning("final_synthesis");
 
@@ -923,6 +955,9 @@ namespace Cat5201
                     synthesisExecution,
                     enforceSynthesisFormat: enforceFinalSynthesisFormat);
 
+                if (!string.IsNullOrEmpty(freshDataBanner) && execution.IsSuccess)
+                    execution = ReplaceExecutionText(execution, freshDataBanner + execution.Text);
+
                 if (request.UseStreaming && request.OnDelta != null &&
                     !string.IsNullOrWhiteSpace(execution.Text))
                 {
@@ -931,6 +966,9 @@ namespace Cat5201
             }
             else
             {
+                if (!string.IsNullOrEmpty(freshDataBanner) && useStreamingForFinalExecution)
+                    request.OnDelta?.Invoke(freshDataBanner);
+
                 execution = await _executeWithFallbackAsync(
                     node,
                     finalInput,
@@ -942,6 +980,9 @@ namespace Cat5201
                 execution = FinalAnswerSanitizer.Sanitize(
                     execution,
                     enforceSynthesisFormat: enforceFinalSynthesisFormat);
+
+                if (!string.IsNullOrEmpty(freshDataBanner) && execution.IsSuccess)
+                    execution = ReplaceExecutionText(execution, freshDataBanner + execution.Text);
             }
 
             if (hasCodeDiffDraft)
@@ -1062,7 +1103,9 @@ namespace Cat5201
             }
 
             // 6. finalize
-            if (execution.IsSuccess)
+            if (execution.IsSuccess && freshDataShortfall != null)
+                orchestration.MarkSuccess("final_synthesis", $"model: {execution.ActualModelId}（部分結果：未取得即時資料）");
+            else if (execution.IsSuccess)
                 orchestration.MarkSuccess("final_synthesis", $"model: {execution.ActualModelId}");
             else
                 orchestration.MarkFailed("final_synthesis", execution.ErrorMessage);
@@ -1083,6 +1126,29 @@ namespace Cat5201
             bool doTable = allowGeneration && intent.WantsTable;
             bool doDeck = allowGeneration && intent.WantsPresentation;
 
+            // 文件技能（個人化預設）：簡報 / 報告 / 表格交給 Claude 用官方技能一次做完（與 Claude App 同一套機制）。
+            // 成功產出的類型就不再走內建流程；沒金鑰、失敗、或某類型沒產出時，該類型照舊由下方內建流程補上。
+            // 使用者明確選了 Gamma 的簡報維持走 Gamma。
+            if (execution.IsSuccess &&
+                (doReport || doTable || doDeck) &&
+                request.DelegationDepth == 0 &&
+                !string.IsNullOrWhiteSpace(execution.Text) &&
+                _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills)
+            {
+                bool deckViaSkills = doDeck && _main.GetPresentationEngine() != PresentationEngine.Gamma;
+                if (doReport || doTable || deckViaSkills)
+                {
+                    var skills = await TryGenerateDocumentsWithSkillsAsync(
+                        node, topText, workspace, orchestrationPlan, execution, orchestration,
+                        doReport, doTable, deckViaSkills, request.PreferenceBlock, request.CancellationToken);
+
+                    execution = skills.Execution;
+                    doReport &= !skills.Report;
+                    doTable &= !skills.Table;
+                    doDeck &= !skills.Deck;
+                }
+            }
+
             // 報告 / 表格：GenerateReportFile 內部依 intent 決定 .docx（報告）/ .xlsx（表格），且一律配一份 .pdf。
             if (execution.IsSuccess &&
                 (doReport || doTable) &&
@@ -1097,10 +1163,20 @@ namespace Cat5201
                     orchestrationPlan,
                     execution,
                     orchestration,
-                    intent,
+                    new OutputIntent
+                    {
+                        WantsReport = doReport,
+                        WantsTable = doTable,
+                        WantsPresentation = intent.WantsPresentation,
+                        WantsImage = intent.WantsImage,
+                        WantsVideo = intent.WantsVideo,
+                        Source = intent.Source
+                    },
                     request.CancellationToken);
             }
 
+            // 內建報告流程只看 intent；技能已產出的類型要從 intent 拿掉，避免重複產檔。
+            // （intent 在上面 GenerateReportFile 呼叫前已依 doReport/doTable 調整，這裡只補簡報。）
             // 簡報：輸出投影片大綱 + .pptx。若同一請求也產了報告/表格（已配 pdf）就用 append 模式接文字、不再配 pdf；
             // 若這次只有簡報，alsoPdf=true 由簡報這邊補一份 deck 的 .pdf（不管輸出什麼都要配一個 pdf）。
             if (execution.IsSuccess &&
@@ -1196,6 +1272,180 @@ namespace Cat5201
                 WorkspaceSummary = workspaceSummary
             };
         }
+        private sealed record SkillsOutcome(AiFallbackExecutionResult Execution, bool Deck, bool Report, bool Table);
+
+        /// <summary>
+        /// Claude 文件技能：一次呼叫產出所有要求的文件（pptx / docx / xlsx ＋ 各自的 PDF）。
+        /// 任何失敗都不拋出（取消除外）——回傳哪些類型已完成，其餘由內建流程接手。
+        /// </summary>
+        private async Task<SkillsOutcome> TryGenerateDocumentsWithSkillsAsync(
+            INodeContext node,
+            string userInput,
+            AgentWorkspace workspace,
+            OrchestrationPlanPayload orchestrationPlan,
+            AiFallbackExecutionResult execution,
+            OrchestrationStateMachine orchestration,
+            bool wantsReport,
+            bool wantsTable,
+            bool wantsDeck,
+            string preferenceBlock,
+            CancellationToken ct)
+        {
+            var none = new SkillsOutcome(execution, false, false, false);
+            string model = DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus);
+            var service = new ClaudeDocumentSkillsService(model);
+            if (!service.IsConfigured)
+            {
+                AppLog.Info("DocSkills", "未設定 ANTHROPIC_API_KEY，文件改用內建快速版");
+                return none;
+            }
+
+            using var usagePurpose = UsageMeter.Purpose("Claude 文件技能");
+
+            var sources = workspace.GetByType("verified_facts")
+                .Select(x => x.Payload).OfType<VerifiedFactPayload>()
+                .SelectMany(p => p.Facts ?? Array.Empty<VerifiedFactItem>())
+                .Where(f => f != null && !string.IsNullOrWhiteSpace(f.SourceUrl))
+                .Select(f => (f.SourceTitle ?? "", f.SourceUrl ?? ""))
+                .Concat(workspace.GetByType("search_summary")
+                    .Select(x => x.Payload).OfType<SearchSummaryPayload>()
+                    .Where(p => p.HasUsableResults)
+                    .SelectMany(p => p.Items)
+                    .Where(i => !string.IsNullOrWhiteSpace(i.Source) && i.Source.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    .Select(i => (i.Title ?? "", i.Source ?? "")))
+                .GroupBy(s => s.Item2, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
+                .ToList();
+
+            var prompt = new DocumentSkillsPrompt.Request
+            {
+                UserInput = userInput,
+                MainContent = execution.Text ?? "",
+                WantsDeck = wantsDeck,
+                WantsReport = wantsReport,
+                WantsTable = wantsTable,
+                RequestedSlides = wantsDeck ? PresentationOutlineBuilder.DetectRequestedSlideCount(userInput) : 0,
+                WantsImages = PresentationWantsCoverImage(userInput),
+                Sources = sources,
+                PreferenceBlock = preferenceBlock ?? ""
+            };
+
+            var whatParts = new List<string>();
+            if (wantsDeck) whatParts.Add("簡報");
+            if (wantsReport) whatParts.Add("報告");
+            if (wantsTable) whatParts.Add("表格");
+            string what = string.Join("、", whatParts);
+
+            if (wantsDeck) orchestration.MarkRunning("presentation_outline");
+            if (wantsReport || wantsTable) orchestration.MarkRunning("generate_file");
+
+            ClaudeDocumentSkillsService.Result result;
+            try
+            {
+                node.SetLoadingHint($"Claude 正在製作{what}（官方文件技能，約需數分鐘）");
+                result = await service.GenerateAsync(
+                    DocumentSkillsPrompt.SystemPrompt,
+                    DocumentSkillsPrompt.BuildUserPrompt(prompt),
+                    DocumentSkillsPrompt.SkillIds(prompt),
+                    DocumentSkillsPrompt.WantedExtensions(prompt),
+                    (round, steps) => node.SetLoadingHint($"Claude 正在製作{what}（已執行 {steps} 個步驟）"),
+                    ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLog.Warn("DocSkills", "文件技能執行失敗，改用內建快速版", ex);
+                result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = ex.Message };
+            }
+            finally
+            {
+                node.SetLoadingHint(null);
+            }
+
+            if (!result.Success)
+            {
+                AppLog.Warn("DocSkills", $"文件技能未完成（{result.Rounds} 輪 / {result.ToolSteps} 步）：{result.ErrorMessage}");
+                string fallbackNote = $"\n\nℹ Claude 文件技能這次沒有完成（{result.ErrorMessage}），已改用內建快速版產出{what}。";
+                return new SkillsOutcome(ReplaceExecutionText(execution, (execution.Text ?? "").TrimEnd() + fallbackNote), false, false, false);
+            }
+
+            string genDir = _main.GetGeneratedFilesDir();
+            string sourceSummary = $"{orchestrationPlan.PipelineId} / Claude 文件技能 {model}";
+            string deckTitle = DeriveCleanTitle(userInput, "簡報");
+            string reportTitle = wantsDeck ? DeriveCleanTitle(userInput, "報告") + "（報告）" : DeriveCleanTitle(userInput, "報告");
+            string tableTitle = (wantsDeck || wantsReport) ? DeriveCleanTitle(userInput, "表格") + "（表格）" : DeriveCleanTitle(userInput, "表格");
+
+            var byExt = result.Files.GroupBy(f => f.Extension).ToDictionary(g => g.Key, g => g.ToList());
+            ClaudeDocumentSkillsService.SkillFile? First(string ext) => byExt.TryGetValue(ext, out var l) ? l[0] : null;
+            var pptx = First(".pptx");
+            var docx = First(".docx");
+            var xlsx = First(".xlsx");
+            var pdfs = byExt.TryGetValue(".pdf", out var pl) ? pl : new List<ClaudeDocumentSkillsService.SkillFile>();
+
+            ClaudeDocumentSkillsService.SkillFile? PdfFor(ClaudeDocumentSkillsService.SkillFile? primary)
+            {
+                if (primary == null) return null;
+                string stem = System.IO.Path.GetFileNameWithoutExtension(primary.FileName);
+                return pdfs.FirstOrDefault(p => string.Equals(System.IO.Path.GetFileNameWithoutExtension(p.FileName), stem, StringComparison.OrdinalIgnoreCase))
+                       ?? (pdfs.Count == 1 && result.Files.Count(f => f.Extension != ".pdf") == 1 ? pdfs[0] : null);
+            }
+
+            var produced = new List<string>();
+            bool Emit(GeneratedFilePayload payload, string agentId)
+            {
+                if (payload == null || !payload.Success)
+                {
+                    AppLog.Warn("DocSkills", "寫檔失敗：" + payload?.ErrorMessage);
+                    return false;
+                }
+                workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
+                    workspace, node, agentId, "generated_file", payload, modelId: model));
+                produced.Add(payload.FileName);
+                return true;
+            }
+
+            bool deckDone = false, reportDone = false, tableDone = false;
+
+            if (wantsDeck && pptx != null)
+            {
+                deckDone = Emit(GeneratedFileWriter.WritePptx(genDir, deckTitle, pptx.Bytes, sourceSummary), "presentation-agent");
+                var pdf = PdfFor(pptx);
+                if (deckDone && pdf != null)
+                    Emit(GeneratedFileWriter.WritePdf(genDir, deckTitle, pdf.Bytes, sourceSummary), "presentation-agent");
+                if (deckDone) orchestration.MarkSuccess("presentation_outline", $"Claude 文件技能 / {produced.Last()}");
+            }
+
+            if (wantsReport && docx != null)
+            {
+                reportDone = Emit(GeneratedFileWriter.WriteDocx(genDir, reportTitle, docx.Bytes, sourceSummary), "report-agent");
+                var pdf = PdfFor(docx);
+                if (reportDone && pdf != null)
+                    Emit(GeneratedFileWriter.WritePdf(genDir, reportTitle, pdf.Bytes, sourceSummary), "report-agent");
+            }
+
+            if (wantsTable && xlsx != null)
+            {
+                tableDone = Emit(GeneratedFileWriter.WriteXlsx(genDir, tableTitle, xlsx.Bytes, sourceSummary), "table-agent");
+                var pdf = PdfFor(xlsx);
+                if (tableDone && pdf != null)
+                    Emit(GeneratedFileWriter.WritePdf(genDir, tableTitle, pdf.Bytes, sourceSummary), "table-agent");
+            }
+
+            if ((reportDone || tableDone) && !((wantsReport && !reportDone) || (wantsTable && !tableDone)))
+                orchestration.MarkSuccess("generate_file", "Claude 文件技能 / " + string.Join(" / ", produced));
+
+            string summary = string.IsNullOrWhiteSpace(result.Summary)
+                ? $"已由 Claude 文件技能產出：{string.Join("、", produced)}。"
+                : result.Summary.Trim();
+
+            // 簡報單獨產出時沿用既有行為（輸出區顯示簡報說明）；有報告/表格時保留完整答案、把說明接在後面。
+            string text = wantsDeck && !wantsReport && !wantsTable && deckDone
+                ? summary
+                : (execution.Text ?? "").TrimEnd() + "\n\n" + summary;
+
+            return new SkillsOutcome(ReplaceExecutionText(execution, text), deckDone, reportDone, tableDone);
+        }
+
         /// <summary>
         /// File Generation v1：把最終答案寫成 Markdown 報告檔，加入 workspace artifact，
         /// 並在答案尾端附上檔案位置說明。回傳（可能被附註過的）execution。
@@ -1656,6 +1906,7 @@ namespace Cat5201
             OrchestrationPlanPayload orchestrationPlan,
             CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("簡報封面圖");
             try
             {
                 string subject = string.IsNullOrWhiteSpace(outline.Topic)
@@ -1701,6 +1952,7 @@ namespace Cat5201
         private async Task<string> BuildIllustrationBriefAsync(
             INodeContext node, string material, string contextLabel, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("配圖企劃");
             if (string.IsNullOrWhiteSpace(material))
                 return "";
 
@@ -1767,6 +2019,7 @@ namespace Cat5201
         private async Task GenerateSlideIllustrationsAsync(
             INodeContext node, PresentationOutlinePayload outline, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("簡報配圖");
             if (outline?.Slides == null) return;
 
             var contentSlides = outline.Slides
@@ -1797,8 +2050,6 @@ namespace Cat5201
                     if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
                     {
                         slide.ImageBytes = img.PngBytes;
-                        double usd = ModelCostEstimator.ImageCostUsd("1024x1024", "high");
-                        node.AddMediaCostUsd(usd, $"內容配圖 US${usd:F2}");
                     }
                 }
                 catch (OperationCanceledException) { throw; }
@@ -1813,6 +2064,7 @@ namespace Cat5201
             IReadOnlyList<(int id, string title, string body)> sections,
             int maxCount, string contextLabel, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("配圖企劃");
             var result = new Dictionary<int, string>();
             if (sections == null || sections.Count == 0) return result;
 
@@ -1898,6 +2150,7 @@ namespace Cat5201
         private async Task<string> IllustrateReportMarkdownAsync(
             INodeContext node, string markdown, string genDir, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("報告配圖");
             if (string.IsNullOrWhiteSpace(markdown)) return markdown;
 
             var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
@@ -1946,8 +2199,6 @@ namespace Cat5201
                     await System.IO.File.WriteAllBytesAsync(path, img.PngBytes, ct);
 
                     inserts[id] = $"![{title}]({path})";
-                    double usd = ModelCostEstimator.ImageCostUsd("1024x1024", "high");
-                    node.AddMediaCostUsd(usd, $"報告配圖 US${usd:F2}");
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex) { AppLog.Warn("AgentRuntime", "報告配圖生成失敗（已略過）", ex); }
@@ -1974,6 +2225,7 @@ namespace Cat5201
         // 把（可能含上游搜尋結果的）原始輸入交給 Claude，萃取真正主體並寫成具體、可畫的圖片提示。
         private async Task<string> BuildImageBriefAsync(INodeContext node, string rawRequest, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("圖片提示詞");
             string briefPrompt =
                 "你是圖片生成的提示詞工程師。下面是使用者的請求，可能夾帶上游節點的搜尋結果或一大段背景文字。\n" +
                 "請閱讀全部內容，找出『真正要畫的主體』（例如某家真實公司、某個產品、某個場景），" +
@@ -2099,8 +2351,6 @@ namespace Cat5201
 
                 // §8 成本提示：圖片以「每張」計價（不是 token），用真實尺寸 / 品質估算單張成本。
                 string imgSize = string.IsNullOrWhiteSpace(image.Size) ? "1024x1024" : image.Size;
-                double imgCostUsd = ModelCostEstimator.ImageCostUsd(imgSize, "high");
-                node.AddMediaCostUsd(imgCostUsd, $"圖片 1 張 US${imgCostUsd:F2}");
                 string costHint = ModelCostEstimator.ImageCostDisplay(1, imgSize, "high");
                 string note = $"\n\n已生成圖片（gpt-image-2）。{costHint}";
 
@@ -2178,8 +2428,6 @@ namespace Cat5201
             if (generated.Success)
             {
                 orchestration.MarkSuccess("generate_image_edit", generated.FileName);
-                double usd = ModelCostEstimator.ImageCostUsd("1024x1024", "high");
-                node.AddMediaCostUsd(usd, $"圖片編輯 1 張 US${usd:F2}");
                 string costHint = ModelCostEstimator.ImageCostDisplay(1, "1024x1024", "high");
                 return AppendNote(execution, $"\n\n已輸出改建後的照片（gpt-image-1 編輯）。{costHint}");
             }
@@ -2216,6 +2464,7 @@ namespace Cat5201
         // 把使用者的中文修改指令轉成乾淨英文編輯指令（保留整體結構、去除與圖片無關的雜訊如「影片風格」）。
         private async Task<string> BuildImageEditPromptAsync(INodeContext node, string userInput, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("圖片編輯提示詞");
             string p =
                 "你是圖片編輯提示詞工程師。使用者上傳了一張照片，並用中文描述想怎麼修改它。\n" +
                 "請把它轉成一段給圖片編輯模型的英文編輯指令：明確說出要改哪裡、改成什麼樣子，" +
@@ -2329,16 +2578,15 @@ namespace Cat5201
                         : VideoPlanBuilder.QuantizeBaseSeconds(targetSeconds)); // Lite 不延伸→單段
                 var tier = _main.GetVeoModelTier();
                 double estUsd = estSecondsTotal * VeoModels.UsdPerSecond(tier);
-                // 連貫模式走 I2V：多一張英雄圖（直式 1024x1536 高品質 ≈ US$0.25）當起始幀。
-                double heroUsd = fastCut ? 0 : ModelCostEstimator.ImageCostUsd("1024x1536", "high");
+                // 連貫模式走 I2V：多一張英雄圖（精確 9:16 或 16:9，高品質 ≈ US$0.25）當起始幀。
+                double heroUsd = fastCut ? 0 : ModelCostEstimator.ImageCostUsd(VideoPlanBuilder.HeroStillSizeFor("9:16"), "high");
                 estUsd += heroUsd;
-                double estAud = estUsd * 1.55; // USD→AUD 約 1.55，實際匯率浮動
                 string modeLabel = fastCut ? $"快剪 {estShots} 鏡頭" : $"連貫 {estSecondsTotal} 秒";
                 string heroNote = heroUsd > 0 ? $" + I2V 英雄圖 US${heroUsd:F2}" : "";
                 plan.ProviderRoles.Add(VideoProviderRole.Of(
                     "預估成本", VeoModels.DisplayName(tier),
                     VideoProviderRoleStatus.Planned,
-                    $"{modeLabel}・約生成 {estSecondsTotal} 秒影片素材{heroNote}・合計 US${estUsd:F2}（≈ A${estAud:F2}）"));
+                    $"{modeLabel}・約生成 {estSecondsTotal} 秒影片素材{heroNote}・合計 US${estUsd:F2}（≈ {ModelCostEstimator.FormatTwd(estUsd)}）"));
             }
 
             // 關鍵畫面 / 風格：Claude 已產出 keyframe prompt 與風格定義；實際出圖為配角。
@@ -2425,6 +2673,8 @@ namespace Cat5201
             int completedExtends = 0;
             int producedShots = 0;   // 快剪：成功生成的鏡頭數
             int actualSeconds = 0;   // 成品實際秒數（兩種模式各自計算）
+            // 已成功取回、但成品還沒寫進磁碟的 operation。寫檔成功才結案；中途當機時它們保持 pending，重啟可取回。
+            var pendingVideoOps = new List<string>();
 
             // ── I2V：連貫模式先生成一張「調好色的英雄圖」當 Veo 起始幀 ──
             // 穩定拿到指定 look 的做法是「先有一張調好色的靜態圖 → 讓它動」。
@@ -2457,6 +2707,7 @@ namespace Cat5201
                             if (shot.Success && shot.Mp4Bytes.Length > 0)
                             {
                                 clips.Add((shot.Mp4Bytes, keepPerShot));
+                                pendingVideoOps.Add(shot.OperationName);
                                 producedShots++;
                                 if (string.IsNullOrWhiteSpace(jobRef)) jobRef = shot.OperationName;
                             }
@@ -2503,6 +2754,7 @@ namespace Cat5201
                         {
                             mp4 = baseResult.Mp4Bytes;
                             jobRef = baseResult.OperationName;
+                            pendingVideoOps.Add(baseResult.OperationName);
                             string lastUri = baseResult.VideoUri; // 延伸要用「前段影片 uri」串接
 
                             // 後續段：每段把「前一段影片的 uri」+ 新 prompt 送回 Veo 延伸 +7 秒，保持人物/場景連續。
@@ -2518,6 +2770,11 @@ namespace Cat5201
                                 var ext = await veo.ExtendAsync(lastUri, segmentPrompts[i], OnProgress, ct);
                                 if (ext.Success)
                                 {
+                                    // 延伸成品已包含前面所有片段 → 前面的 operation 被取代，直接結案，只留最新一段待寫檔。
+                                    foreach (var superseded in pendingVideoOps)
+                                        VideoJobJournal.MarkDone(superseded);
+                                    pendingVideoOps.Clear();
+                                    pendingVideoOps.Add(ext.OperationName);
                                     mp4 = ext.Mp4Bytes;
                                     lastUri = ext.VideoUri;
                                     completedExtends++;
@@ -2624,10 +2881,10 @@ namespace Cat5201
                 requestItem.TextSummary = AgentWorkspaceBuilder.BuildTextSummary(request);
                 orchestration.MarkSuccess("generate_video", generated.FileName);
 
-                // 記錄實際 Veo 生成費用（秒計費，與文字 token 分開累加）。
-                double videoCostUsd = actualSeconds * VeoModels.UsdPerSecond(_main.GetVeoModelTier());
-                string videoModeLabel = fastCut ? $"快剪 {actualSeconds}s" : $"連貫 {actualSeconds}s";
-                node.AddMediaCostUsd(videoCostUsd, $"Veo {videoModeLabel} US${videoCostUsd:F2}");
+                // 成品已落地 → 相關 operation 結案（重啟不再提示取回）。
+                // 成本已在各段送出時由 VeoVideoService 逐筆入帳（快剪按「生成素材秒數」而非剪完秒數）。
+                foreach (var op in pendingVideoOps)
+                    VideoJobJournal.MarkDone(op);
 
                 string modeNote = fastCut ? "（快剪）" : "";
                 string note = partial
@@ -2670,6 +2927,7 @@ namespace Cat5201
             AgentDefinition? runtimeAgent,
             CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("簡報撰寫");
             try
             {
                 var engine = _main.GetPresentationEngine();
@@ -2795,6 +3053,7 @@ namespace Cat5201
         private async Task<string> ResearchForPresentationAsync(
             INodeContext node, string userInput, int requestedSlides, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("簡報研究");
             try
             {
                 string researchPrompt = PresentationAuthor.BuildResearchPrompt(userInput, requestedSlides);
@@ -2841,7 +3100,8 @@ namespace Cat5201
 
             if (scenes.Count == 0)
             {
-                prompts.Add(styleHead + (string.IsNullOrWhiteSpace(videoPrompt) ? "Cinematic short video." : videoPrompt.Trim()) + SettleTail);
+                string single = VideoStyle.SanitizeForVideoModel(videoPrompt);
+                prompts.Add(styleHead + (string.IsNullOrWhiteSpace(single) ? "Cinematic short video." : single) + SettleTail);
                 return prompts;
             }
 
@@ -2857,9 +3117,12 @@ namespace Cat5201
                             : !string.IsNullOrWhiteSpace(s.Visual) ? s.Visual
                             : videoPrompt;
 
-                if (!string.IsNullOrWhiteSpace(s.Camera))
+                // 鏡頭設計欄導演常寫中文（給使用者看的）；segment_prompt 本身已描述運鏡，
+                // 中文不送 Veo——混進英文 prompt 只會增加模型在畫面上「寫字」的機率。
+                if (!string.IsNullOrWhiteSpace(s.Camera) && !ContainsCjk(s.Camera))
                     body = (body ?? "").Trim() + " Camera: " + s.Camera.Trim() + ".";
 
+                body = VideoStyle.SanitizeForVideoModel(body);
                 string composed = styleHead + (string.IsNullOrWhiteSpace(body) ? "Continue the scene naturally." : body.Trim());
 
                 // 收尾保險：只對「最後一段」（單段時即唯一段）追加 settle 尾巴，
@@ -2874,6 +3137,9 @@ namespace Cat5201
             return prompts;
         }
 
+        private static bool ContainsCjk(string text)
+            => text.Any(c => c >= '　' && c <= '鿿' || c >= '豈' && c <= '﫿' || c >= '＀' && c <= '￯');
+
         // 送進 Veo 的單段收尾指令：把「停下來」當成動作的一部分，用模型真的能渲染的物理收束
         // （動態減速→歸於靜止→鏡頭鎖定），而非影片模型做不出的 fade out。導演層也會寫，這裡是雙保險。
         private const string SettleTail =
@@ -2884,6 +3150,7 @@ namespace Cat5201
         private async Task<byte[]?> TryGenerateHeroStillAsync(
             INodeContext node, VideoPlanPayload plan, string videoStyle, string aspectRatio, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("I2V 英雄圖");
             try
             {
                 var scene0 = (plan.Scenes ?? new List<VideoScenePayload>()).FirstOrDefault(s => s != null);
@@ -2897,10 +3164,13 @@ namespace Cat5201
 
                 // 英雄圖 prompt：色調標籤前置 + 導演關鍵畫面，讓「這張靜態圖」本身就在 look 裡。
                 string tags = VideoStyle.RenderTagsFor(videoStyle);
-                string heroPrompt = $"{tags}\n\n{keyframe.Trim()}\n\nA single still cinematic frame. No text, no captions, no watermark, no logo.";
+                // 圖片模型（gpt-image-2）懂否定句，這裡可以明講不要黑邊與文字（影片模型那邊則不行，見 VideoStyle）。
+                string heroPrompt = $"{tags}\n\n{VideoStyle.SanitizeForVideoModel(keyframe)}\n\n" +
+                    "A single still cinematic frame. The photograph fills the entire canvas edge to edge, " +
+                    "with no black bars, borders, frames or letterboxing. No text, captions, watermark or logo.";
 
-                // 影片直式 → 直式圖、橫式 → 橫式圖，讓起始幀比例貼近影片，降低 Veo 拒收風險。
-                string size = aspectRatio == "16:9" ? "1536x1024" : "1024x1536";
+                // 起始幀必須精確等於影片比例，否則 Veo 會補黑邊、再在黑邊上長出假字幕（見 HeroStillSizeFor）。
+                string size = VideoPlanBuilder.HeroStillSizeFor(aspectRatio);
 
                 node.SetLoadingHint("正在生成英雄圖（I2V 起始幀）");
                 var img = new OpenAIImageService(); // 缺 OPENAI_API_KEY 會丟例外 → 下方 catch 退回 T2V
@@ -2909,8 +3179,6 @@ namespace Cat5201
 
                 if (result.Success && result.PngBytes.Length > 0)
                 {
-                    double cost = ModelCostEstimator.ImageCostUsd(size, "high");
-                    node.AddMediaCostUsd(cost, $"I2V 英雄圖 US${cost:F2}");
                     plan.ProviderRoles.Add(VideoProviderRole.Of(
                         "I2V 起始幀", "gpt-image-2", VideoProviderRoleStatus.Completed,
                         $"已生成調色英雄圖（{size}）作為 Veo 起始幀"));
@@ -2937,6 +3205,7 @@ namespace Cat5201
             INodeContext node, string prompt, int targetSeconds, string stylePrompt, string? treatment,
             VideoCutMode cutMode, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("影片導演企劃");
             string directorPrompt = VideoPlanBuilder.BuildDirectorPrompt(prompt, targetSeconds, stylePrompt, treatment, cutMode);
 
             var directorDecision = new NodeExecutionDecision
@@ -3043,8 +3312,10 @@ namespace Cat5201
             AgentWorkspace workspace,
             NodeExecutionDecision rootDecision,
             string preferenceBlock,
-            CancellationToken ct)
+            CancellationToken ct,
+            string freshDataNotice = "")
         {
+            using var usagePurpose = UsageMeter.Purpose("最終整合");
             var synthesizer = AgentRegistry.Get("general-agent");
 
             var synthesisDecision = new NodeExecutionDecision
@@ -3088,7 +3359,7 @@ namespace Cat5201
 {workspaceBlock}
 
 {synthesisInstructions}
-
+{(string.IsNullOrWhiteSpace(freshDataNotice) ? "" : "\n" + freshDataNotice + "\n")}
 請現在輸出最終答案：";
 
             return await _executeWithFallbackAsync(
@@ -3141,6 +3412,7 @@ namespace Cat5201
             NodeExecutionDecision decision,
             CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("程式修補重試");
             if (invalidDiff == null || validation == null)
                 return null;
 

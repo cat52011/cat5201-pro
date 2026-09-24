@@ -93,8 +93,9 @@ namespace Cat5201
                 return Fail($"建立 Veo 影片任務失敗：{ex.Message}");
             }
 
-            // #10 長任務日誌：operation 一建立=錢已付,先落地;中途關程式可從日誌恢復輪詢,不重複付費。
-            VideoJobJournal.Record(operationName, prompt);
+            // #10 長任務日誌 + 成本可稽查：operation 一建立就落地並入帳（使用者取消、關程式、當機時雲端照樣生成、照樣收費）。
+            // 官方：只有成功生成才收費 → 雲端明確回報失敗時在 Fail 沖銷。
+            RecordCommittedCost(operationName, prompt, seconds > 0 ? seconds : 8, "影片生成");
 
             return await PollAndExtractAsync(operationName, onProgress, ct);
         }
@@ -103,15 +104,45 @@ namespace Cat5201
         /// #10 恢復模式：對「上次程式關閉前已建立、雲端可能已完成」的 operation 續輪詢並取回影片。
         /// 不建立新 operation＝不重複付費;operation 已過期時 Google 會回錯誤,如實浮現。
         /// </summary>
-        public Task<VeoResult> ResumeAsync(
+        public async Task<VeoResult> ResumeAsync(
             string operationName,
             Action<int, VideoGenerationStatus>? onProgress,
             CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(operationName))
-                return Task.FromResult(Fail("缺少 operation name,無法恢復。"));
+                return Fail("缺少 operation name,無法恢復。");
 
-            return PollAndExtractAsync(operationName, onProgress, ct);
+            var result = await PollAndExtractAsync(operationName, onProgress, ct);
+
+            // 舊版日誌（送出時還沒有入帳機制）：取回成功＝確定有收費，這時補記一次。
+            var job = VideoJobJournal.Find(operationName);
+            if (result.Success && job != null && !job.CostRecorded)
+            {
+                double seconds = job.Seconds > 0
+                    ? job.Seconds
+                    : job.Prompt.StartsWith("(影片延伸)", StringComparison.Ordinal) ? VideoPlanBuilder.ExtendSegmentSeconds : 8;
+                double usd = seconds * VeoModels.UsdPerSecondForModel(ModelFromOperation(operationName));
+                UsageMeter.RecordMetered(UsageKinds.Video, ModelFromOperation(operationName), seconds, "秒", usd,
+                    note: "恢復取回時補記", purpose: "影片恢復取回");
+                VideoJobJournal.MarkCostRecorded(operationName, usd);
+            }
+
+            return result;
+        }
+
+        private void RecordCommittedCost(string operationName, string prompt, double seconds, string purpose)
+        {
+            double usd = seconds * VeoModels.UsdPerSecondForModel(_model);
+            UsageMeter.RecordMetered(UsageKinds.Video, _model, seconds, "秒", usd,
+                note: "任務已送出（成功生成才收費，失敗會沖銷）", purpose: purpose);
+            VideoJobJournal.Record(operationName, prompt, seconds, usd, costRecorded: true);
+        }
+
+        // operation name 形如 models/veo-3.1-lite-generate-preview/operations/xxx，取出 model id 以查單價。
+        private static string ModelFromOperation(string operationName)
+        {
+            var parts = (operationName ?? "").Split('/');
+            return parts.Length >= 2 && parts[0] == "models" ? parts[1] : "";
         }
 
         /// <summary>
@@ -144,7 +175,7 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(operationName))
                 return Fail("Veo 延伸 API 未回傳 operation name。");
 
-            VideoJobJournal.Record(operationName, $"(影片延伸) {prompt}"); // 延伸段也是已付費的 operation
+            RecordCommittedCost(operationName, $"(影片延伸) {prompt}", VideoPlanBuilder.ExtendSegmentSeconds, "影片延伸");
 
             return await PollAndExtractAsync(operationName, onProgress, ct);
         }
@@ -168,7 +199,7 @@ namespace Cat5201
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)
                 {
-                    return Fail($"查詢 Veo 影片狀態失敗：{ex.Message}", operationName);
+                    return Fail($"查詢 Veo 影片狀態失敗：{ex.Message}", operationName, cloudFailed: false);
                 }
 
                 using (doc)
@@ -186,7 +217,7 @@ namespace Cat5201
                     if (root.TryGetProperty("error", out var errEl))
                     {
                         string msg = errEl.TryGetProperty("message", out var m) ? (m.GetString() ?? "") : "Veo 生成失敗。";
-                        return Fail(msg, operationName);
+                        return Fail(msg, operationName, cloudFailed: true);
                     }
 
                     try
@@ -203,10 +234,11 @@ namespace Cat5201
                             string raw = root.TryGetProperty("response", out var respDiag)
                                 ? respDiag.GetRawText()
                                 : root.GetRawText();
-                            return Fail($"Veo 回應沒有可用的影片內容。回應結構：{Truncate(raw, 500)}", operationName);
+                            // 完成但沒有影片（常見為安全過濾擋下）＝沒有成功生成，不收費。
+                            return Fail($"Veo 回應沒有可用的影片內容。回應結構：{Truncate(raw, 500)}", operationName, cloudFailed: true);
                         }
 
-                        VideoJobJournal.MarkDone(operationName); // #10：完成即結案，重啟不再提示恢復
+                        // 結案（MarkDone）交給呼叫端在「檔案真正寫好」之後做：下載完到寫檔之間若當機，重啟仍可取回。
 
                         return new VeoResult
                         {
@@ -220,7 +252,8 @@ namespace Cat5201
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
                     {
-                        return Fail($"取得 Veo 影片內容失敗：{ex.Message}", operationName);
+                        // 雲端已生成成功（已收費），只是下載失敗 → 保持可恢復，不沖銷。
+                        return Fail($"取得 Veo 影片內容失敗：{ex.Message}", operationName, cloudFailed: false);
                     }
                 }
             }
@@ -421,11 +454,20 @@ namespace Cat5201
             return "";
         }
 
-        private static VeoResult Fail(string error, string op = "")
+        private static VeoResult Fail(string error, string op = "", bool cloudFailed = false)
         {
-            // #10：有 operation name 的失敗＝雲端任務已明確終結，日誌結案（取消/關程式不走這裡，保持 pending 可恢復）。
-            if (!string.IsNullOrWhiteSpace(op))
+            // #10：只有「雲端明確回報失敗」才結案並沖銷送出時記的成本（官方：沒成功生成不收費）。
+            // 輪詢/下載失敗時雲端狀態未知或已成功，保持 pending 讓重啟可取回，成本也照記。
+            if (cloudFailed && !string.IsNullOrWhiteSpace(op))
+            {
+                var job = VideoJobJournal.Find(op);
+                if (job != null && job.CostRecorded && job.Status == "pending" && job.CostUsd > 0)
+                {
+                    UsageMeter.RecordMetered(UsageKinds.Video, ModelFromOperation(op), job.Seconds, "秒", -job.CostUsd,
+                        note: "任務失敗沖銷（官方：沒成功生成不收費）", purpose: "影片失敗沖銷");
+                }
                 VideoJobJournal.MarkFailed(op, error);
+            }
 
             return new VeoResult { Success = false, Status = VideoGenerationStatus.Failed, ErrorMessage = error, OperationName = op };
         }

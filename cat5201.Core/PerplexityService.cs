@@ -2,6 +2,7 @@
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -97,7 +98,9 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Perplexity Agent API 失敗 ({(int)resp.StatusCode}): {body}");
 
-            return ExtractAgentOutputText(body);
+            string text = ExtractAgentOutputText(body);
+            RecordAgentUsage(ParseAgentUsage(body), instructions, text, enableWebSearch);
+            return text;
         }
 
         public async Task<string> GenerateAgentStreamAsync(
@@ -147,46 +150,56 @@ namespace Cat5201
             string? currentEvent = null;
             var dataBuilder = new StringBuilder();
             var finalText = new StringBuilder();
+            var usage = new AgentUsage();
 
-            while (!reader.EndOfStream)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-
-                var line = await reader.ReadLineAsync().ConfigureAwait(false);
-                if (line == null) break;
-
-                if (line.Length == 0)
+                while (!reader.EndOfStream)
                 {
-                    if (dataBuilder.Length > 0)
+                    ct.ThrowIfCancellationRequested();
+
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (line == null) break;
+
+                    if (line.Length == 0)
                     {
-                        var data = dataBuilder.ToString().Trim();
+                        if (dataBuilder.Length > 0)
+                        {
+                            var data = dataBuilder.ToString().Trim();
 
-                        if (string.Equals(data, "[DONE]", StringComparison.Ordinal))
-                            break;
+                            if (string.Equals(data, "[DONE]", StringComparison.Ordinal))
+                                break;
 
-                        ProcessAgentSseEvent(currentEvent, data, onDelta, finalText);
+                            ProcessAgentSseEvent(currentEvent, data, onDelta, finalText, usage);
+                        }
+
+                        currentEvent = null;
+                        dataBuilder.Clear();
+                        continue;
                     }
 
-                    currentEvent = null;
-                    dataBuilder.Clear();
-                    continue;
-                }
+                    if (line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentEvent = line.Substring("event:".Length).Trim();
+                        continue;
+                    }
 
-                if (line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentEvent = line.Substring("event:".Length).Trim();
-                    continue;
-                }
+                    if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (dataBuilder.Length > 0)
+                            dataBuilder.Append('\n');
 
-                if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (dataBuilder.Length > 0)
-                        dataBuilder.Append('\n');
-
-                    dataBuilder.Append(line.Substring("data:".Length).TrimStart());
+                        dataBuilder.Append(line.Substring("data:".Length).TrimStart());
+                    }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                RecordAgentUsage(usage, instructions, finalText.ToString(), enableWebSearch, "已取消（部分用量）");
+                throw;
+            }
 
+            RecordAgentUsage(usage, instructions, finalText.ToString(), enableWebSearch);
             return finalText.ToString().Trim();
         }
 
@@ -194,12 +207,17 @@ namespace Cat5201
             string? eventName,
             string data,
             Action<string>? onDelta,
-            StringBuilder finalText)
+            StringBuilder finalText,
+            AgentUsage usage)
         {
             try
             {
                 using var doc = JsonDocument.Parse(data);
                 var root = doc.RootElement;
+
+                // 結束事件（response.completed）帶整個 response：usage 與 output（含搜尋工具呼叫）都在裡面。
+                if (root.TryGetProperty("response", out var responseEl) && responseEl.ValueKind == JsonValueKind.Object)
+                    usage.MergeFrom(ReadAgentUsage(responseEl));
 
                 string type = root.TryGetProperty("type", out var typeEl)
                     ? (typeEl.GetString() ?? "")
@@ -224,6 +242,92 @@ namespace Cat5201
                 // 單一 SSE event 失敗不終止
             }
         }
+
+        // ===== 成本可稽查：Agent API 用量 =====
+        // 官方計價：第三方模型 token 依原廠直售價（價目表 openai/gpt-5.6-sol）+ web_search 每次 $0.0025。
+        // usage 若直接帶 cost（美元）就用它；否則用 token × 價目表 + 搜尋次數 × 工具費。
+
+        private sealed class AgentUsage
+        {
+            public int Input;
+            public int Output;
+            public int WebSearches;
+            public double? ReportedCostUsd;
+
+            public void MergeFrom(AgentUsage other)
+            {
+                if (other.Input > 0) Input = other.Input;
+                if (other.Output > 0) Output = other.Output;
+                if (other.WebSearches > 0) WebSearches = other.WebSearches;
+                if (other.ReportedCostUsd.HasValue) ReportedCostUsd = other.ReportedCostUsd;
+            }
+        }
+
+        private static AgentUsage ParseAgentUsage(string json)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                return ReadAgentUsage(doc.RootElement);
+            }
+            catch
+            {
+                return new AgentUsage();
+            }
+        }
+
+        private static AgentUsage ReadAgentUsage(JsonElement response)
+        {
+            var result = new AgentUsage();
+
+            if (response.TryGetProperty("usage", out var usageEl) && usageEl.ValueKind == JsonValueKind.Object)
+            {
+                if (usageEl.TryGetProperty("input_tokens", out var inEl) && inEl.TryGetInt32(out var iv)) result.Input = iv;
+                if (usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov)) result.Output = ov;
+
+                if (usageEl.TryGetProperty("cost", out var costEl))
+                {
+                    if (costEl.ValueKind == JsonValueKind.Number && costEl.TryGetDouble(out var c))
+                        result.ReportedCostUsd = c;
+                    else if (costEl.ValueKind == JsonValueKind.Object &&
+                             costEl.TryGetProperty("total_cost", out var totalEl) &&
+                             totalEl.TryGetDouble(out var tc))
+                        result.ReportedCostUsd = tc;
+                }
+            }
+
+            if (response.TryGetProperty("output", out var output) && output.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var item in output.EnumerateArray())
+                {
+                    string type = item.TryGetProperty("type", out var t) ? (t.GetString() ?? "") : "";
+                    if (type.Contains("search", StringComparison.OrdinalIgnoreCase))
+                        result.WebSearches++;
+                }
+            }
+
+            return result;
+        }
+
+        private void RecordAgentUsage(AgentUsage usage, string instructions, string text, bool enableWebSearch, string note = "")
+        {
+            // 有開搜尋工具但回應裡數不到呼叫次數時，保守算 1 次（寧可高估一點不漏記）。
+            int searches = usage.WebSearches > 0 ? usage.WebSearches : (enableWebSearch ? 1 : 0);
+            double toolUsd = searches * ModelCostEstimator.PerplexityAgentWebSearchUsd;
+
+            if (usage.ReportedCostUsd.HasValue && usage.ReportedCostUsd.Value > 0)
+            {
+                UsageMeter.RecordLlm(_agentModel, usage.Input, usage.Output, instructions, text,
+                    note: AppendNote(note, "費用取自 API 回報"), extraUsd: 0);
+                return;
+            }
+
+            UsageMeter.RecordLlm(_agentModel, usage.Input, usage.Output, instructions, text,
+                note: AppendNote(note, searches > 0 ? $"含網路搜尋 {searches} 次" : ""), extraUsd: toolUsd);
+        }
+
+        private static string AppendNote(string a, string b)
+            => string.IsNullOrWhiteSpace(a) ? b : string.IsNullOrWhiteSpace(b) ? a : $"{a}；{b}";
 
         private static string ExtractAgentOutputText(string json)
         {
@@ -320,6 +424,10 @@ namespace Cat5201
 
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Perplexity Search API 失敗 ({(int)resp.StatusCode}): {body}");
+
+            // Search API 按次收費（$5/千次），成功回應即計費——就算結果是空的也一樣。
+            UsageMeter.RecordMetered(UsageKinds.Search, "perplexity-search", 1, "次",
+                ModelCostEstimator.PerplexitySearchRequestUsd, isActual: true);
 
             return ExtractSearchResults(body);
         }
@@ -419,6 +527,11 @@ namespace Cat5201
 
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Perplexity Embeddings API 失敗 ({(int)resp.StatusCode}): {body}");
+
+            // Embeddings $0.004/百萬 token：金額極小，但照樣入帳（估算 token，用途＝記憶索引）。
+            int embedTokens = inputArray.Sum(ModelCostEstimator.EstimateTokens);
+            UsageMeter.RecordMetered(UsageKinds.Search, model, embedTokens, "tokens",
+                embedTokens / 1_000_000.0 * 0.004, isActual: false, note: "embeddings");
 
             return ExtractEmbeddings(body, encodingFormat);
         }

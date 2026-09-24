@@ -73,32 +73,38 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Gemini API {(int)resp.StatusCode}：{Truncate(body, 400)}");
 
-            TryExtractUsage(body, onUsage);
-            return ExtractText(body);
+            string text = ExtractText(body);
+            var (inTok, outTok) = ParseUsage(body);
+            ReportUsage(inTok, outTok, instructions, text, onUsage);
+            return text;
         }
 
-        // usageMetadata.{promptTokenCount, candidatesTokenCount}
-        private static void TryExtractUsage(string json, Action<int, int>? onUsage)
+        // usageMetadata.{promptTokenCount, candidatesTokenCount}；解析失敗回 (0,0)。
+        private static (int Input, int Output) ParseUsage(string json)
         {
-            if (onUsage == null)
-                return;
-
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                if (!doc.RootElement.TryGetProperty("usageMetadata", out var usageEl))
-                    return;
+                if (!doc.RootElement.TryGetProperty("usageMetadata", out var usageEl) || usageEl.ValueKind != JsonValueKind.Object)
+                    return (0, 0);
 
-                int input = usageEl.TryGetProperty("promptTokenCount", out var pEl) && pEl.TryGetInt32(out var pv) ? pv : 0;
-                int output = usageEl.TryGetProperty("candidatesTokenCount", out var cEl) && cEl.TryGetInt32(out var cv) ? cv : 0;
-
-                if (input > 0 || output > 0)
-                    onUsage(input, output);
+                int input = usageEl.TryGetProperty("promptTokenCount", out var inEl) && inEl.TryGetInt32(out var iv) ? iv : 0;
+                int output = usageEl.TryGetProperty("candidatesTokenCount", out var outEl) && outEl.TryGetInt32(out var ov) ? ov : 0;
+                return (input, output);
             }
             catch
             {
-                // usage 解析失敗不影響主回應。
+                return (0, 0);
             }
+        }
+
+        // 成本可稽查：每次呼叫完成當下記一筆帳（模型、用途、token、費用），再回報給呼叫端。
+        private void ReportUsage(int input, int output, string? instructions, string text,
+            Action<int, int>? onUsage, string note = "")
+        {
+            UsageMeter.RecordLlm(_model, input, output, instructions, text, note);
+            if (onUsage != null && (input > 0 || output > 0))
+                onUsage(input, output);
         }
 
         private static string ExtractText(string body)

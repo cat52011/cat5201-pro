@@ -24,9 +24,10 @@ namespace Cat5201
         public const string FastModel = "veo-3.1-fast-generate-preview";
         public const string LiteModel = "veo-3.1-lite-generate-preview";
 
-        // 每秒美金（720p）。Veo 3.1：標準 $0.40、Fast $0.15、Lite ~$0.03–0.05（取 0.05 含音）。
+        // 每秒美金（720p），官方 pricing 頁核對 2026-09-17：標準 $0.40、Fast $0.10、Lite $0.05。
+        // 官方：只有「成功生成」才收費——失敗任務由 VeoVideoService 沖銷。
         public const double StandardUsdPerSecond = 0.40;
-        public const double FastUsdPerSecond = 0.15;
+        public const double FastUsdPerSecond = 0.10;
         public const double LiteUsdPerSecond = 0.05;
 
         /// <summary>
@@ -70,6 +71,17 @@ namespace Cat5201
             VeoModelTier.Fast => FastUsdPerSecond,
             _ => LiteUsdPerSecond
         };
+
+        /// <summary>
+        /// 由實際送出的 model id 查每秒單價。對不到（例如用環境變數覆寫成未知 ID）時取標準版價——寧可高估不漏記。
+        /// </summary>
+        public static double UsdPerSecondForModel(string? modelId)
+        {
+            string id = (modelId ?? "").Trim();
+            if (string.Equals(id, FastModel, System.StringComparison.OrdinalIgnoreCase)) return FastUsdPerSecond;
+            if (string.Equals(id, LiteModel, System.StringComparison.OrdinalIgnoreCase)) return LiteUsdPerSecond;
+            return StandardUsdPerSecond;
+        }
 
         public static string DisplayName(VeoModelTier tier) => tier switch
         {

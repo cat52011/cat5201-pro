@@ -9,8 +9,8 @@ namespace Cat5201
     /// 花錢安全（商品級核心）：全域花費帳本。這個產品會花使用者真金白銀，
     /// 「今天花了多少、有沒有超過我的上限」必須是一等公民，不是散在各節點的數字。
     ///
-    /// 記錄點：LLM 文字成本（MainWindow.AddExecutionLog，依實際 tokens×價目表）＋
-    /// 媒體成本（NodeControl.AddMediaCostUsd，圖片/影片按張/秒計價）。
+    /// 記錄點唯一＝UsageMeter：每個 AI 服務（LLM / 圖片 / 影片 / 搜尋）在呼叫完成當下記一筆，
+    /// 輔助呼叫（意圖判斷、自動命名…）也逃不掉；影片在送出時先記、失敗時沖銷（官方：只有成功生成才收費）。
     /// 儲存：per-day USD 總額，_config/_spend.json，原子寫入；絕不拋例外拖垮主流程。
     /// </summary>
     public static class SpendLedger
@@ -54,6 +54,21 @@ namespace Cat5201
                 Persist();
             }
             AppLog.Info("Spend", $"+US${usd:0.####}（{kind}）→ 今日累計 US${TodayUsd:0.####}");
+        }
+
+        /// <summary>沖銷一筆先前記過、但實際不收費的花費（例：影片任務失敗）。當日總額不低於 0。</summary>
+        public static void Subtract(double usd, string kind)
+        {
+            if (usd <= 0 || double.IsNaN(usd) || double.IsInfinity(usd))
+                return;
+
+            lock (_lock)
+            {
+                _usdByDay.TryGetValue(TodayKey, out double cur);
+                _usdByDay[TodayKey] = Math.Max(0, cur - usd);
+                Persist();
+            }
+            AppLog.Info("Spend", $"-US${usd:0.####}（沖銷：{kind}）→ 今日累計 US${TodayUsd:0.####}");
         }
 
         /// <summary>今日累計花費（USD）。</summary>

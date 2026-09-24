@@ -63,66 +63,18 @@ namespace Cat5201
         // 目前編輯中的暫時模型
         private string _editingModelId = AiModels.DefaultNodeModel;
 
-        // ===== #1 真實 token 用量載體 =====
-        // 本次主回覆執行從 API usage 累積的真實 token 數（跨 continuation 多輪相加）。
-        // 以「節點」為載體：不同節點各自獨立，多節點並行執行也安全。null/0 = 該模型尚未接真實 usage。
-        private int _lastInputTokens;
-        private int _lastOutputTokens;
-        private bool _hasRealTokenUsage;
+        // ===== 成本可稽查：本次執行的逐筆帳目 =====
+        // 節點開始執行時開一個 UsageScope（AsyncLocal），這次執行裡每個 AI 服務呼叫完成就記一筆
+        // （含輸出意圖判斷等輔助呼叫、圖片、影片、搜尋）。決策窗與手機鏡像都從這裡加總——
+        // 不再是「整個節點的 token 總數 × 最後那個模型的單價」（混用模型時會失真）。
+        private UsageScope? _usageScope;
 
-        // ===== #1b 媒體生成成本累加器 =====
-        // 圖片/影片以「張數」或「秒數」計價，無法用 token 計算。
-        // 每次生成後呼叫 AddMediaCostUsd() 累加；ResetTokenUsage() 時一併清零。
-        private double _mediaGenerationCostUsd;
-        private string _mediaGenerationCostLabel = "";
+        /// <summary>必須在執行節點的 async 方法本體內呼叫，帳目才會流進它 await 的所有子呼叫。</summary>
+        private void BeginUsageScope() => _usageScope = UsageMeter.BeginScope();
 
-        /// <summary>每次主回覆執行開始時清零（之後同一次執行的多輪累加）。</summary>
-        public void ResetTokenUsage()
-        {
-            _lastInputTokens = 0;
-            _lastOutputTokens = 0;
-            _hasRealTokenUsage = false;
-            _mediaGenerationCostUsd = 0;
-            _mediaGenerationCostLabel = "";
-        }
-
-        /// <summary>累加一次 API 呼叫回傳的真實用量；任一為 null 表示該 provider 未提供，略過。</summary>
-        public void RecordTokenUsage(int? inputTokens, int? outputTokens)
-        {
-            if (inputTokens.HasValue && inputTokens.Value > 0)
-            {
-                _lastInputTokens += inputTokens.Value;
-                _hasRealTokenUsage = true;
-            }
-            if (outputTokens.HasValue && outputTokens.Value > 0)
-            {
-                _lastOutputTokens += outputTokens.Value;
-                _hasRealTokenUsage = true;
-            }
-        }
-
-        /// <summary>取本次執行的真實用量；無真實資料回 false（呼叫端退回估算）。</summary>
-        public bool TryGetRealTokenUsage(out int inputTokens, out int outputTokens)
-        {
-            inputTokens = _lastInputTokens;
-            outputTokens = _lastOutputTokens;
-            return _hasRealTokenUsage;
-        }
-
-        /// <summary>累加一次媒體生成費用（圖片/影片以張或秒計價，不用 token）。</summary>
-        public void AddMediaCostUsd(double usd, string label)
-        {
-            if (usd <= 0) return;
-            _mediaGenerationCostUsd += usd;
-            if (!string.IsNullOrWhiteSpace(label))
-                _mediaGenerationCostLabel += (string.IsNullOrEmpty(_mediaGenerationCostLabel) ? "" : " + ") + label;
-
-            // 花錢安全：媒體成本也進全域帳本（LLM 文字成本在 MainWindow.AddExecutionLog 記）。
-            SpendLedger.Add(usd, string.IsNullOrWhiteSpace(label) ? "media" : label);
-        }
-
-        /// <summary>取本次執行累積的媒體生成費用（0 = 無圖片/影片生成）。</summary>
-        public (double usd, string label) GetMediaCostUsd() => (_mediaGenerationCostUsd, _mediaGenerationCostLabel);
+        /// <summary>本次（或最近一次）執行的逐筆帳目。</summary>
+        public IReadOnlyList<UsageRecord> GetUsageRecords()
+            => _usageScope?.Snapshot() ?? (IReadOnlyList<UsageRecord>)Array.Empty<UsageRecord>();
 
         // ===== 手機鏡像（§17 階段一）唯讀狀態存取器：供 WorkspaceSnapshot 讀取，不依賴 UI。 =====
 
@@ -1626,9 +1578,8 @@ namespace Cat5201
             _isGenerating = true;
             topText ??= "";
             _lastRunPrompt = topText;
-            // #1 真實用量：頂層執行開始時清零一次；本次所有子步驟 / continuation 輪次都累加到同一個節點，
-            //  讓多代理編排也能算出「整個節點」的總 token，而非只剩最後一步。
-            ResetTokenUsage();
+            // 成本可稽查：頂層執行開始時開新的帳目容器；本次所有子步驟、輔助呼叫、媒體生成都記到這裡。
+            BeginUsageScope();
             bool isImageTask = IsImageTask(topText);
             UpdateEditButtons();
             ClearOutputFiles();
@@ -2034,8 +1985,11 @@ namespace Cat5201
             if (imageTask)
                 return TimeSpan.FromMinutes(8);
 
+            // 文件技能（Claude 在沙盒裡寫程式、轉圖檢查）常要數分鐘，再加上前面的研究與整合。
             if (reportTask)
-                return TimeSpan.FromMinutes(8);
+                return _parent?.GetDocumentEngine() == DocumentEngine.ClaudeSkills
+                    ? TimeSpan.FromMinutes(25)
+                    : TimeSpan.FromMinutes(8);
 
             return TimeSpan.FromMinutes(3);
         }

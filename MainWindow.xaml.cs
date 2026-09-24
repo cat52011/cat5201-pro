@@ -464,7 +464,8 @@ namespace Cat5201
 
                 InputTokens: entry.InputTokens,
                 OutputTokens: entry.OutputTokens,
-                CostDisplay: entry.CostDisplay ?? ""
+                CostDisplay: entry.CostDisplay ?? "",
+                UsageRecords: entry.UsageRecords?.ToList()
             );
         }
         private static AiExecutionLogEntry ToExecutionLogEntry(ExecutionLogState state)
@@ -515,7 +516,8 @@ namespace Cat5201
 
                 InputTokens = state.InputTokens,
                 OutputTokens = state.OutputTokens,
-                CostDisplay = state.CostDisplay ?? ""
+                CostDisplay = state.CostDisplay ?? "",
+                UsageRecords = state.UsageRecords ?? new List<UsageRecord>()
             };
         }
 
@@ -1342,6 +1344,7 @@ namespace Cat5201
             LoadPreferences();
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
+            SyncDocumentEngineRadios();
 
             // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
             _ = AutoStartMobileMirrorIfEnabledAsync();
@@ -1651,8 +1654,16 @@ namespace Cat5201
                             content: result.Mp4Bytes,
                             sourceSummary: "程式重啟後接續取回（Veo operation 續輪詢，未重新付費）");
 
-                        if (payload.Success) okCount++;
-                        else failMsgs.Add(payload.ErrorMessage);
+                        if (payload.Success)
+                        {
+                            okCount++;
+                            // 檔案真正寫好才結案；寫檔失敗就保持 pending，下次啟動還能再取回。
+                            VideoJobJournal.MarkDone(job.OperationName);
+                        }
+                        else
+                        {
+                            failMsgs.Add(payload.ErrorMessage);
+                        }
                     }
                     else
                     {
@@ -2067,6 +2078,10 @@ namespace Cat5201
         // 簡報生成器：AgentRuntime 撰寫簡報時讀這個決定交給哪個 AI。
         public PresentationEngine GetPresentationEngine() => _presentationEngine;
 
+        // 文件產出引擎（個人化）：預設 Claude 文件技能（與 Claude App 同級），可切回內建快速版。
+        private DocumentEngine _documentEngine = DocumentEngine.ClaudeSkills;
+        public DocumentEngine GetDocumentEngine() => _documentEngine;
+
         // §7.2：重生簡報中的單一張投影片 → 重建 .pptx、換掉舊檔與 chip、更新節點的投影片清單。
         // §7.2：簡報預覽視窗（WebView2）按「重生這張」時，前端 postMessage 進來這裡。
         private async void OnPreviewWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
@@ -2411,8 +2426,39 @@ namespace Cat5201
 
             if (ReferenceEquals(sender, PresentationEngineGpt))
                 SetPresentationEngine(PresentationEngine.Gpt);
+            else if (ReferenceEquals(sender, PresentationEngineGamma))
+                SetPresentationEngine(PresentationEngine.Gamma);
             else
                 SetPresentationEngine(PresentationEngine.Claude);
+        }
+
+        private bool _suppressDocumentEngineRadioEvents;
+
+        private void SyncDocumentEngineRadios()
+        {
+            _suppressDocumentEngineRadioEvents = true;
+            try
+            {
+                if (DocumentEngineSkills != null)
+                    DocumentEngineSkills.IsChecked = _documentEngine == DocumentEngine.ClaudeSkills;
+                if (DocumentEngineBuiltin != null)
+                    DocumentEngineBuiltin.IsChecked = _documentEngine == DocumentEngine.Builtin;
+            }
+            finally
+            {
+                _suppressDocumentEngineRadioEvents = false;
+            }
+        }
+
+        private void DocumentEngine_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressDocumentEngineRadioEvents)
+                return;
+
+            _documentEngine = ReferenceEquals(sender, DocumentEngineBuiltin)
+                ? DocumentEngine.Builtin
+                : DocumentEngine.ClaudeSkills;
+            SavePreferences();
         }
 
         private double ResolveAvailableDownstreamRowY(
@@ -3785,6 +3831,7 @@ namespace Cat5201
             // 一律以全域偏好為準，開啟舊專案「不」用檔案裡的舊值覆蓋。只重新同步 UI 反映目前的全域設定。
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
+            SyncDocumentEngineRadios();
             _lastAppliedAutoKeyword = "";
             _lastInitialTopSnapshot = "";
 
@@ -3847,7 +3894,7 @@ namespace Cat5201
                         continue;
 
                     // 載入歷史 log：只還原顯示，不重複計入 SpendLedger（重開專案不再累加舊成本）。
-                    AddExecutionLog(ToExecutionLogEntry(logState), recordCost: false);
+                    AddExecutionLog(ToExecutionLogEntry(logState));
                 }
 
                 var idMap = new Dictionary<string, NodeControl>();
@@ -4066,6 +4113,7 @@ namespace Cat5201
 
         private async Task<string> GenerateFileKeywordByAIAsync(NodeControl node, string topText, CancellationToken ct)
         {
+            using var usagePurpose = UsageMeter.Purpose("自動命名");
             if (string.IsNullOrWhiteSpace(topText))
                 return "";
 
@@ -5191,6 +5239,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             RefreshMemoryPanel();
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
+            SyncDocumentEngineRadios();
             SyncVideoStyleUI();
             BuildTaskRoutingPanel();
             SyncCostControls();

@@ -65,5 +65,8 @@ namespace Cat5201
         public int InputTokens { get; init; }
         public int OutputTokens { get; init; }
         public string CostDisplay { get; init; } = "";
+
+        // 成本可稽查：這次執行的逐筆帳目（模型、用途、token、數量、美元），決策窗成本明細與稽核用。
+        public IReadOnlyList<UsageRecord> UsageRecords { get; init; } = Array.Empty<UsageRecord>();
     }
 }

@@ -41,6 +41,7 @@ namespace Cat5201
 
             try
             {
+                using var usagePurpose = UsageMeter.Purpose("模型自動選擇");
                 raw = await _router
                     .GetOpenAiService(AiModels.OpenAi_Gpt56)
                     .GenerateAsync(systemPrompt, userPrompt, 300, ct);

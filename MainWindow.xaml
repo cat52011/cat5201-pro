@@ -1096,6 +1096,33 @@ Margin="0,20,20,0">
                                 </ControlTemplate>
                             </Button.Template>
                         </Button>
+
+                        <!-- 回報問題：打包日誌（金鑰已遮蔽）到桌面，任何分頁都看得到 -->
+                        <Button x:Name="ReportProblemBtn"
+                                Content="回報問題"
+                                Height="32"
+                                FontSize="12.5"
+                                Cursor="Hand"
+                                Background="Transparent"
+                                Foreground="#777"
+                                BorderThickness="0"
+                                Margin="16,0,0,0"
+                                ToolTip="把最近 7 天的日誌打包到桌面（自動遮蔽 API 金鑰），寄給開發者"
+                                Click="ReportProblem_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="9" Padding="14,0">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                          TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="bd" Property="Background" Value="#F1F1F3"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
                     </StackPanel>
 
                     <!-- 個人化分頁（可捲動） -->
@@ -1326,10 +1353,42 @@ Margin="0,20,20,0">
                                          Checked="DownstreamMode_Checked"/>
                         </StackPanel>
 
+                        <!-- 文件品質 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="簡報與報告品質"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+
+                        <TextBlock Text="最佳品質由 Claude 用官方文件技能製作，約需數分鐘、費用較高；沒有 Claude 金鑰或失敗時自動改用快速版"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <StackPanel>
+                            <RadioButton x:Name="DocumentEngineSkills"
+                                         GroupName="DocumentEngine"
+                                         Content="最佳品質（與 Claude App 同級）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="DocumentEngine_Checked"/>
+                            <RadioButton x:Name="DocumentEngineBuiltin"
+                                         GroupName="DocumentEngine"
+                                         Content="快速版（內建排版，快又便宜）"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="DocumentEngine_Checked"/>
+                        </StackPanel>
+
                         <!-- 簡報生成器 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="簡報生成器"
+                        <TextBlock Text="簡報生成器（快速版）"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1378,7 +1437,7 @@ Margin="0,20,20,0">
                                   HorizontalAlignment="Left"
                                   SelectionChanged="VideoModelTierCombo_SelectionChanged">
                             <ComboBoxItem Tag="Standard" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 標準版（約 US$0.40/秒）"/>
-                            <ComboBoxItem Tag="Fast" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Fast（約 US$0.15/秒）"/>
+                            <ComboBoxItem Tag="Fast" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Fast（約 US$0.10/秒）"/>
                             <ComboBoxItem Tag="Lite" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Lite（約 US$0.05/秒）"/>
                         </ComboBox>
 

@@ -132,32 +132,41 @@ namespace Cat5201
             if (!resp.IsSuccessStatusCode)
                 throw new InvalidOperationException($"Claude API 失敗 ({(int)resp.StatusCode}): {body}");
 
-            TryExtractUsageFromClaudeJson(body, onUsage);
-            return ExtractTextFromClaudeJson(body);
+            string text = ExtractTextFromClaudeJson(body);
+            var (inTok, outTok) = ParseUsage(body);
+            ReportUsage(inTok, outTok, instructions, text, onUsage);
+            return text;
         }
 
-        // 從非串流回應 JSON 的 usage 區塊取真實 token 數（input_tokens / output_tokens）。
-        private static void TryExtractUsageFromClaudeJson(string json, Action<int, int>? onUsage)
+        // 從非串流回應 JSON 的 usage 區塊取真實 token 數（input_tokens / output_tokens）；解析失敗回 (0,0)。
+        private static (int Input, int Output) ParseUsage(string json)
         {
-            if (onUsage == null || string.IsNullOrWhiteSpace(json))
-                return;
+            if (string.IsNullOrWhiteSpace(json))
+                return (0, 0);
 
             try
             {
                 using var doc = JsonDocument.Parse(json);
-                if (doc.RootElement.TryGetProperty("usage", out var usage) &&
-                    usage.ValueKind == JsonValueKind.Object)
-                {
-                    int input = usage.TryGetProperty("input_tokens", out var i) && i.TryGetInt32(out var iv) ? iv : 0;
-                    int output = usage.TryGetProperty("output_tokens", out var o) && o.TryGetInt32(out var ov) ? ov : 0;
-                    if (input > 0 || output > 0)
-                        onUsage(input, output);
-                }
+                if (!doc.RootElement.TryGetProperty("usage", out var usageEl) || usageEl.ValueKind != JsonValueKind.Object)
+                    return (0, 0);
+
+                int input = usageEl.TryGetProperty("input_tokens", out var inEl) && inEl.TryGetInt32(out var iv) ? iv : 0;
+                int output = usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov) ? ov : 0;
+                return (input, output);
             }
             catch
             {
-                // usage 解析失敗就略過，呼叫端會退回估算。
+                return (0, 0);
             }
+        }
+
+        // 成本可稽查：每次呼叫完成當下記一筆帳（模型、用途、token、費用），再回報給呼叫端。
+        private void ReportUsage(int input, int output, string? instructions, string text,
+            Action<int, int>? onUsage, string note = "")
+        {
+            UsageMeter.RecordLlm(_model, input, output, instructions, text, note);
+            if (onUsage != null && (input > 0 || output > 0))
+                onUsage(input, output);
         }
 
         public Task<string> GenerateStreamAsync(
@@ -232,45 +241,53 @@ namespace Cat5201
             var finalText = new StringBuilder();
             var usage = new StreamUsage();
 
-            while (!reader.EndOfStream)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-
-                var line = await reader.ReadLineAsync().ConfigureAwait(false);
-                if (line == null)
-                    break;
-
-                if (line.Length == 0)
+                while (!reader.EndOfStream)
                 {
-                    if (dataBuilder.Length > 0)
+                    ct.ThrowIfCancellationRequested();
+
+                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (line == null)
+                        break;
+
+                    if (line.Length == 0)
                     {
-                        var data = dataBuilder.ToString().Trim();
-                        ProcessSseEvent(currentEventName, data, onDelta, finalText, usage);
+                        if (dataBuilder.Length > 0)
+                        {
+                            var data = dataBuilder.ToString().Trim();
+                            ProcessSseEvent(currentEventName, data, onDelta, finalText, usage);
+                        }
+
+                        currentEventName = null;
+                        dataBuilder.Clear();
+                        continue;
                     }
 
-                    currentEventName = null;
-                    dataBuilder.Clear();
-                    continue;
-                }
+                    if (line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentEventName = line.Substring("event:".Length).Trim();
+                        continue;
+                    }
 
-                if (line.StartsWith("event:", StringComparison.OrdinalIgnoreCase))
-                {
-                    currentEventName = line.Substring("event:".Length).Trim();
-                    continue;
-                }
+                    if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (dataBuilder.Length > 0)
+                            dataBuilder.Append('\n');
 
-                if (line.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (dataBuilder.Length > 0)
-                        dataBuilder.Append('\n');
-
-                    dataBuilder.Append(line.Substring("data:".Length).TrimStart());
+                        dataBuilder.Append(line.Substring("data:".Length).TrimStart());
+                    }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // 取消時已產生的 token 照樣計費：用已知用量（或已收到的文字估算）記一筆再往外丟。
+                ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), null, "已取消（部分用量）");
+                throw;
+            }
 
-            // 串流結束：把累積到的真實 token 用量回報給呼叫端（有抓到才回報）。
-            if (onUsage != null && (usage.Input > 0 || usage.Output > 0))
-                onUsage(usage.Input, usage.Output);
+            // 串流結束：記帳並把真實 token 用量回報給呼叫端。
+            ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), onUsage);
 
             return finalText.ToString();
         }

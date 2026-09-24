@@ -107,6 +107,9 @@ namespace Cat5201
                     };
                 }
 
+                // API 回了圖＝已計費（之後下載失敗也一樣），此刻入帳。gpt-image 以尺寸/品質估價。
+                RecordImageUsage(_model, size, "圖片生成");
+
                 var first = data[0];
 
                 string revised = first.TryGetProperty("revised_prompt", out var revEl)
@@ -169,6 +172,14 @@ namespace Cat5201
             }
         }
 
+        private static void RecordImageUsage(string model, string size, string defaultPurpose)
+        {
+            // 呼叫端有標用途（例：I2V 英雄圖、報告配圖）就用它；沒有才用預設。
+            string? purpose = UsageMeter.CurrentPurpose == UsageMeter.DefaultPurpose ? defaultPurpose : null;
+            UsageMeter.RecordMetered(UsageKinds.Image, model, 1, "張",
+                ModelCostEstimator.ImageCostUsd(size, "high"), isActual: false, note: size, purpose: purpose);
+        }
+
         /// <summary>
         /// 圖片編輯（image-to-image）：吃一張輸入圖 + 編輯指令，輸出改過的圖。
         /// 用 OpenAI /v1/images/edits（multipart）；edits 端點以 gpt-image-1 最穩定。
@@ -218,6 +229,8 @@ namespace Cat5201
                 if (!doc.RootElement.TryGetProperty("data", out var data) ||
                     data.ValueKind != JsonValueKind.Array || data.GetArrayLength() == 0)
                     return new ImageResult { Success = false, ErrorMessage = "OpenAI Images Edit API 回傳沒有 data。" };
+
+                RecordImageUsage("gpt-image-1", size, "圖片編輯");
 
                 var first = data[0];
                 string revised = first.TryGetProperty("revised_prompt", out var revEl) ? (revEl.GetString() ?? "") : "";
