@@ -40,6 +40,13 @@ namespace Cat5201
         private const int MaxRounds = 16;
         private const int MaxOutputTokensPerRound = 64000;
 
+        /// <summary>
+        /// 整趟技能產出的時間上限。沒有這個上限時，單一輪就可能在伺服器端跑十幾分鐘、燒掉幾美元，
+        /// 最後還是沒有檔案（2026-09-25 實測：1 輪 45 步、15 分 21 秒、US$4.71、零產出）。
+        /// 時間到就停下來改用內建版型——晚交不如早交一份能用的。
+        /// </summary>
+        public static readonly TimeSpan DefaultBudget = TimeSpan.FromMinutes(8);
+
         private static readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
         private readonly string _apiKey;
@@ -82,10 +89,23 @@ namespace Cat5201
             IReadOnlyList<string> skillIds,
             IReadOnlyCollection<string> wantedExtensions,
             Action<int, int>? onProgress,
-            CancellationToken ct)
+            CancellationToken ct,
+            TimeSpan? budget = null)
         {
             if (!IsConfigured)
                 return Fail("找不到 ANTHROPIC_API_KEY。");
+
+            var limit = budget ?? DefaultBudget;
+            var started = DateTime.UtcNow;
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            deadline.CancelAfter(limit);
+            var userToken = ct;
+            ct = deadline.Token;
+
+            // 使用者取消 → 照原樣往外丟；時間到 → 當成一次失敗，讓呼叫端接手內建版型。
+            Result Deadline(int round, int steps) => Fail(
+                $"已達 {limit.TotalMinutes:0} 分鐘上限仍未產出檔案（{round} 輪 / {steps} 步，實際 {(DateTime.UtcNow - started).TotalMinutes:0.0} 分），已停止以免繼續累積費用。",
+                round, steps);
 
             var messages = new JsonArray
             {
@@ -101,105 +121,116 @@ namespace Cat5201
             int toolSteps = 0;
             int round = 0;
 
-            while (round < MaxRounds)
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                round++;
-                onProgress?.Invoke(round, toolSteps);
-
-                var body = BuildRequestBody(_model, systemPrompt, messages, skillIds, containerId, toolType, useFallbacks, useCache);
-
-                using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages");
-                req.Headers.Add("x-api-key", _apiKey);
-                req.Headers.Add("anthropic-version", ApiVersion);
-                req.Headers.Add("anthropic-beta", useFallbacks ? $"{CodeExecutionBeta},{FallbackBeta}" : CodeExecutionBeta);
-                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
-                req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-
-                using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
-
-                if (!resp.IsSuccessStatusCode)
+                while (round < MaxRounds)
                 {
-                    string err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+                    ct.ThrowIfCancellationRequested();
+                    round++;
+                    onProgress?.Invoke(round, toolSteps);
 
-                    // 相容退路：伺服器不認得 fallbacks 參數或新版工具 ID 時，退一步重送同一輪（不計輪次）。
-                    if ((int)resp.StatusCode == 400 && useFallbacks && err.Contains("fallback", StringComparison.OrdinalIgnoreCase))
+                    var body = BuildRequestBody(_model, systemPrompt, messages, skillIds, containerId, toolType, useFallbacks, useCache);
+
+                    using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages");
+                    req.Headers.Add("x-api-key", _apiKey);
+                    req.Headers.Add("anthropic-version", ApiVersion);
+                    req.Headers.Add("anthropic-beta", useFallbacks ? $"{CodeExecutionBeta},{FallbackBeta}" : CodeExecutionBeta);
+                    req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+                    req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+
+                    using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+
+                    if (!resp.IsSuccessStatusCode)
                     {
-                        AppLog.Warn("DocSkills", "fallbacks 參數不被接受，改為不帶重送：" + Shorten(err, 300));
-                        useFallbacks = false;
-                        round--;
+                        string err = await resp.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+
+                        // 相容退路：伺服器不認得 fallbacks 參數或新版工具 ID 時，退一步重送同一輪（不計輪次）。
+                        if ((int)resp.StatusCode == 400 && useFallbacks && err.Contains("fallback", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppLog.Warn("DocSkills", "fallbacks 參數不被接受，改為不帶重送：" + Shorten(err, 300));
+                            useFallbacks = false;
+                            round--;
+                            continue;
+                        }
+                        if ((int)resp.StatusCode == 400 && useCache && err.Contains("cache", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppLog.Warn("DocSkills", "自動快取參數不被接受，改為不帶重送：" + Shorten(err, 300));
+                            useCache = false;
+                            round--;
+                            continue;
+                        }
+                        if ((int)resp.StatusCode == 400 && toolType == ToolTypeCurrent && err.Contains("code_execution", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppLog.Warn("DocSkills", "新版 code_execution 工具 ID 不被接受，改用舊版：" + Shorten(err, 300));
+                            toolType = ToolTypeLegacy;
+                            round--;
+                            continue;
+                        }
+
+                        ProviderStatusMonitor.ReportFailure("anthropic", $"{(int)resp.StatusCode} {err}");
+                        return Fail($"Claude 文件技能 API {(int)resp.StatusCode}：{Shorten(err, 400)}", round, toolSteps);
+                    }
+
+                    var assembler = new SseMessageAssembler();
+                    try
+                    {
+                        using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+                        using var reader = new StreamReader(stream, Encoding.UTF8);
+                        await assembler.ReadAsync(reader, ct).ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // 已產生的用量照樣計費。
+                        RecordUsage(assembler.Message, "已取消（部分用量）");
+                        throw;
+                    }
+
+                    var message = assembler.Message;
+                    RecordUsage(message);
+
+                    if (!string.IsNullOrWhiteSpace(assembler.StreamError))
+                    {
+                        ProviderStatusMonitor.ReportFailure("anthropic", assembler.StreamError);
+                        return Fail($"Claude 文件技能串流錯誤：{assembler.StreamError}", round, toolSteps);
+                    }
+
+                    containerId = ReadContainerId(message) ?? containerId;
+
+                    var content = message["content"] as JsonArray ?? new JsonArray();
+                    toolSteps += content.Count(b => (string?)b?["type"] == "server_tool_use");
+                    fileIds.AddRange(ExtractFileIds(content));
+
+                    string roundText = ExtractFinalText(content);
+                    string stopReason = (string?)message["stop_reason"] ?? "";
+
+                    if (stopReason == "pause_turn")
+                    {
+                        // 官方做法：把這輪 assistant 內容原樣接回，用同一個 container 再送，伺服器會從中斷處續跑。
+                        var replay = new JsonArray(content.Where(b => b != null).Select(b => (JsonNode?)b!.DeepClone()).ToArray());
+                        messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = replay });
                         continue;
                     }
-                    if ((int)resp.StatusCode == 400 && useCache && err.Contains("cache", StringComparison.OrdinalIgnoreCase))
-                    {
-                        AppLog.Warn("DocSkills", "自動快取參數不被接受，改為不帶重送：" + Shorten(err, 300));
-                        useCache = false;
-                        round--;
-                        continue;
-                    }
-                    if ((int)resp.StatusCode == 400 && toolType == ToolTypeCurrent && err.Contains("code_execution", StringComparison.OrdinalIgnoreCase))
-                    {
-                        AppLog.Warn("DocSkills", "新版 code_execution 工具 ID 不被接受，改用舊版：" + Shorten(err, 300));
-                        toolType = ToolTypeLegacy;
-                        round--;
-                        continue;
-                    }
 
-                    ProviderStatusMonitor.ReportFailure("anthropic", $"{(int)resp.StatusCode} {err}");
-                    return Fail($"Claude 文件技能 API {(int)resp.StatusCode}：{Shorten(err, 400)}", round, toolSteps);
+                    if (stopReason == "refusal")
+                        return Fail("Claude 拒絕了這個文件產出請求。", round, toolSteps);
+
+                    if (!string.IsNullOrWhiteSpace(roundText))
+                        finalText.Append(roundText);
+
+                    if (stopReason == "max_tokens" && fileIds.Count == 0)
+                        return Fail("Claude 單輪輸出達上限，文件未完成。", round, toolSteps);
+
+                    break; // end_turn（或 max_tokens 但已有檔案）
                 }
-
-                var assembler = new SseMessageAssembler();
-                try
-                {
-                    using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-                    using var reader = new StreamReader(stream, Encoding.UTF8);
-                    await assembler.ReadAsync(reader, ct).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException)
-                {
-                    // 已產生的用量照樣計費。
-                    RecordUsage(assembler.Message, "已取消（部分用量）");
-                    throw;
-                }
-
-                var message = assembler.Message;
-                RecordUsage(message);
-
-                if (!string.IsNullOrWhiteSpace(assembler.StreamError))
-                {
-                    ProviderStatusMonitor.ReportFailure("anthropic", assembler.StreamError);
-                    return Fail($"Claude 文件技能串流錯誤：{assembler.StreamError}", round, toolSteps);
-                }
-
-                containerId = ReadContainerId(message) ?? containerId;
-
-                var content = message["content"] as JsonArray ?? new JsonArray();
-                toolSteps += content.Count(b => (string?)b?["type"] == "server_tool_use");
-                fileIds.AddRange(ExtractFileIds(content));
-
-                string roundText = ExtractFinalText(content);
-                string stopReason = (string?)message["stop_reason"] ?? "";
-
-                if (stopReason == "pause_turn")
-                {
-                    // 官方做法：把這輪 assistant 內容原樣接回，用同一個 container 再送，伺服器會從中斷處續跑。
-                    var replay = new JsonArray(content.Where(b => b != null).Select(b => (JsonNode?)b!.DeepClone()).ToArray());
-                    messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = replay });
-                    continue;
-                }
-
-                if (stopReason == "refusal")
-                    return Fail("Claude 拒絕了這個文件產出請求。", round, toolSteps);
-
-                if (!string.IsNullOrWhiteSpace(roundText))
-                    finalText.Append(roundText);
-
-                if (stopReason == "max_tokens" && fileIds.Count == 0)
-                    return Fail("Claude 單輪輸出達上限，文件未完成。", round, toolSteps);
-
-                break; // end_turn（或 max_tokens 但已有檔案）
             }
+            catch (OperationCanceledException) when (!userToken.IsCancellationRequested)
+            {
+                AppLog.Warn("DocSkills", $"文件技能逾時中止：{round} 輪 / {toolSteps} 步");
+                return Deadline(round, toolSteps);
+            }
+
+            // 逾時只管「產出」階段；已經生出來的檔案照樣下載回來，不要白跑。
+            ct = userToken;
 
             if (round >= MaxRounds && fileIds.Count == 0)
                 return Fail($"超過 {MaxRounds} 輪仍未完成文件。", round, toolSteps);
@@ -215,8 +246,26 @@ namespace Cat5201
                     named.Add((id, name!));
             }
 
+            // 失敗時要看得出卡在哪一段：沒有 file_id、讀不到檔名、副檔名不符、還是下載回空的。
+            AppLog.Info("DocSkills",
+                $"產出盤點：file_id {fileIds.Distinct().Count()} 個、取得檔名 {named.Count} 個" +
+                (named.Count > 0 ? "（" + string.Join("、", named.Select(n => n.Name).Take(12)) + "）" : "") +
+                $"、要的副檔名 {string.Join("/", wantedExtensions)}");
+
+            var selected = SelectDeliverables(named, wantedExtensions).ToList();
+
+            // 想要的副檔名沒中，但確實有其他文件檔：交出來比丟掉整趟好（呼叫端會照實說明）。
+            if (selected.Count == 0 && named.Count > 0)
+            {
+                string[] usable = { ".pptx", ".docx", ".xlsx", ".pdf" };
+                selected = named.Where(n => usable.Contains(Path.GetExtension(n.Name).ToLowerInvariant())).ToList();
+                if (selected.Count > 0)
+                    AppLog.Warn("DocSkills", "產出的副檔名與要求不同，改為交付實際產出：" +
+                        string.Join("、", selected.Select(s => s.Name)));
+            }
+
             var files = new List<SkillFile>();
-            foreach (var (id, name) in SelectDeliverables(named, wantedExtensions))
+            foreach (var (id, name) in selected)
             {
                 byte[] bytes = await DownloadAsync(id, ct).ConfigureAwait(false);
                 if (bytes.Length > 0)
@@ -229,7 +278,11 @@ namespace Cat5201
             }
 
             if (files.Count == 0)
-                return Fail("Claude 已執行但沒有產出可下載的文件檔。", round, toolSteps, finalText.ToString());
+                return Fail(
+                    named.Count == 0
+                        ? $"Claude 執行了 {toolSteps} 個步驟，但沒有回傳任何可下載的檔案。"
+                        : $"Claude 產出了 {named.Count} 個檔案（{string.Join("、", named.Select(n => n.Name).Take(6))}），但都不是可交付的文件檔。",
+                    round, toolSteps, finalText.ToString());
 
             return new Result
             {
@@ -409,8 +462,8 @@ namespace Cat5201
             // 快取寫入 1.25 倍、讀取 0.1 倍輸入單價（Anthropic 官方計價）；沙盒時間每月 1,550 小時免費，超過 $0.05/小時，此處不計。
             string modelId = ModelCostEstimator.ResolvePricingModelId((string?)message["model"] ?? _model);
             double cacheUsd =
-                ModelCostEstimator.FromUsage(modelId, cacheWrite, 0).UsdCost * 1.25 +
-                ModelCostEstimator.FromUsage(modelId, cacheRead, 0).UsdCost * 0.10;
+                ModelCostEstimator.FromUsage(modelId, cacheWrite, 0).UsdCost * ModelCostEstimator.CacheWriteMultiplier +
+                ModelCostEstimator.FromUsage(modelId, cacheRead, 0).UsdCost * ModelCostEstimator.CacheReadMultiplier(modelId);
 
             UsageMeter.RecordLlm(modelId, input, output, note: note, extraUsd: cacheUsd);
         }

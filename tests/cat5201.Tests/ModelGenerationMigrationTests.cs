@@ -14,7 +14,7 @@ namespace Cat5201.Tests
         [Theory]
         [InlineData("gpt-5.5", "gpt-5.6-sol")]
         [InlineData("claude-sonnet-4-6", "claude-sonnet-5")]
-        [InlineData("claude-opus-4-8", "claude-opus-5")]
+        [InlineData("claude-opus-4-8", "claude-opus-5-5")]
         public void LegacyId_RoutesToSameVendorSuccessor(string legacy, string successor)
         {
             Assert.Equal(successor, AiModelHelper.NormalizeNodeModel(legacy));
@@ -40,7 +40,7 @@ namespace Cat5201.Tests
         [InlineData("gpt-5.6-sol")]
         [InlineData("gpt-6-astra")]
         [InlineData("claude-sonnet-5")]
-        [InlineData("claude-opus-5")]
+        [InlineData("claude-opus-5-5")]
         public void NewModels_AreKnownAndAvailable(string id)
         {
             Assert.True(AiModelRegistry.IsKnown(id));

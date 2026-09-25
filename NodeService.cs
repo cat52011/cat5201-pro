@@ -273,6 +273,20 @@ namespace Cat5201
             return await runtime.RegeneratePresentationSlideAsync(node, outline, slideOrder, userInput, ct);
         }
 
+        /// <summary>
+        /// 一段話有沒有「要配圖」的意思。語意判斷（任何語言都認得），API 不通才退回關鍵字。
+        /// </summary>
+        public Task<bool> WantsIllustrationsAsync(string? text, CancellationToken ct)
+            => _outputIntentResolver.WantsIllustrationsAsync(text, ct);
+
+        // 單頁配圖：預覽裡替某一頁重新生成／新增配圖（失敗時 Error 是可直接顯示的中文原因）。
+        public async Task<(byte[]? Png, string Error)> RegenerateSlideImageAsync(
+            NodeControl node, PresentationOutlinePayload outline, int slideOrder, string instruction, CancellationToken ct)
+        {
+            var runtime = _agentRuntimeFactory.Create();
+            return await runtime.RegenerateSlideImageAsync(node, outline, slideOrder, instruction, ct);
+        }
+
         // §6 第一層輸出判斷：先跑一次（便宜的）API 決定要簡報/報告/表格之中哪幾個。
         // 只有「看起來要產出檔案」時才呼叫，純聊天不浪費一次 API。
         private async Task<OutputIntent?> ResolveOutputIntentAsync(string topText, CancellationToken ct)

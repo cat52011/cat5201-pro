@@ -100,6 +100,7 @@ namespace Cat5201
                 Resolver = resolver,
                 Agent = agent,
                 Model = modelLabel,
+                Participants = BuildParticipantSummary(log),
                 TaskSummary = taskSummary,
                 Reason = reason,
                 Keywords = keywords,
@@ -253,6 +254,51 @@ namespace Cat5201
                 Highlight = true,
                 DetailLines = lines
             };
+        }
+
+        /// <summary>
+        /// 頂部「參與」欄：這次實際花到錢的每一個模型／服務，以及它做了什麼。
+        /// 來源是逐筆帳目（UsageRecords），不是選模型時的那一個決定——
+        /// 一份簡報常常是 Perplexity 搜尋 + Claude 撰寫 + 圖片模型配圖，只顯示「最後那個模型」會誤導。
+        /// 例：「Perplexity Sonar（搜尋研究）· Claude Sonnet 5（簡報撰寫、配圖企劃）· gpt-image-2（簡報封面圖）」
+        /// </summary>
+        private static string BuildParticipantSummary(AiExecutionLogEntry log)
+        {
+            var records = (log?.UsageRecords ?? Array.Empty<UsageRecord>())
+                .Where(r => r != null && !string.IsNullOrWhiteSpace(r.ModelId))
+                .ToList();
+            if (records.Count == 0)
+                return "-";
+
+            var parts = records
+                .GroupBy(r => r.ModelId, StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var purposes = g.Select(r => string.IsNullOrWhiteSpace(r.Purpose) ? UsageMeter.DefaultPurpose : r.Purpose)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .Take(4)
+                        .ToList();
+                    return $"{ParticipantLabel(g.Key)}（{string.Join("、", purposes)}）";
+                });
+
+            return string.Join(" · ", parts);
+        }
+
+        /// <summary>
+        /// 參與清單專用的模型標籤。GetModelLabel 對「不在 LLM 名錄裡」的 ID（圖片、影片、搜尋服務）
+        /// 會退回預設模型的名字——那等於把 gpt-image-2 寫成一個語言模型的名字，是假資訊。
+        /// 這裡認不得就照實顯示原始 ID。
+        /// </summary>
+        private static string ParticipantLabel(string modelId)
+        {
+            var legacy = AiModelRegistry.TryGetLegacyDisplayName(modelId);
+            if (legacy != null) return legacy;
+
+            var def = AiModelHelper.GetDefinition(modelId);
+            return !string.IsNullOrWhiteSpace(def.DisplayName) &&
+                   string.Equals(def.Id, modelId, StringComparison.OrdinalIgnoreCase)
+                ? def.DisplayName
+                : modelId;
         }
 
         // 頂部「Agent」欄用：實際參與的代理（含主代理 + 各產出物來源代理），去重後回英文 id 清單。

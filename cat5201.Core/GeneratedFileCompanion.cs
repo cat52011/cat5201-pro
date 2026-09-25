@@ -42,6 +42,70 @@ namespace Cat5201
         }
 
         /// <summary>
+        /// 重寫這份簡報時，應該一起更新哪些 PDF。
+        ///
+        /// 為什麼不能直接用 FindCompanionPdf：那個是「讀取用」的嚴格比對，雜湊對不上就回 null
+        /// （預覽寧可不顯示，也不能顯示舊版）。但拿它來決定「要覆蓋哪個檔」時，一旦回 null 就會
+        /// 退回「同名 .pdf」，於是生出第二份 PDF——使用者的 chip 還指著舊的那份，看起來就是
+        /// 「單頁重生後 PDF 永遠不更新」（2026-09-25 實測到的狀況）。
+        ///
+        /// 所以這裡不看雜湊，把「配對記錄的那份」＋「同標題、時間相近的那些」全部列出來一起覆蓋，
+        /// 不管使用者點的是哪一個檔案，看到的都會是最新版。
+        /// </summary>
+        public static IReadOnlyList<string> ResolveRewriteTargets(string pptxPath)
+        {
+            var targets = new List<string>();
+            string? dir = Path.GetDirectoryName(pptxPath);
+            if (string.IsNullOrWhiteSpace(dir))
+                return new[] { Path.ChangeExtension(pptxPath, ".pdf") };
+
+            void Add(string? path)
+            {
+                if (string.IsNullOrWhiteSpace(path)) return;
+                if (!targets.Contains(path, StringComparer.OrdinalIgnoreCase))
+                    targets.Add(path!);
+            }
+
+            // ① 配對記錄指定的那份（不驗雜湊——我們正要覆蓋它）。
+            try
+            {
+                string pairing = pptxPath + ".preview.json";
+                if (File.Exists(pairing))
+                {
+                    var pair = JsonSerializer.Deserialize<Pair>(File.ReadAllText(pairing));
+                    if (!string.IsNullOrWhiteSpace(pair?.Pdf))
+                        Add(Path.Combine(dir, pair!.Pdf!));
+                }
+            }
+            catch (Exception ex) { AppLog.Warn("Preview", "讀取對照 PDF 配對失敗", ex); }
+
+            // ② 同標題、時間相近的 PDF（產出時 pptx 與 pdf 的時間戳常差幾秒，檔名因此不同）。
+            var (title, stamp) = SplitName(Path.GetFileNameWithoutExtension(pptxPath));
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                try
+                {
+                    foreach (var pdf in Directory.GetFiles(dir, "*.pdf"))
+                    {
+                        var (pdfTitle, pdfStamp) = SplitName(Path.GetFileNameWithoutExtension(pdf));
+                        if (!string.Equals(pdfTitle, title, StringComparison.OrdinalIgnoreCase)) continue;
+
+                        TimeSpan gap = stamp.HasValue && pdfStamp.HasValue
+                            ? (stamp.Value - pdfStamp.Value).Duration()
+                            : TimeSpan.Zero;
+                        if (gap <= MaxGap) Add(pdf);
+                    }
+                }
+                catch (Exception ex) { AppLog.Warn("Preview", "掃描對照 PDF 失敗", ex); }
+            }
+
+            if (targets.Count == 0)
+                Add(Path.ChangeExtension(pptxPath, ".pdf"));
+
+            return targets;
+        }
+
+        /// <summary>
         /// 找同一次產出的對照 PDF；找不到回 null（呼叫端沿用原本的文字預覽）。
         /// </summary>
         public static string? FindCompanionPdf(string? filePath)

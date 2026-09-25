@@ -22,6 +22,9 @@ namespace Cat5201.Tests
         [InlineData("多代理 AI 系統架構", "tech")]
         [InlineData("量子計算的論文研究方法", "academic")]
         [InlineData("週會進度更新", "modern")]
+        // 高檔餐飲是雜誌題材，不該落到泛用的商業簡約風。
+        [InlineData("法國高檔美食與精緻餐點介紹", "editorial")]
+        [InlineData("米其林餐廳的菜單設計", "editorial")]
         [InlineData("AI 系統設計", "tech")]
         [InlineData("上海金融市場", "finance")]
         [InlineData("Taiwan overview", "modern")]
@@ -97,15 +100,41 @@ namespace Cat5201.Tests
             string gallery = IllustrationStyle.Compose("一座孤立的雕塑", DeckArtDirection.ById("gallery"));
             string editorial = IllustrationStyle.Compose("一座孤立的雕塑", DeckArtDirection.ById("editorial"));
 
-            Assert.Contains("0E0E0E", gallery);                    // 展覽風的近黑底
-            Assert.Contains("F4F1EA", editorial);                  // 雜誌風的紙感底
+            Assert.Contains("0D0D0C", gallery);                    // 展覽風的近黑底
+            Assert.Contains("F2EEE6", editorial);                  // 雜誌風的紙感底
             Assert.NotEqual(gallery, editorial);
             Assert.All(new[] { gallery, editorial }, p => Assert.Contains("No text", p));
+
+            // 手繪、卡通、扁平圖示這類廉價畫風一律排除。
+            Assert.All(new[] { gallery, editorial }, p =>
+            {
+                Assert.Contains("Not hand-drawn", p);
+                Assert.Contains("not cartoon", p);
+                Assert.Contains("not clip art", p);
+            });
 
             // 封面圖要留左側空間給大標題壓字。
             string cover = IllustrationStyle.Compose("海岸線", DeckArtDirection.ById("nature"), isCover: true);
             Assert.Contains("left third", cover);
         }
+
+        [Theory]
+        // 查得到正確答案的東西：模型畫出來的一定不是真的那個，所以不配圖。
+        [InlineData("A stylised map of Tasmania with major cities marked", true)]
+        // 正常的畫面描述不能被當成地圖／圖表擋掉——觀光與美食是最該配圖的主題。
+        [InlineData("A plated French main course under raking light, thin ceramic border", false)]
+        [InlineData("Mist over a temperate rainforest lake at dawn, wide tonal range", false)]
+        [InlineData("晨霧中的溫帶雨林與湖面倒影", false)]
+        [InlineData("法式甜點的擺盤特寫，側光", false)]
+        [InlineData("國家地圖與主要城市位置", true)]
+        [InlineData("The national flag above a government building", true)]
+        [InlineData("A bar chart of quarterly revenue", true)]
+        [InlineData("Portrait of the founder", true)]
+        [InlineData("Folded paper and brushed metal arranged in raking studio light", false)]
+        [InlineData("霧中的森林與水面反光", false)]
+        [InlineData("", false)]
+        public void Illustration_SkipsSubjectsThatHaveACheckableTruth(string brief, bool skipped)
+            => Assert.Equal(skipped, IllustrationStyle.IsFactualSubject(brief));
 
         private static PresentationOutlinePayload SampleOutline() => new()
         {

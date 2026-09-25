@@ -13,3 +13,4 @@ file/
 .claude/settings.local.json
 # 打包輸出(publish.ps1 產物,220MB+ 不進版控)
 publish/
+ 

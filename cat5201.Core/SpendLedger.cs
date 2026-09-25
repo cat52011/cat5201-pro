@@ -45,6 +45,9 @@ namespace Cat5201
             }
         }
 
+        /// <summary>帳本變動（新增或沖銷）。UI 用來即時更新餘額顯示；訂閱端自行切回 UI 執行緒。</summary>
+        public static event Action? Changed;
+
         /// <summary>累加一筆花費（USD）。kind 僅供日誌（llm / image / video…）。</summary>
         public static void Add(double usd, string kind) => Add(usd, kind, providerId: "");
 
@@ -70,10 +73,17 @@ namespace Cat5201
                 Persist();
             }
             AppLog.Info("Spend", $"+US${usd:0.####}（{kind}）→ 今日累計 US${TodayUsd:0.####}");
+            Changed?.Invoke();
         }
 
         /// <summary>沖銷一筆先前記過、但實際不收費的花費（例：影片任務失敗）。當日總額不低於 0。</summary>
-        public static void Subtract(double usd, string kind)
+        public static void Subtract(double usd, string kind) => Subtract(usd, kind, providerId: "");
+
+        /// <summary>
+        /// 沖銷並歸戶到某個服務。沒有歸戶的話，該服務的「估計剩餘」會一直少算那一筆——
+        /// 使用者看到的餘額就會比真實的低，等於用假數字嚇自己。
+        /// </summary>
+        public static void Subtract(double usd, string kind, string providerId)
         {
             if (usd <= 0 || double.IsNaN(usd) || double.IsInfinity(usd))
                 return;
@@ -82,9 +92,18 @@ namespace Cat5201
             {
                 _usdByDay.TryGetValue(TodayKey, out double cur);
                 _usdByDay[TodayKey] = Math.Max(0, cur - usd);
+
+                if (!string.IsNullOrWhiteSpace(providerId) &&
+                    _usdByDayProvider.TryGetValue(TodayKey, out var byProvider) &&
+                    byProvider.TryGetValue(providerId, out double p))
+                {
+                    byProvider[providerId] = Math.Max(0, p - usd);
+                }
+
                 Persist();
             }
             AppLog.Info("Spend", $"-US${usd:0.####}（沖銷：{kind}）→ 今日累計 US${TodayUsd:0.####}");
+            Changed?.Invoke();
         }
 
         /// <summary>今日某個服務的累計花費（USD）。</summary>

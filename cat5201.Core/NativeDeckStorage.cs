@@ -48,14 +48,19 @@ public static class NativeDeckStorage
         return null;
     }
 
+    // 指紋只看「每一頁的文字」，不看整包 XML：PowerPoint 只要另存就會重寫整份 XML，
+    // 比對整包會讓所有簡報都被當成已手改（原生編輯因此完全失效）。文字變了才是真的被改過。
     private static string Fingerprint(PresentationPart part)
     {
-        var xml = new StringBuilder(part.Presentation.OuterXml);
+        var text = new StringBuilder();
         foreach (var id in part.Presentation.SlideIdList!.Elements<DocumentFormat.OpenXml.Presentation.SlideId>())
-            xml.Append(((SlidePart)part.GetPartById(id.RelationshipId!)).Slide.OuterXml);
-        foreach (var master in part.SlideMasterParts)
-            xml.Append(master.SlideMaster.OuterXml).Append(master.ThemePart?.Theme.OuterXml);
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(xml.ToString())));
+        {
+            text.Append('\u0001');
+            foreach (var run in ((SlidePart)part.GetPartById(id.RelationshipId!)).Slide
+                         .Descendants<DocumentFormat.OpenXml.Drawing.Text>())
+                text.Append(run.Text).Append('\u0002');
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));
     }
 
     public static int? SourceOrderForPage(Data data, int page)

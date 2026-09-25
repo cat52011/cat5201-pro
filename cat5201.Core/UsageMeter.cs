@@ -186,7 +186,10 @@ namespace Cat5201
             if (record.UsdCost > 0)
                 SpendLedger.Add(record.UsdCost, label, providerId);
             else if (record.UsdCost < 0)
-                SpendLedger.Subtract(-record.UsdCost, label);
+                SpendLedger.Subtract(-record.UsdCost, label, providerId);
+
+            // 餘額簿：使用者填過餘額的服務，每一筆花費就扣、沖銷就加回（與 90 天帳本無關）。
+            ProviderBalance.Deduct(providerId, record.UsdCost);
 
             // 即時監控：這筆帳存在＝這家服務剛剛成功回應過。
             if (record.UsdCost > 0)

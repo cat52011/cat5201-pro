@@ -136,13 +136,13 @@ namespace Cat5201
             }
 
             string text = ExtractTextFromClaudeJson(body);
-            var (inTok, outTok) = ParseUsage(body);
+            var (inTok, outTok) = ParseUsage(body, _model);
             ReportUsage(inTok, outTok, instructions, text, onUsage);
             return text;
         }
 
         // 從非串流回應 JSON 的 usage 區塊取真實 token 數（input_tokens / output_tokens）；解析失敗回 (0,0)。
-        private static (int Input, int Output) ParseUsage(string json)
+        private static (int Input, int Output) ParseUsage(string json, string modelId)
         {
             if (string.IsNullOrWhiteSpace(json))
                 return (0, 0);
@@ -155,12 +155,27 @@ namespace Cat5201
 
                 int input = usageEl.TryGetProperty("input_tokens", out var inEl) && inEl.TryGetInt32(out var iv) ? iv : 0;
                 int output = usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov) ? ov : 0;
+
+                // Anthropic 的 input_tokens 不含快取部分；快取寫入/讀取是另外兩個欄位，也是要收錢的。
+                // 不加進來的話，只要之後開了 prompt caching，帳本就會比實際少算（餘額顯示偏高）。
+                input += ReadCacheTokens(usageEl, modelId);
                 return (input, output);
             }
             catch
             {
                 return (0, 0);
             }
+        }
+
+        // 快取 token：寫入 1.25x、讀取 0.1x 輸入單價。這裡換算成「等值的一般輸入 token」計入，
+        // 讓成本估算不必為了快取另外開一條路徑。
+        private static int ReadCacheTokens(JsonElement usageEl, string modelId)
+        {
+            int write = usageEl.TryGetProperty("cache_creation_input_tokens", out var w) && w.TryGetInt32(out var wv) ? wv : 0;
+            int read = usageEl.TryGetProperty("cache_read_input_tokens", out var r) && r.TryGetInt32(out var rv) ? rv : 0;
+            return (int)Math.Round(
+                write * ModelCostEstimator.CacheWriteMultiplier +
+                read * ModelCostEstimator.CacheReadMultiplier(modelId));
         }
 
         // 成本可稽查：每次呼叫完成當下記一筆帳（模型、用途、token、費用），再回報給呼叫端。
@@ -260,7 +275,7 @@ namespace Cat5201
                         if (dataBuilder.Length > 0)
                         {
                             var data = dataBuilder.ToString().Trim();
-                            ProcessSseEvent(currentEventName, data, onDelta, finalText, usage);
+                            ProcessSseEvent(currentEventName, data, onDelta, finalText, usage, _model);
                         }
 
                         currentEventName = null;
@@ -308,7 +323,8 @@ namespace Cat5201
             string data,
             Action<string>? onDelta,
             StringBuilder finalText,
-            StreamUsage usage)
+            StreamUsage usage,
+            string modelId)
         {
             try
             {
@@ -330,6 +346,9 @@ namespace Cat5201
                         usage.Input = iv;
                     if (startUsage.TryGetProperty("output_tokens", out var o) && o.TryGetInt32(out var ov))
                         usage.Output = ov;
+
+                    // 串流也一樣要把快取 token 算進來（跟非串流同一套換算）。
+                    usage.Input += ReadCacheTokens(startUsage, modelId);
                 }
 
                 // message_delta：output_tokens 為到目前為止的累計，取最後一筆即為最終輸出量。

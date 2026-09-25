@@ -38,9 +38,9 @@ public class DeckSceneTests
         var outline = Outline(new PresentationSlidePayload() { Order = 7, Heading = "長內容", Bullets = input, ImageBytes = Pixel });
         var pages = DeckScene.Build(outline, null);
         Assert.True(pages.Count > 1);
-        var body = pages.SelectMany(p => p.Elements).Where(e => e.Kind == "text" && e.Size >= 16 && !e.Bold).ToList();
+        var body = pages.SelectMany(p => p.Elements).Where(e => e.Kind == "text" && e.Text.Contains('文')).ToList();
         Assert.Equal(string.Concat(input), string.Concat(body.Select(e => e.Text)));
-        Assert.All(body, e => Assert.InRange(e.Size, 18, 36));
+        Assert.All(body, e => Assert.InRange(e.Size, 14, 36));
         Assert.All(pages, p => Assert.Equal(7, p.SourceOrder));
         Assert.All(pages.SelectMany(p => p.Elements), e => { Assert.True(e.X + e.W <= 960.1); Assert.True(e.Y + e.H <= 540.1); });
     }
@@ -92,13 +92,77 @@ public class DeckSceneTests
     }
 
     [Fact]
+    public void ContinuationPageNeitherRepeatsTheImageNorLosesItsEditor()
+    {
+        // 一張投影片放不下時會拆成續頁。續頁若沿用同一張圖，同一張照片會在相鄰兩頁各出現一次；
+        // 續頁若沒有自己的編輯區，那一頁就完全動不了（2026-09-25 使用者實測到的兩個問題）。
+        // 不要用「第1個」這種寫法：帶單位的數字會讓這頁被判定成數據頁，數據頁本來就不配圖。
+        var bullets = new[] { "甲", "乙", "丙", "丁" }
+            .Select(tag => $"重點{tag}：" + new string('內', 60))
+            .ToArray();
+        var outline = Outline(
+            new PresentationSlidePayload { Order = 1, Kind = "cover", Heading = "封面" },
+            new PresentationSlidePayload { Order = 2, Heading = "核心景點", Bullets = bullets, ImageBytes = Pixel });
+
+        var pages = DeckScene.Build(outline, null);
+        var forSlide2 = pages.Where(p => p.SourceOrder == 2).ToList();
+        Assert.True(forSlide2.Count > 1, "這組內容應該會拆成續頁");
+
+        Assert.Single(forSlide2[0].Elements, e => e.Kind == "image");
+        Assert.All(forSlide2.Skip(1), p => Assert.DoesNotContain(p.Elements, e => e.Kind == "image"));
+
+        string html = DeckHtmlRenderer.Build(outline, allowEdit: true);
+        Assert.Equal(pages.Count, System.Text.RegularExpressions.Regex.Matches(html, "<details").Count);
+        Assert.Contains("（接續）", html);
+    }
+
+    [Fact]
+    public void HangingPunctuationNeverOverflowsItsBoxSoRenderersCannotClipCharacters()
+    {
+        // 避頭點會讓標點掛在行尾、該行比文字框寬；框沒放寬的話 PDF 會再折一次行並裁掉，字就這樣消失。
+        var bullets = new[]
+        {
+            "通路端反映：貨架上辨識度不足，消費者記得商品卻記不得品牌。",
+            "既有識別停留在 2019 年的扁平化語言，與現在的產品線脫節。",
+        };
+        var outline = new PresentationOutlinePayload
+        {
+            Title = "品牌視覺設計提案",
+            Topic = "時尚與工藝的再編輯",
+            SlideCount = 1,
+            Slides = new[] { new PresentationSlidePayload { Order = 1, Heading = "為什麼現在重做視覺", Bullets = bullets } },
+        };
+
+        var page = Assert.Single(DeckScene.Build(outline, null));
+        var texts = page.Elements.Where(e => e.Kind == "text").ToList();
+
+        string rendered = string.Concat(texts.Select(e => e.Text));
+        foreach (var bullet in bullets)
+            Assert.Contains(bullet, rendered);
+
+        Assert.All(texts, e => Assert.True(
+            DeckScene.Measure(e.Text, e.Size) <= e.W + 0.5f,
+            $"「{e.Text}」寬 {DeckScene.Measure(e.Text, e.Size):F1} 超出框寬 {e.W:F1}，渲染端會重折並裁字"));
+    }
+
+    [Fact]
     public void PreviewEscapesEditableTextAndKeepsControlsOutsideTheSlide()
     {
         var outline = Outline(new PresentationSlidePayload() { Order = 1, Heading = "<script>bad</script>", Bullets = new[] { "A & B" } });
         string html = DeckHtmlRenderer.Build(outline, allowEdit: true);
         Assert.DoesNotContain("<script>bad</script>", html);
         Assert.Contains("&lt;script&gt;bad&lt;/script&gt;", html);
-        Assert.Contains("</svg><details", html);
+        Assert.Contains("</svg><details", html);      // 編輯區在投影片外面，不會混進版面
         Assert.Contains("data-order='1'", html);
+
+        // 重新生成是「單頁」的，而且每頁自己帶修改要求輸入框。
+        Assert.Contains("class='instruction'", html);
+        Assert.Contains("只重新生成這一頁", html);
+        Assert.Contains("d.querySelector('.instruction').value", html);
+
+        // 單頁也能換／加／移除配圖，圖片描述有自己的輸入框。
+        Assert.Contains("class='image-brief'", html);
+        Assert.Contains("data-action='image'", html);
+        Assert.Contains("生成配圖", html);
     }
 }

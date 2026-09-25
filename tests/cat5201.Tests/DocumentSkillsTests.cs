@@ -206,7 +206,7 @@ data: {""type"":""message_stop""}
         {
             Assert.Equal(DocumentEngine.ClaudeSkills, DocumentEngineHelper.Parse(null));
             Assert.Equal(DocumentEngine.Builtin, DocumentEngineHelper.Parse("Builtin"));
-            Assert.Equal("claude-opus-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: false));
+            Assert.Equal("claude-opus-5-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: false));
             Assert.Equal("claude-sonnet-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: true)); // 使用者自己封鎖 Opus 時尊重
         }
     }

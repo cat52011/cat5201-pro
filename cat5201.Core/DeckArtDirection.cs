@@ -6,17 +6,21 @@ using System.Text.RegularExpressions;
 namespace Cat5201
 {
     /// <summary>
-    /// 簡報的「藝術方向」：依主題自動選一套視覺語言（色盤、字體、版面個性），
+    /// 簡報的「藝術方向」：依主題自動選一套視覺語言（家族、色盤、字體、版面個性），
     /// 內建排版器與 Claude 文件技能都吃同一份設定，所以兩條路徑的風格判斷一致。
     ///
-    /// 為什麼需要：舊版所有主題都長一樣——深藍標題列＋條列文字，
-    /// 塔斯馬尼亞旅遊簡報和財報簡報視覺上毫無差別，看起來就是「文字簡報」。
+    /// 2026-09-24 收斂成兩大家族（使用者指定的兩種風格）：
+    ///   editorial＝藝術／時尚雜誌：明體／襯線大標、字距拉開的小標、髮絲線、超大留白、大頁碼。
+    ///   corporate＝商業科技／銀行業正式：嚴謹格線、頁首頁尾、半粗黑標題、列間細線、克制的強調色。
+    /// 家族決定「排版語言」，Id 決定「色盤與圖像語言」，所以同一家族裡展覽風和雜誌風仍然看得出差別。
     /// </summary>
     public sealed class DeckArtDirection
     {
         public string Id { get; private init; } = "modern";
         /// <summary>中文名稱（決策窗／說明用）。</summary>
         public string DisplayName { get; private init; } = "現代簡約";
+        /// <summary>版面家族：editorial（雜誌）或 corporate（商業正式）。</summary>
+        public string Family { get; private init; } = "corporate";
         /// <summary>給 Claude 文件技能的藝術指導（英文，技能的設計準則用英文最準）。</summary>
         public string DirectionForModel { get; private init; } = "";
 
@@ -26,19 +30,26 @@ namespace Cat5201
         /// <summary>次要／說明文字色。</summary>
         public string Muted { get; private init; } = "6B7280";
         public string Accent { get; private init; } = "1F5AE0";
-        /// <summary>反白頁（章節／引述）的底色。</summary>
+        /// <summary>反白頁（封面／引述）的底色。</summary>
         public string InverseBackground { get; private init; } = "111111";
         public string InverseInk { get; private init; } = "FFFFFF";
+        /// <summary>反白頁上的次要文字色（不設定時＝主文字色，會太搶）。</summary>
+        public string InverseMuted { get; private init; } = "B8BCC4";
 
-        /// <summary>西文標題字體（CJK 一律用 EastAsianFont）。</summary>
-        public string HeadingLatinFont { get; private init; } = "Segoe UI Semibold";
+        /// <summary>標題字體（西文）。CJK 用 DisplayEaFont。</summary>
+        public string DisplayLatinFont { get; private init; } = "Segoe UI Semibold";
+        /// <summary>標題字體（中文）：只用 Windows 內建，PowerPoint 開啟時才不會掉字。</summary>
+        public string DisplayEaFont { get; private init; } = "Microsoft JhengHei";
         public string BodyLatinFont { get; private init; } = "Segoe UI";
-        /// <summary>中文字體：Windows 內建，PowerPoint 開啟時才不會掉字。</summary>
-        public string EastAsianFont { get; private init; } = "Microsoft JhengHei";
+        public string BodyEaFont { get; private init; } = "Microsoft JhengHei";
 
-        /// <summary>標題是否用字距放大的全大寫小標（雜誌／展覽風）。</summary>
-        public bool UsesKicker { get; private init; } = true;
-        /// <summary>封面是否走深色滿版（展覽／科技風）。</summary>
+        /// <summary>相容舊呼叫端（pptx 佈景主題字體）。</summary>
+        public string HeadingLatinFont => DisplayLatinFont;
+        public string EastAsianFont => BodyEaFont;
+
+        /// <summary>標題是否用字距放大的小標（雜誌／展覽風）。</summary>
+        public bool UsesKicker => Family == "editorial";
+        /// <summary>封面是否走深色滿版。</summary>
         public bool DarkCover { get; private init; }
 
         // ===== 主題判斷 =====
@@ -53,7 +64,12 @@ namespace Cat5201
             ("editorial", new[]
             {
                 "設計", "品牌", "視覺", "平面", "字體", "排版", "時尚", "美學", "建築", "室內", "攝影", "文化", "雜誌",
-                "design", "brand", "typography", "editorial", "fashion", "architecture", "aesthetic", "creative"
+                // 高檔餐飲／生活風格：這類主題天生就是雜誌版面，不該落到泛用的商業簡約風。
+                "美食", "餐廳", "餐飲", "料理", "餐點", "菜單", "主廚", "甜點", "烘焙", "品酒", "葡萄酒", "咖啡",
+                "米其林", "精品", "香水", "珠寶", "旅宿", "飯店", "策展級",
+                "design", "brand", "typography", "editorial", "fashion", "architecture", "aesthetic", "creative",
+                "cuisine", "restaurant", "gastronomy", "dining", "chef", "michelin", "pastry", "patisserie",
+                "wine", "sommelier", "luxury", "hospitality"
             }),
             ("nature", new[]
             {
@@ -100,122 +116,140 @@ namespace Cat5201
 
         public static DeckArtDirection ById(string id) => id switch
         {
+            // ── 藝術／時尚雜誌家族 ──
             "gallery" => new DeckArtDirection
             {
                 Id = "gallery",
                 DisplayName = "藝術展覽",
-                Background = "0E0E0E",
-                Ink = "F3F1EC",
-                Muted = "8E877C",
-                Accent = "C8A96A",
-                InverseBackground = "F3F1EC",
-                InverseInk = "0E0E0E",
-                HeadingLatinFont = "Georgia",
-                BodyLatinFont = "Segoe UI",
+                Family = "editorial",
+                Background = "0D0D0C",
+                Ink = "EFEBE3",
+                Muted = "938B7E",
+                Accent = "C9A227",
+                InverseBackground = "EFEBE3",
+                InverseInk = "0D0D0C",
+                InverseMuted = "6E675C",
+                DisplayLatinFont = "Georgia",
+                DisplayEaFont = "PMingLiU",
                 DarkCover = true,
                 DirectionForModel =
-                    "Art-exhibition catalogue: near-black canvas (#0E0E0E), warm off-white type (#F3F1EC), muted brass accent (#C8A96A). " +
-                    "Gallery-wall spacing — enormous margins, one idea per slide, small letterspaced uppercase labels above serif display headings. " +
-                    "Images full-bleed or hung like framed works with generous surrounding space; captions small, quiet and precise. No boxes, no shadows, no bullet clutter."
+                    "Art-exhibition catalogue: near-black canvas (#0D0D0C), warm off-white type (#EFEBE3), brass accent (#C9A227). " +
+                    "Gallery-wall spacing — enormous margins, one idea per slide, small letterspaced labels above serif (Chinese: Mincho/明體) display headings. " +
+                    "Images hung like framed works with generous surrounding space; captions small, quiet and precise. Hairline rules only. No boxes, no shadows, no bullet clutter."
             },
             "editorial" => new DeckArtDirection
             {
                 Id = "editorial",
                 DisplayName = "雜誌編輯",
-                Background = "F4F1EA",
-                Ink = "14110E",
-                Muted = "6B655C",
-                Accent = "B3462F",
-                InverseBackground = "14110E",
-                InverseInk = "F4F1EA",
-                HeadingLatinFont = "Georgia",
-                BodyLatinFont = "Segoe UI",
+                Family = "editorial",
+                Background = "F2EEE6",
+                Ink = "141210",
+                Muted = "7A7268",
+                Accent = "C2432C",
+                InverseBackground = "141210",
+                InverseInk = "F2EEE6",
+                InverseMuted = "A79E92",
+                DisplayLatinFont = "Georgia",
+                DisplayEaFont = "PMingLiU",
                 DirectionForModel =
-                    "Magazine editorial: warm paper ground (#F4F1EA), near-black ink (#14110E), vermilion accent (#B3462F). " +
-                    "Strong typographic hierarchy — oversized serif display headlines, small letterspaced uppercase kickers, hairline rules, generous columns and whitespace. " +
-                    "Asymmetric layouts, pull quotes set large, drop-cap or oversized numerals for lists. Editorial restraint: no icon clutter, no drop shadows."
+                    "Fashion/culture magazine: warm paper ground (#F2EEE6), near-black ink (#141210), vermilion accent (#C2432C). " +
+                    "Strong typographic hierarchy — oversized serif (Chinese: Mincho/明體) headlines, small letterspaced kickers, hairline rules, wide columns and whitespace. " +
+                    "Asymmetric layouts, pull quotes set large, oversized numerals for lists, big folio numbers. Editorial restraint: no icon clutter, no drop shadows, no boxes."
             },
             "nature" => new DeckArtDirection
             {
                 Id = "nature",
                 DisplayName = "自然旅遊",
-                Background = "F6F4EF",
-                Ink = "1C2B23",
-                Muted = "6E7B71",
+                Family = "editorial",
+                Background = "F4F2EB",
+                Ink = "1B2A22",
+                Muted = "6F7C72",
                 Accent = "2F6B4F",
-                InverseBackground = "1C2B23",
-                InverseInk = "F6F4EF",
-                HeadingLatinFont = "Georgia",
-                BodyLatinFont = "Segoe UI",
+                InverseBackground = "1B2A22",
+                InverseInk = "F4F2EB",
+                InverseMuted = "9AAAA0",
+                DisplayLatinFont = "Georgia",
+                DisplayEaFont = "PMingLiU",
                 DirectionForModel =
-                    "Travel/nature editorial: sand-paper ground (#F6F4EF), deep forest ink (#1C2B23), moss accent (#2F6B4F) with a warm clay secondary (#C2703D). " +
-                    "Full-bleed landscape imagery with dark scrims for legibility, wide horizon-like rules, airy type, place-name kickers. Calm, spacious, documentary feel."
+                    "Travel/nature editorial: sand-paper ground (#F4F2EB), deep forest ink (#1B2A22), moss accent (#2F6B4F). " +
+                    "Large landscape imagery with generous margins, horizon-like hairline rules, airy serif type, place-name kickers. Calm, spacious, documentary feel."
             },
+
+            // ── 商業科技／銀行業正式家族 ──
             "finance" => new DeckArtDirection
             {
                 Id = "finance",
                 DisplayName = "財經數據",
+                Family = "corporate",
                 Background = "FFFFFF",
-                Ink = "10233F",
-                Muted = "5A6B82",
-                Accent = "C8A23C",
-                InverseBackground = "10233F",
+                Ink = "0E2441",
+                Muted = "64748B",
+                Accent = "B08D3F",
+                InverseBackground = "0E2441",
                 InverseInk = "FFFFFF",
-                HeadingLatinFont = "Segoe UI Semibold",
-                BodyLatinFont = "Segoe UI",
+                InverseMuted = "9FB0C6",
+                DisplayLatinFont = "Segoe UI Semibold",
+                DisplayEaFont = "Microsoft JhengHei",
                 DirectionForModel =
-                    "Institutional finance: white ground, deep navy ink (#10233F), restrained gold accent (#C8A23C). " +
-                    "Data-forward — oversized key figures with small captions, clean tables with hairline rules, charts with direct labels instead of legends. " +
+                    "Institutional finance deck (bank/annual-report register): white ground, deep navy ink (#0E2441), restrained gold accent (#B08D3F). " +
+                    "Strict grid, ruled header and footer with page numbers, numbered sections, hairline separators between rows. " +
+                    "Data-forward — oversized key figures with small captions, tables with hairline rules, direct labels instead of legends. " +
                     "Every number carries its unit, period and source. Sober, precise, no decoration."
             },
             "tech" => new DeckArtDirection
             {
                 Id = "tech",
                 DisplayName = "科技產品",
-                Background = "0B0F14",
-                Ink = "E8EDF2",
-                Muted = "7C8794",
+                Family = "corporate",
+                Background = "0A0E13",
+                Ink = "E9EEF3",
+                Muted = "8493A2",
                 Accent = "4CC2FF",
-                InverseBackground = "E8EDF2",
-                InverseInk = "0B0F14",
-                HeadingLatinFont = "Segoe UI Semibold",
-                BodyLatinFont = "Segoe UI",
+                InverseBackground = "E9EEF3",
+                InverseInk = "0A0E13",
+                InverseMuted = "5B6672",
+                DisplayLatinFont = "Segoe UI Semibold",
+                DisplayEaFont = "Microsoft JhengHei",
                 DarkCover = true,
                 DirectionForModel =
-                    "Product-launch dark theme: near-black ground (#0B0F14), cool light type (#E8EDF2), electric blue accent (#4CC2FF). " +
-                    "Big statement headlines, monospaced micro-labels, diagram-first slides (flows, architectures) drawn with clean geometry. Tight grid, high contrast, minimal text."
+                    "Enterprise product-launch dark theme: near-black ground (#0A0E13), cool light type (#E9EEF3), electric blue accent (#4CC2FF). " +
+                    "Tight grid, ruled header and footer, big statement headlines, small letterspaced labels, diagram-first slides drawn with clean geometry. High contrast, minimal text."
             },
             "academic" => new DeckArtDirection
             {
                 Id = "academic",
                 DisplayName = "學術研究",
+                Family = "corporate",
                 Background = "FBFAF7",
                 Ink = "1F2937",
                 Muted = "6B7280",
                 Accent = "2F4858",
                 InverseBackground = "1F2937",
                 InverseInk = "FBFAF7",
-                HeadingLatinFont = "Georgia",
-                BodyLatinFont = "Segoe UI",
+                InverseMuted = "A9B2BC",
+                DisplayLatinFont = "Georgia",
+                DisplayEaFont = "Microsoft JhengHei",
                 DirectionForModel =
                     "Academic clarity: warm white ground (#FBFAF7), slate ink (#1F2937), teal-slate accent (#2F4858). " +
-                    "Numbered sections, serif headings, figure-and-caption discipline, tables with hairline rules, citations in small type. Structure over decoration."
+                    "Numbered sections, ruled header and footer, figure-and-caption discipline, tables with hairline rules, citations in small type. Structure over decoration."
             },
             _ => new DeckArtDirection
             {
                 Id = "modern",
                 DisplayName = "現代簡約",
+                Family = "corporate",
                 Background = "FAFAF8",
                 Ink = "16181D",
                 Muted = "6B7280",
                 Accent = "1F5AE0",
                 InverseBackground = "16181D",
                 InverseInk = "FAFAF8",
-                HeadingLatinFont = "Segoe UI Semibold",
-                BodyLatinFont = "Segoe UI",
+                InverseMuted = "A6ABB4",
+                DisplayLatinFont = "Segoe UI Semibold",
+                DisplayEaFont = "Microsoft JhengHei",
                 DirectionForModel =
-                    "Modern minimal: off-white ground (#FAFAF8), near-black ink (#16181D), confident blue accent (#1F5AE0). " +
-                    "Large type hierarchy, generous whitespace, one idea per slide, oversized key numbers, hairline rules, asymmetric layouts. Never a wall of bullets."
+                    "Modern corporate minimal: off-white ground (#FAFAF8), near-black ink (#16181D), confident blue accent (#1F5AE0). " +
+                    "Strict grid, ruled header and footer with page numbers, large type hierarchy, generous whitespace, one idea per slide, oversized key numbers. Never a wall of bullets."
             }
         };
 

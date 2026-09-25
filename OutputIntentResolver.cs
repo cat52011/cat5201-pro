@@ -53,6 +53,37 @@ namespace Cat5201
             return apiIntent;
         }
 
+        /// <summary>
+        /// 單獨判斷一段話有沒有「要配圖」的意思（預覽裡的單頁修改要求用）。
+        /// 一樣是語意判斷：使用者用哪種語言講都要認得。API 不通才退回關鍵字。
+        /// </summary>
+        public async Task<bool> WantsIllustrationsAsync(string? text, CancellationToken ct = default)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            try
+            {
+                using var usagePurpose = UsageMeter.Purpose("配圖意圖判斷");
+                string raw = await _router
+                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
+                    .GenerateAsync(
+                        "你判斷一句話有沒有『要求在文件／投影片裡加入圖片』的意思（配圖、插圖、照片、換一張圖…）。" +
+                        "使用者可能用任何語言。明說不要圖時回 false。只輸出 JSON：{\"illustrations\": true/false}",
+                        $"這句話：\n{text}\n\n請輸出 JSON。", 60, ct);
+
+                var match = Regex.Match(raw ?? "", @"\{[\s\S]*\}");
+                if (match.Success)
+                {
+                    using var doc = JsonDocument.Parse(match.Value);
+                    return GetBool(doc.RootElement, "illustrations");
+                }
+            }
+            catch { /* 落到關鍵字 */ }
+
+            return AgentRuntime.PresentationWantsCoverImage(text);
+        }
+
         private static string BuildSystemPrompt()
         {
             return
@@ -64,6 +95,12 @@ namespace Cat5201
 - image：圖片 / 圖像 / 插圖 / 畫一張（要你生成或修改一張圖）
 - video：影片 / 短片 / 動畫 / 一段 X 秒的片子（要你生成一段影片）
 
+另外再判斷兩件事：
+- illustrations：使用者有沒有要求『產出的文件裡要有圖』（配圖、插圖、照片、圖文並茂、每頁一張圖…）。
+  這與 image 不同：image 是要一張獨立的圖檔，illustrations 是簡報／報告裡面要配圖。
+  使用者明說『不要圖』『純文字』時一律 false。
+- slides：使用者有沒有指定投影片張數。有就填數字，沒有填 0。『約五頁』『5 頁左右』也算指定（填 5）。
+
 你只能輸出 JSON，不要任何多餘文字、不要 markdown：
 
 {
@@ -71,8 +108,12 @@ namespace Cat5201
   ""report"": true/false,
   ""table"": true/false,
   ""image"": true/false,
-  ""video"": true/false
+  ""video"": true/false,
+  ""illustrations"": true/false,
+  ""slides"": 0
 }
+
+使用者可能用任何語言（繁中、簡中、英文、日文…），請依語意判斷，不要依賴特定字詞。
 
 ★最重要的原則：區分「使用者要你做出什麼」與「使用者只是在描述內容」。
 只有使用者『下令產出』某種東西時才標 true。輸入內文裡提到的格式名稱，如果只是被當作『主題的一部分』『系統功能的介紹』『在描述別人做的東西』『要寫進簡報的條列內容』，一律不算，不要標 true。
@@ -93,6 +134,11 @@ namespace Cat5201
 - 「他昨天發了一個影片限動，超好笑」 → 全部 false。只是在描述別人發的影片，不是要你生影片。
 - 「這張圖裡有幾隻貓？」 → 全部 false。是在問既有圖片的問題，不是要你產圖。
 - 「幫我分析這份財報」（沒說要任何輸出）→ 全部 false。
+- 「給我一份約五頁的簡報，內容需附圖」 → presentation=true、illustrations=true、slides=5。
+- 「Make me a 7-slide deck about French fine dining, must include images」
+  → presentation=true、illustrations=true、slides=7。
+- 「做一份简报，配上图片」 → presentation=true、illustrations=true、slides=0。
+- 「做一份簡報，不要放圖」 → presentation=true、illustrations=false。
 
 其他原則：
 - 使用者明確下令要簡報 / 報告 / 表格 / 圖片 / 影片 → 對應項 true。
@@ -110,7 +156,8 @@ $@"使用者輸入：
 請輸出 JSON。";
         }
 
-        private static OutputIntent? TryParse(string raw)
+        /// <summary>解析模型回的 JSON（測試用 internal：這是語意判斷唯一能離線驗證的部分）。</summary>
+        internal static OutputIntent? TryParse(string raw)
         {
             if (string.IsNullOrWhiteSpace(raw))
                 return null;
@@ -130,6 +177,8 @@ $@"使用者輸入：
                     WantsTable = GetBool(root, "table"),
                     WantsImage = GetBool(root, "image"),
                     WantsVideo = GetBool(root, "video"),
+                    WantsIllustrations = GetBool(root, "illustrations"),
+                    RequestedSlides = GetInt(root, "slides"),
                     Source = "api:" + raw.Trim()
                 };
             }
@@ -137,6 +186,19 @@ $@"使用者輸入：
             {
                 return null;
             }
+        }
+
+        private static int GetInt(JsonElement root, string name)
+        {
+            if (!root.TryGetProperty(name, out var v))
+                return 0;
+
+            return v.ValueKind switch
+            {
+                JsonValueKind.Number => v.TryGetInt32(out int n) ? Math.Max(0, n) : 0,
+                JsonValueKind.String => int.TryParse(v.GetString(), out int p) ? Math.Max(0, p) : 0,
+                _ => 0
+            };
         }
 
         private static bool GetBool(JsonElement root, string name)

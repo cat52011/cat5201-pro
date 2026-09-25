@@ -16,6 +16,16 @@ namespace Cat5201
         public bool WantsVideo { get; init; }
         public bool WantsImage { get; init; }
 
+        /// <summary>
+        /// 文件裡要不要配圖（跟 WantsImage「要一張獨立的圖檔」是兩回事）。
+        /// 這個判斷一定要由模型做：關鍵字表只認得繁體中文的講法，簡體、英文、日文的使用者
+        /// 說了要圖也會被漏掉，簡報就會變成純文字。
+        /// </summary>
+        public bool WantsIllustrations { get; init; }
+
+        /// <summary>使用者指定的投影片張數；0＝沒指定，由內容決定。</summary>
+        public int RequestedSlides { get; init; }
+
         // debug：API 原始回覆 / 判斷來源
         public string Source { get; init; } = "";
 
@@ -46,6 +56,8 @@ namespace Cat5201
                 WantsTable = OutputFormatDetector.WantsSpreadsheet(text),
                 WantsVideo = taskType == OrchestrationTaskType.VideoGeneration,
                 WantsImage = taskType == OrchestrationTaskType.ImageGeneration,
+                WantsIllustrations = AgentRuntime.PresentationWantsCoverImage(text),
+                RequestedSlides = PresentationOutlineBuilder.DetectRequestedSlideCount(text ?? ""),
                 Source = "keywords"
             };
         }

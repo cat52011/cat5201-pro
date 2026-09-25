@@ -84,12 +84,19 @@ namespace Cat5201
             foreach (var e in page.Elements)
             {
                 long x = (long)(e.X * 12700), y = (long)(e.Y * 12700), w = (long)(e.W * 12700), h = (long)(e.H * 12700);
-                if (e.Kind == "rect") tree.Append(Rect(id++, "Color", x, y, w, h, e.Color));
+                if (e.Kind == "rect") tree.Append(Rect(id++, "Color", x, y, w, h, e.Color, e.Alpha));
                 else if (e.Kind == "image") tree.Append(FillPicture(part, id++, "Image", e.Image!, x, y, w, h));
                 else
                 {
-                    var paragraph = new A.Paragraph(new A.ParagraphProperties(new A.NoBullet()),
-                        Run(e.Text, (int)(e.Size * 100), DeckScene.Font, DeckScene.Font, e.Color, e.Bold));
+                    var properties = new A.ParagraphProperties(new A.NoBullet());
+                    if (e.Align == "r") properties.Alignment = A.TextAlignmentTypeValues.Right;
+                    else if (e.Align == "c") properties.Alignment = A.TextAlignmentTypeValues.Center;
+
+                    var paragraph = new A.Paragraph(properties,
+                        Run(e.Text, (int)(e.Size * 100),
+                            string.IsNullOrEmpty(e.Font) ? DeckScene.Font : e.Font,
+                            string.IsNullOrEmpty(e.EaFont) ? DeckScene.Font : e.EaFont,
+                            e.Color, e.Bold, (int)(e.Track * 100)));
                     tree.Append(TextBox(id++, "Text", x, y, w, h, new[] { paragraph }));
                 }
             }

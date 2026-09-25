@@ -29,7 +29,24 @@ namespace Cat5201
             public string EnvName { get; init; } = "";
             public string BillingUrl { get; init; } = "";
             public string Note { get; init; } = "";
+
+            /// <summary>
+            /// 這個服務向使用者收費的幣別。Google Cloud 依帳單國別出帳（澳洲帳號是 AUD），
+            /// 畫面上就該顯示 A$，不然使用者得自己在腦袋裡換算一次。
+            /// </summary>
+            public string Currency { get; init; } = "USD";
         }
+
+        /// <summary>幣別代號 → 顯示符號。</summary>
+        public static string CurrencySymbol(string? currency) => (currency ?? "USD").ToUpperInvariant() switch
+        {
+            "AUD" => "A$",
+            "TWD" => "NT$",
+            "EUR" => "€",
+            "JPY" => "¥",
+            "GBP" => "£",
+            _ => "US$",
+        };
 
         public enum HealthState { NoKey, Ok, InvalidKey, NoCredit, RateLimited, Offline, Unknown }
 
@@ -73,7 +90,8 @@ namespace Cat5201
             {
                 Id = "google", DisplayName = "Google（Gemini・Veo 影片）", EnvName = "GEMINI_API_KEY",
                 BillingUrl = "https://aistudio.google.com/app/apikey",
-                Note = "Gemini 模型、Veo 影片"
+                Note = "Gemini 模型、Veo 影片",
+                Currency = "AUD"
             },
             new ProviderInfo
             {
@@ -132,6 +150,11 @@ namespace Cat5201
 
                 if (resp.IsSuccessStatusCode)
                 {
+                    // 深入檢查送的是真實請求，服務真的會收費。不記帳的話，餘額會比實際多——
+                    // 使用者按得越多，顯示的剩餘就越不準。
+                    if (deep)
+                        RecordDeepProbeUsage(provider, body);
+
                     return new HealthResult
                     {
                         Provider = provider,
@@ -224,6 +247,48 @@ namespace Cat5201
                     return req;
                 }
             }
+        }
+
+        /// <summary>把深入檢查那一次真實呼叫的用量記進帳本（金額極小，但不能是黑帳）。</summary>
+        private static void RecordDeepProbeUsage(ProviderInfo provider, string body)
+        {
+            string model = provider.Id switch
+            {
+                "anthropic" => "claude-haiku-4-5",
+                "openai" => "gpt-5.6-sol",
+                "google" => "gemini-3.5-flash",
+                _ => "sonar",
+            };
+
+            int input = 0, output = 0;
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(body);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("usage", out var usage) && usage.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    input = ReadUsageInt(usage, "input_tokens", "prompt_tokens", "input_token_count");
+                    output = ReadUsageInt(usage, "output_tokens", "completion_tokens", "output_token_count");
+                }
+                else if (root.TryGetProperty("usageMetadata", out var meta))   // Gemini
+                {
+                    input = ReadUsageInt(meta, "promptTokenCount");
+                    output = ReadUsageInt(meta, "candidatesTokenCount");
+                }
+            }
+            catch { /* 解析不出來就用最小估計，不要因為記帳把檢查弄壞 */ }
+
+            using var purpose = UsageMeter.Purpose("服務可用性檢查");
+            UsageMeter.RecordLlm(model, Math.Max(input, 1), Math.Max(output, 1), note: "深入檢查");
+        }
+
+        private static int ReadUsageInt(System.Text.Json.JsonElement obj, params string[] names)
+        {
+            foreach (var n in names)
+                if (obj.TryGetProperty(n, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.Number && v.TryGetInt32(out int i))
+                    return i;
+            return 0;
         }
 
         // 深入檢查：最小的真實請求（1 個 token 上限），餘額不足這類狀態只有真的呼叫才會回報。

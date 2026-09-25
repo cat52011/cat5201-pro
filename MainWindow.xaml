@@ -676,7 +676,8 @@
     SnapsToDevicePixels="True"
                 HorizontalAlignment="Right"
 VerticalAlignment="Top"
-Margin="0,20,20,0">
+Margin="0,20,20,0"
+                Panel.ZIndex="9995">
 
                 <Grid>
                     <Grid.RowDefinitions>
@@ -810,6 +811,19 @@ Margin="0,20,20,0">
                    Foreground="#2A2A2A"
                    Margin="0,0,0,10"/>
 
+                            <!-- 參與的模型／服務（來自逐筆帳目，不是只有選模型時那一個） -->
+                            <TextBlock Text="這次實際參與"
+                   FontSize="12"
+                   Foreground="#7A7A7A"
+                   Margin="0,0,0,2"/>
+                            <TextBlock x:Name="DecisionParticipantsText"
+                   Text="-"
+                   FontSize="12"
+                   TextWrapping="Wrap"
+                   LineHeight="17"
+                   Foreground="#2A2A2A"
+                   Margin="0,0,0,10"/>
+
                             <!-- 任務 -->
                             <TextBlock Text="任務"
                    FontSize="12"
@@ -872,6 +886,66 @@ Margin="0,20,20,0">
                         </StackPanel>
                     </ScrollViewer>
                 </Grid>
+            </Border>
+
+            <!-- 右下角 API 餘額小面板（在自動模型開關上方；決策窗圖層比它高，開啟時會蓋住它） -->
+            <Border x:Name="ApiBalancePanel"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Bottom"
+                    Margin="0,0,18,66"
+                    Padding="12,9"
+                    MinWidth="170"
+                    MaxWidth="260"
+                    CornerRadius="14"
+                    Background="#FBFBFA"
+                    BorderBrush="#E0E0DC"
+                    BorderThickness="1"
+                    Cursor="Hand"
+                    Visibility="Collapsed"
+                    Panel.ZIndex="9990"
+                    MouseLeftButtonUp="ApiBalancePanel_Click"
+                    ToolTip="點一下開啟 API 狀態頁（填儲值金額、重新檢查）">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="14" ShadowDepth="1" Direction="270" Color="#000000" Opacity="0.10"/>
+                </Border.Effect>
+
+                <StackPanel>
+                    <TextBlock Text="API 餘額"
+                               FontSize="11"
+                               FontWeight="SemiBold"
+                               Foreground="#8A8A84"
+                               Margin="0,0,0,6"/>
+
+                    <ItemsControl x:Name="ApiBalanceList">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,2" ToolTip="{Binding Tip}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Ellipse Grid.Column="0" Width="7" Height="7" VerticalAlignment="Center"
+                                             Fill="{Binding Dot}" Margin="0,0,7,0"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                                               FontSize="12" Foreground="#3A3A36" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding Amount}"
+                                               FontSize="12" FontWeight="SemiBold" Foreground="#1F1F1C"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock x:Name="ApiBalanceEmptyText"
+                               Text="還沒有花費紀錄。到「個人化 → API」填入儲值金額，這裡就會顯示估計剩餘。"
+                               FontSize="11"
+                               Foreground="#A0A09A"
+                               TextWrapping="Wrap"
+                               Visibility="Collapsed"/>
+                </StackPanel>
             </Border>
 
             <!-- 右下角自動模型開關 -->
@@ -1574,6 +1648,25 @@ Margin="0,20,20,0">
                                       Unchecked="ReadUpstreamAttachmentsSwitch_Changed"/>
                         </Grid>
 
+                        <Grid Margin="0,14,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="右下角顯示 API 餘額"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
+                                <TextBlock Text="各家都沒有查餘額的 API，這裡用「你填的儲值金額 − 本機記到的花費」推估；儲值後到 API 分頁更新金額"
+                                           FontSize="11" Foreground="#A8A8AC" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                            </StackPanel>
+                            <CheckBox x:Name="ApiBalancePanelSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="ApiBalancePanelSwitch_Changed"
+                                      Unchecked="ApiBalancePanelSwitch_Changed"/>
+                        </Grid>
+
                         <!-- §15 逾時上限 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
@@ -1955,59 +2048,112 @@ Margin="0,20,20,0">
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="服務即時狀態"
-                                           FontSize="13" FontWeight="SemiBold" Foreground="#444" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="0" Text="API 餘額"
+                                           FontSize="14" FontWeight="SemiBold" Foreground="#2A2A28" VerticalAlignment="Center"/>
                                 <Button Grid.Column="1" Content="重新檢查" Height="28" Padding="12,0" Margin="0,0,6,0"
-                                        FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
+                                        FontSize="11.5" Cursor="Hand" Background="#F4F4F0" Foreground="#66665F"
                                         BorderThickness="0" Click="RefreshApiStatus_Click"/>
                                 <Button Grid.Column="2" Content="深入檢查" Height="28" Padding="12,0"
-                                        FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
+                                        FontSize="11.5" Cursor="Hand" Background="#F4F4F0" Foreground="#66665F"
                                         BorderThickness="0" ToolTip="送一個最小請求，才查得出餘額不足（合計約 NT$0.3）"
                                         Click="DeepCheckApiStatus_Click"/>
                             </Grid>
 
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#B0B0B6" Margin="0,0,0,8">
-                                <Run Text="各家 AI 服務都沒有提供查餘額的 API，所以這裡用「每次實際呼叫的結果」即時更新狀態，並用本機帳本統計花費。填入儲值金額後可估算剩餘。"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#A5A59E" Margin="0,0,0,12" LineHeight="18">
+                                <Run Text="各家都沒有查餘額的 API。充值後把官網顯示的餘額填進來，之後每一筆花費會自動扣掉。"/>
                             </TextBlock>
 
                             <ItemsControl x:Name="ApiStatusList" Margin="0,0,0,16">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border Background="#FAFAFB" CornerRadius="10" Padding="12,10" Margin="0,0,0,8">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
+                                        <Border Background="White" CornerRadius="12" Padding="16,13" Margin="0,0,0,10"
+                                                BorderBrush="#EAEAE6" BorderThickness="1">
+                                            <StackPanel>
+                                                <!-- 第一行：燈號 + 服務名（左）、目前餘額（右） -->
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
 
-                                                <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Top" Margin="0,5,10,0"
-                                                         Fill="{Binding Dot}"/>
+                                                    <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
+                                                             Margin="0,1,9,0" Fill="{Binding Dot}"/>
 
-                                                <StackPanel Grid.Column="1">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="{Binding DisplayName}" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                                        <TextBlock Text="{Binding State}" FontSize="12" Foreground="#666" Margin="8,0,0,0"/>
-                                                    </StackPanel>
-                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="#9A9A9E"
-                                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
-                                                    <TextBlock Text="{Binding Spend}" FontSize="11" Foreground="#7A7A80" Margin="0,3,0,0"/>
-                                                </StackPanel>
+                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                                                               FontSize="13" FontWeight="SemiBold" Foreground="#2A2A28"
+                                                               VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 
-                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0,6,0">
-                                                    <TextBlock Text="已儲值 US$" FontSize="11" Foreground="#9A9A9E" VerticalAlignment="Center"/>
-                                                    <TextBox Text="{Binding TopUp, UpdateSourceTrigger=PropertyChanged}"
-                                                             Width="58" Height="26" FontSize="11.5" Margin="4,0,0,0"
-                                                             VerticalContentAlignment="Center"
-                                                             LostFocus="ProviderTopUp_Changed"/>
-                                                </StackPanel>
+                                                    <TextBlock Grid.Column="2" Text="{Binding BalanceText}"
+                                                               FontSize="15" FontWeight="SemiBold" Foreground="#1F1F1C"
+                                                               VerticalAlignment="Center" Margin="12,0,0,0"/>
+                                                </Grid>
 
-                                                <Button Grid.Column="3" Content="帳單頁" Height="26" Padding="10,0"
-                                                        FontSize="11" Cursor="Hand" Background="#F1F1F3" Foreground="#555"
-                                                        BorderThickness="0" VerticalAlignment="Center"
-                                                        Tag="{Binding BillingUrl}" Click="OpenBillingPage_Click"/>
-                                            </Grid>
+                                                <!-- 只有出問題才出現的一行 -->
+                                                <TextBlock Text="{Binding Problem}" FontSize="11.5" Foreground="#C0453B"
+                                                           TextWrapping="Wrap" Margin="17,6,0,0"
+                                                           Visibility="{Binding ProblemVisible}"/>
+
+                                                <!-- 第二行：改成多少 + 送出（右邊放帳單頁） -->
+                                                <Grid Margin="17,10,0,0">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <TextBlock Grid.Column="0" Text="{Binding ChangeLabel}" FontSize="11.5" Foreground="#9A9A94"
+                                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                                    <Border Grid.Column="1" Width="88" Height="30" CornerRadius="8"
+                                                            Background="#F6F6F3" BorderBrush="#E2E2DC" BorderThickness="1">
+                                                        <TextBox Text="{Binding TopUp, UpdateSourceTrigger=PropertyChanged}"
+                                                                 FontSize="13" Padding="8,0" VerticalContentAlignment="Center"
+                                                                 Background="Transparent" BorderThickness="0"
+                                                                 KeyDown="ProviderTopUp_KeyDown"/>
+                                                    </Border>
+
+                                                    <Button Grid.Column="2" Content="送出" Height="30" Margin="8,0,0,0"
+                                                            FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
+                                                            Background="#1F1F1C" Click="ProviderTopUpSubmit_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                                                        CornerRadius="8" Padding="16,0">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                                      TextElement.Foreground="White"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="bd" Property="Background" Value="#3A3A35"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+
+                                                    <Button Grid.Column="4" Content="帳單頁" Height="30" VerticalAlignment="Center"
+                                                            FontSize="12" Cursor="Hand" Foreground="#77776F" BorderThickness="0"
+                                                            Background="Transparent"
+                                                            Tag="{Binding BillingUrl}" Click="OpenBillingPage_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                                                        CornerRadius="8" Padding="12,0">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="bd" Property="Background" Value="#F2F2EE"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </Grid>
+                                            </StackPanel>
                                         </Border>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

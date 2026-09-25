@@ -14,6 +14,9 @@ namespace Cat5201
         public string Keywords { get; init; } = "-";
         public string Extra { get; init; } = "-";
 
+        /// <summary>這次實際動手的模型／服務與各自做了什麼（來自逐筆帳目，不是推測）。</summary>
+        public string Participants { get; init; } = "-";
+
         public string CapabilitySummary { get; init; } = "-";
         public IReadOnlyList<string> CapabilityDetails { get; init; }
             = new List<string>();

@@ -24,6 +24,8 @@
     <PackageReference Include="QuestPDF" Version="2026.6.0" />
     <PackageReference Include="PdfPig" Version="0.1.15" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <!-- 配圖裁切（Windows 專用；CA1416 已在本專案停用，App 本身就是 WPF/Windows）。 -->
+    <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
   </ItemGroup>
 
 </Project>

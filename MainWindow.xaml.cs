@@ -1131,6 +1131,11 @@ namespace Cat5201
                 runtimeFallbackUsed: viewData.RuntimeFallbackUsed,
                 apiFallbackUsed: viewData.ApiFallbackUsed);
 
+            // 「模型」是這次決定用哪一個；「這次實際參與」是整段跑下來真的動手的每一個（含搜尋與圖片）。
+            if (DecisionParticipantsText != null)
+                DecisionParticipantsText.Text = string.IsNullOrWhiteSpace(viewData.Participants)
+                    ? "-" : viewData.Participants;
+
             RenderDecisionTimeline(viewData.Steps);
         }
 
@@ -1336,6 +1341,7 @@ namespace Cat5201
 
             // 花費帳本（花錢安全）：在任何執行之前載入，之後每筆 LLM/媒體成本都會累計。
             SpendLedger.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
+            ProviderBalance.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
 
             // #10 長任務日誌：影片 operation 落地/恢復用（與帳本同資料夾）。
             VideoJobJournal.Initialize(System.IO.Path.GetDirectoryName(PreferencesPath) ?? SavesDir);
@@ -1346,6 +1352,7 @@ namespace Cat5201
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
             EnsureApiStatusRows();
+            ApplyApiBalancePanelVisibility();   // 右下角餘額面板（依個人化開關）
 
             // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
             _ = AutoStartMobileMirrorIfEnabledAsync();
@@ -2098,6 +2105,7 @@ namespace Cat5201
             string action;
             string heading = "";
             var bullets = new List<string>();
+            string instruction = "";
 
             try
             {
@@ -2109,6 +2117,9 @@ namespace Cat5201
 
                 if (root.TryGetProperty("heading", out var h))
                     heading = h.GetString() ?? "";
+
+                if (root.TryGetProperty("instruction", out var ins))
+                    instruction = (ins.GetString() ?? "").Trim();
 
                 if (root.TryGetProperty("bullets", out var bs) && bs.ValueKind == JsonValueKind.Array)
                 {
@@ -2123,9 +2134,13 @@ namespace Cat5201
             catch { return; }
 
             if (string.Equals(action, "regen", StringComparison.OrdinalIgnoreCase))
-                await RegenerateSlideFromPreviewAsync(order, "");
+                await RegenerateSlideFromPreviewAsync(order, instruction);
             else if (string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase))
                 await ApplySlideEditFromPreviewAsync(order, heading, bullets);
+            else if (string.Equals(action, "image", StringComparison.OrdinalIgnoreCase))
+                await ChangeSlideImageFromPreviewAsync(order, instruction, remove: false);
+            else if (string.Equals(action, "imageRemove", StringComparison.OrdinalIgnoreCase))
+                await ChangeSlideImageFromPreviewAsync(order, "", remove: true);
         }
 
         /// <summary>
@@ -2196,30 +2211,139 @@ namespace Cat5201
             await Task.CompletedTask;
         }
 
+        /// <summary>
+        /// 預覽裡替某一頁重新生成／新增／移除配圖。圖片是真的要花錢的呼叫，所以先過每日預算檢查。
+        /// 封面頁的圖存在 native.Cover，內容頁的圖存在該頁的 ImageBytes。
+        /// </summary>
+        private async Task ChangeSlideImageFromPreviewAsync(int page, string instruction, bool remove)
+        {
+            string path = _previewPath ?? "";
+            var node = _previewOwnerNode;
+
+            if (_previewSlideRegenBusy || node == null || _nodeService == null ||
+                string.IsNullOrWhiteSpace(path) || !File.Exists(path) ||
+                !path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _previewSlideRegenBusy = true;
+            try
+            {
+                var native = NativeDeckStorage.Read(path);
+                if (native == null)
+                {
+                    MenuConfirmDialog.ShowMessage(this, "保留簡報設計", "這份簡報未包含可安全編輯的原始大綱，無法在這裡換圖。請用 PowerPoint 修改。", this);
+                    return;
+                }
+
+                var sourceOrder = NativeDeckStorage.SourceOrderForPage(native, page);
+                if (!sourceOrder.HasValue) return;
+
+                var outline = native.Outline;
+                var slide = outline.Slides.FirstOrDefault(s => s.Order == sourceOrder.Value);
+                if (slide == null) return;
+
+                bool isCover = string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase);
+                byte[]? cover = native.Cover;
+
+                if (remove)
+                {
+                    if (isCover) cover = null; else slide.ImageBytes = null;
+                }
+                else
+                {
+                    if (!CheckDailyBudgetAllows(out string budgetMessage))
+                    {
+                        MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                        return;
+                    }
+
+                    using var cts = new CancellationTokenSource();
+                    var (png, error) = await _nodeService.RegenerateSlideImageAsync(
+                        node, outline, sourceOrder.Value, instruction, cts.Token);
+
+                    if (png == null || png.Length == 0)
+                    {
+                        MenuConfirmDialog.ShowMessage(this, "這一頁的配圖",
+                            string.IsNullOrWhiteSpace(error) ? "配圖沒有產生出來。" : error, this);
+                        if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
+                            OpenPreview(path, node);
+                        return;
+                    }
+
+                    if (isCover) cover = png; else slide.ImageBytes = png;
+                }
+
+                WriteDeckFiles(path, outline, cover);
+                node.UpdatePresentationOutline(outline);
+                SaveState();
+
+                if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
+                    OpenPreview(path, node);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                MenuConfirmDialog.ShowMessage(this, "這一頁的配圖", "換圖失敗：" + ex.Message, this);
+            }
+            finally
+            {
+                _previewSlideRegenBusy = false;
+            }
+        }
+
         /// <summary>覆蓋 .pptx 並讓同一次產出的對照 PDF 跟著重建；兩者都先留上一版。</summary>
         private void WriteDeckFiles(string pptxPath, PresentationOutlinePayload outline, byte[]? coverPng)
         {
             // Build both before replacing either; layout failure must not destroy a working deck.
             byte[] pptx = PptxBuilder.Build(outline, coverPng);
             byte[] pdf = DeckPdfBuilder.Build(outline, coverPng);
-            string companionPdf = GeneratedFileCompanion.FindCompanionPdf(pptxPath)
-                ?? System.IO.Path.ChangeExtension(pptxPath, ".pdf");
+
+            // 這份簡報的所有對照 PDF 都要更新：產出時 pptx / pdf 的檔名時間戳可能差幾秒，
+            // 只更新其中一份的話，使用者點到的那個 chip 會永遠停在舊版。
+            var pdfTargets = GeneratedFileCompanion.ResolveRewriteTargets(pptxPath);
+
             byte[] oldPptx = File.ReadAllBytes(pptxPath);
-            byte[]? oldPdf = File.Exists(companionPdf) ? File.ReadAllBytes(companionPdf) : null;
+            var oldPdfs = pdfTargets.ToDictionary(
+                p => p,
+                p => File.Exists(p) ? File.ReadAllBytes(p) : null,
+                StringComparer.OrdinalIgnoreCase);
+
             GeneratedFileHistory.SaveVersion(pptxPath);
-            GeneratedFileHistory.SaveVersion(companionPdf);
+            foreach (var target in pdfTargets)
+                GeneratedFileHistory.SaveVersion(target);
+
             try
             {
                 File.WriteAllBytes(pptxPath, pptx);
-                File.WriteAllBytes(companionPdf, pdf);
-                GeneratedFileCompanion.Register(pptxPath, companionPdf);
+                foreach (var target in pdfTargets)
+                    File.WriteAllBytes(target, pdf);
+
+                GeneratedFileCompanion.Register(pptxPath, pdfTargets[0]);
             }
             catch
             {
                 File.WriteAllBytes(pptxPath, oldPptx);
-                if (oldPdf != null) File.WriteAllBytes(companionPdf, oldPdf);
+                foreach (var kv in oldPdfs)
+                    if (kv.Value != null) File.WriteAllBytes(kv.Key, kv.Value);
                 throw;
             }
+        }
+
+        /// <summary>這張投影片實際會印成幾頁（內容太長會被拆成續頁）。</summary>
+        private static int CountPagesForSlide(NativeDeckStorage.Data? native, int sourceOrder)
+        {
+            if (native == null) return 0;
+
+            int count = 0;
+            for (int page = 1; page <= 200; page++)
+            {
+                var owner = NativeDeckStorage.SourceOrderForPage(native, page);
+                if (owner == null) break;
+                if (owner.Value == sourceOrder) count++;
+            }
+            return count;
         }
 
         // 在預覽視窗就地重生第 order 張：重建大綱 → 重生那張 → 覆蓋同一個 .pptx → 重新渲染預覽。
@@ -2258,10 +2382,22 @@ namespace Cat5201
                     ? node.GetPresentationUserInput()
                     : outline.Title;
 
+                using var cts = new CancellationTokenSource();
+
+                // 「這句話是不是在要圖」交給模型判斷——關鍵字表只認得繁體中文的講法，
+                // 使用者用簡體、英文、日文講同一件事就會被漏掉。API 不通時才退回關鍵字。
+                bool wantsImage = !string.IsNullOrWhiteSpace(instruction)
+                                  && await _nodeService.WantsIllustrationsAsync(instruction, cts.Token);
+
                 if (!string.IsNullOrWhiteSpace(instruction))
+                {
                     userInput = userInput.TrimEnd() + "\n\n【這一頁的修改要求】\n" + instruction.Trim();
 
-                using var cts = new CancellationTokenSource();
+                    // 配圖是另一個步驟做的；不講清楚的話，文字模型會為了「加圖」去刪字騰出版面。
+                    if (wantsImage)
+                        userInput += "\n（配圖由另一個步驟處理，你只負責這一頁的文字，不要為了配圖刪減內容。）";
+                }
+
                 var updated = await _nodeService.RegeneratePresentationSlideAsync(node, outline, order, userInput, cts.Token);
 
                 if (updated == null)
@@ -2274,6 +2410,29 @@ namespace Cat5201
 
                 // 重建前先保留既有封面圖，避免重生一張內容頁後封面圖被洗掉。
                 byte[]? coverPng = native.Cover;
+                string extraNote = "";
+
+                // 修改要求裡如果提到要圖，就真的去生一張——這句話送給「改寫文字」的模型是不會生出圖的，
+                // 使用者卻會以為自己已經要求過了（2026-09-25 實測：輸入「增加符合此頁內容的附圖」什麼也沒發生）。
+                if (wantsImage)
+                {
+                    var slide = updated.Slides.FirstOrDefault(s => s.Order == order);
+                    var (png, imageError) = await _nodeService.RegenerateSlideImageAsync(
+                        node, updated, order, instruction, cts.Token);
+
+                    if (png is { Length: > 0 } && slide != null)
+                    {
+                        if (string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase)) coverPng = png;
+                        else slide.ImageBytes = png;
+                    }
+                    else
+                    {
+                        extraNote = "這一頁的配圖沒有生成：" +
+                                    (string.IsNullOrWhiteSpace(imageError) ? "圖片步驟沒有產出。" : imageError);
+                    }
+                }
+
+                int pagesBefore = CountPagesForSlide(native, order);
 
                 // 覆蓋同一個檔（路徑不變 → chip / 預覽都還指向同一份）；先留上一版，PDF 跟著重建。
                 WriteDeckFiles(path, updated, coverPng);
@@ -2284,6 +2443,17 @@ namespace Cat5201
                 // 重新渲染預覽（若使用者還停在這份）。
                 if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
                     OpenPreview(path, node);
+
+                // 重寫後內容變短就不再需要續頁，那一頁會消失。不講的話看起來就像「它把我的頁刪掉了」。
+                int pagesAfter = CountPagesForSlide(NativeDeckStorage.Read(path), order);
+                if (pagesAfter < pagesBefore)
+                {
+                    extraNote = $"這張投影片原本因為內容太長被拆成 {pagesBefore} 頁，重寫後變短，已合併成 {pagesAfter} 頁。" +
+                                (string.IsNullOrWhiteSpace(extraNote) ? "" : "\n\n" + extraNote);
+                }
+
+                if (!string.IsNullOrWhiteSpace(extraNote))
+                    MenuConfirmDialog.ShowMessage(this, "這一頁已更新", extraNote, this);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -3649,7 +3819,17 @@ namespace Cat5201
                     return;
                 }
 
-                PreviewWeb.CoreWebView2.Navigate(new Uri(path).AbsoluteUri);
+                // WebView2 的 PDF 檢視器會依網址快取：單頁重生後檔案已經換了，導覽到同一個
+                // file:// 網址還是會顯示舊的那一份。用檔案的修改時間當版本參數，內容變了網址才變。
+                string url = new Uri(path).AbsoluteUri;
+                try
+                {
+                    long stamp = File.GetLastWriteTimeUtc(path).Ticks;
+                    url += (url.Contains('?') ? "&" : "?") + "v=" + stamp;
+                }
+                catch { /* 取不到時間就照原網址走 */ }
+
+                PreviewWeb.CoreWebView2.Navigate(url);
             }
             catch (Exception ex)
             {
@@ -3827,6 +4007,15 @@ namespace Cat5201
                 if (PreviewRegenPage != null) PreviewRegenPage.Text = "";
                 if (PreviewRegenInput != null) PreviewRegenInput.Text = "";
                 RefreshPreviewUndoState();
+                return;
+            }
+
+            // 沒填頁碼＝整份重跑。簡報可以單頁重生，別讓使用者以為按下去只會改一頁。
+            if ((_previewPath ?? "").EndsWith(".pptx", StringComparison.OrdinalIgnoreCase) &&
+                !MenuConfirmDialog.ShowConfirm(this, "重新生成整份簡報",
+                    "沒有指定頁碼，這會重跑整個節點、整份簡報重做（費用與時間都是整份的）。\n\n只想改某一頁的話：取消後在預覽裡展開那一頁的「編輯第 N 頁」，用「只重新生成這一頁」。",
+                    this, "整份重做", "取消"))
+            {
                 return;
             }
 
@@ -5642,6 +5831,9 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                         : "";
                 if (ReadUpstreamAttachmentsSwitch != null)
                     ReadUpstreamAttachmentsSwitch.IsChecked = _readUpstreamAttachments;
+
+                if (ApiBalancePanelSwitch != null)
+                    ApiBalancePanelSwitch.IsChecked = _showApiBalancePanel;
                 if (MobileMirrorSwitch != null)
                     MobileMirrorSwitch.IsChecked = _mobileMirrorEnabled;
                 if (DailyBudgetInput != null)

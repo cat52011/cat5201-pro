@@ -1140,7 +1140,7 @@ namespace Cat5201
                 {
                     var skills = await TryGenerateDocumentsWithSkillsAsync(
                         node, topText, workspace, orchestrationPlan, execution, orchestration,
-                        doReport, doTable, deckViaSkills, request.PreferenceBlock, request.CancellationToken);
+                        doReport, doTable, deckViaSkills, request.PreferenceBlock, request.CancellationToken, intent);
 
                     execution = skills.Execution;
                     doReport &= !skills.Report;
@@ -1193,7 +1193,8 @@ namespace Cat5201
                     execution,
                     orchestration,
                     request.CancellationToken,
-                    appendToText: doReport || doTable);
+                    appendToText: doReport || doTable,
+                    intent: intent);
             }
 
             // Image Gen v1：ImageGeneration 任務在最終答案後呼叫 DALL-E 3 生成圖片，
@@ -1289,7 +1290,8 @@ namespace Cat5201
             bool wantsTable,
             bool wantsDeck,
             string preferenceBlock,
-            CancellationToken ct)
+            CancellationToken ct,
+            OutputIntent? intent = null)
         {
             var none = new SkillsOutcome(execution, false, false, false);
             string model = DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus);
@@ -1324,8 +1326,11 @@ namespace Cat5201
                 WantsDeck = wantsDeck,
                 WantsReport = wantsReport,
                 WantsTable = wantsTable,
-                RequestedSlides = wantsDeck ? PresentationOutlineBuilder.DetectRequestedSlideCount(userInput) : 0,
-                WantsImages = PresentationWantsCoverImage(userInput),
+                // 張數與配圖一律以第一層語意判斷為準；那一步失敗才退回只認繁中的關鍵字。
+                RequestedSlides = !wantsDeck ? 0
+                    : intent?.RequestedSlides > 0 ? intent.RequestedSlides
+                    : PresentationOutlineBuilder.DetectRequestedSlideCount(userInput),
+                WantsImages = intent?.WantsIllustrations ?? PresentationWantsCoverImage(userInput),
                 Sources = sources,
                 PreferenceBlock = preferenceBlock ?? ""
             };
@@ -1340,16 +1345,39 @@ namespace Cat5201
             if (wantsReport || wantsTable) orchestration.MarkRunning("generate_file");
 
             ClaudeDocumentSkillsService.Result result;
+            var budget = ClaudeDocumentSkillsService.DefaultBudget;
+            var skillsStarted = DateTime.UtcNow;
+            int skillSteps = 0;
+
+            // 技能一輪可能在伺服器端跑好幾分鐘，只在換輪時更新提示等於畫面像當掉。
+            // 自己每 10 秒報一次「跑了多久 / 上限多久」，使用者才知道還要不要等。
+            // 這裡在 UI 執行緒上 await，不能加 ConfigureAwait(false)。
+            using var ticker = new System.Threading.PeriodicTimer(TimeSpan.FromSeconds(10));
+            using var tickerStop = new CancellationTokenSource();
+
+            void ShowProgress() => node.SetLoadingHint(
+                $"Claude 正在製作{what}（{(DateTime.UtcNow - skillsStarted).TotalMinutes:0.0} / {budget.TotalMinutes:0} 分鐘" +
+                (skillSteps > 0 ? $"，已執行 {skillSteps} 個步驟" : "") + "）");
+
+            async Task TickAsync()
+            {
+                try { while (await ticker.WaitForNextTickAsync(tickerStop.Token)) ShowProgress(); }
+                catch (OperationCanceledException) { }
+            }
+
+            ShowProgress();
+            var ticking = TickAsync();
+
             try
             {
-                node.SetLoadingHint($"Claude 正在製作{what}（官方文件技能，約需數分鐘）");
                 result = await service.GenerateAsync(
                     DocumentSkillsPrompt.SystemPrompt,
                     DocumentSkillsPrompt.BuildUserPrompt(prompt),
                     DocumentSkillsPrompt.SkillIds(prompt),
                     DocumentSkillsPrompt.WantedExtensions(prompt),
-                    (round, steps) => node.SetLoadingHint($"Claude 正在製作{what}（已執行 {steps} 個步驟）"),
-                    ct);
+                    (round, steps) => { skillSteps = steps; ShowProgress(); },
+                    ct,
+                    budget);
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception ex)
@@ -1359,6 +1387,9 @@ namespace Cat5201
             }
             finally
             {
+                tickerStop.Cancel();
+                await ticking;
+                AppLog.Info("DocSkills", $"文件技能結束，耗時 {(DateTime.UtcNow - skillsStarted).TotalMinutes:0.0} 分鐘");
                 node.SetLoadingHint(null);
             }
 
@@ -1443,6 +1474,11 @@ namespace Cat5201
             string summary = string.IsNullOrWhiteSpace(result.Summary)
                 ? $"已由 Claude 文件技能產出：{string.Join("、", produced)}。"
                 : result.Summary.Trim();
+
+            // 這條路徑是 Claude 在沙箱裡自己排版，沒有圖片模型可用；使用者要了圖就要講清楚差別。
+            if (prompt.WantsImages)
+                summary += "\n\nℹ 這份是由 Claude 文件技能排版的，沙箱內無法生成照片，視覺元素是程式繪製的圖形與圖表。" +
+                           "需要生成式的配圖時，可以在預覽裡逐頁用「生成配圖」補。";
 
             // 簡報單獨產出時沿用既有行為（輸出區顯示簡報說明）；有報告/表格時保留完整答案、把說明接在後面。
             string text = wantsDeck && !wantsReport && !wantsTable && deckDone
@@ -1563,7 +1599,7 @@ namespace Cat5201
             if (intent.WantsReport)
             {
                 // 階段3：報告智慧配圖（同簡報規格）——使用者要圖時，Claude 挑適合的章節生成呼應的圖並嵌入。
-                if (PresentationWantsCoverImage(userInput))
+                if (intent.WantsIllustrations || PresentationWantsCoverImage(userInput))
                     reportMarkdown = await IllustrateReportMarkdownAsync(node, reportMarkdown, genDir, ct);
 
                 TryEmit(() => GeneratedFileWriter.WriteDocx(
@@ -1651,9 +1687,14 @@ namespace Cat5201
             AiFallbackExecutionResult execution,
             OrchestrationStateMachine orchestration,
             CancellationToken ct,
-            bool appendToText = false)
+            bool appendToText = false,
+            OutputIntent? intent = null)
         {
             orchestration.MarkRunning("presentation_outline");
+
+            // 「要不要配圖」「幾張投影片」一律以第一層的語意判斷為準（任何語言都認得）；
+            // 只有那一步失敗（沒金鑰／API 不通）時才退回關鍵字，關鍵字只認繁中講法。
+            bool wantsImages = intent?.WantsIllustrations ?? PresentationWantsCoverImage(userInput);
 
             int factCount = workspace.GetByType("verified_facts")
                 .Select(x => x.Payload)
@@ -1666,7 +1707,9 @@ namespace Cat5201
 
             // Presentation v1.5（Gamma 之前）：先用 Perplexity 查資料，再請 Claude/GPT 真正「設計」一份簡報。
             // 兩段任一失敗都優雅退回原本的確定性切段（PresentationOutlineBuilder），demo 不會開天窗。
-            int requestedSlides = PresentationOutlineBuilder.DetectRequestedSlideCount(userInput);
+            int requestedSlides = intent?.RequestedSlides > 0
+                ? intent.RequestedSlides
+                : PresentationOutlineBuilder.DetectRequestedSlideCount(userInput);
             var outline = await BuildAuthoredPresentationAsync(
                               node, userInput, workspace, execution, requestedSlides, orchestrationPlan, runtimeAgent, ct)
                           ?? PresentationOutlineBuilder.Build(new PresentationOutlineBuilder.Request
@@ -1697,14 +1740,16 @@ namespace Cat5201
 
             // Image Gen → Presentation：使用者明確要求配圖時，生成一張封面圖嵌入 deck / pptx（不另外輸出 png chip）。
             byte[]? coverImageBytes = null;
-            if (PresentationWantsCoverImage(userInput))
+            if (wantsImages)
             {
-                (coverImageBytes, _) = await TryGenerateCoverImageAsync(
+                // 封面圖與內容頁配圖彼此不相干，一張圖就要一兩分鐘，排隊跑等於把等待時間加倍。
+                // 兩邊同時發，帳目靠 UsageScope（有鎖）照樣分得清楚。
+                var coverTask = TryGenerateCoverImageAsync(
                     node, runtimeAgent, outline, workspace, orchestrationPlan, ct);
+                var slidesTask = GenerateSlideIllustrationsAsync(node, outline, ct);
 
-                // 階段2：智慧內容頁配圖——Claude 挑適合的內容頁、生成與內容呼應的圖，
-                // 填入各 slide.ImageBytes，由 PptxBuilder / DeckPdfBuilder 嵌入（圖文並茂）。
-                await GenerateSlideIllustrationsAsync(node, outline, ct);
+                await Task.WhenAll(coverTask, slidesTask);
+                (coverImageBytes, _) = await coverTask;
             }
 
             // .pptx 二進位檔：只有使用者在個人化選了「Gamma」生成器才走 Gamma（Claude 內容 + Gamma 設計）；
@@ -1793,6 +1838,18 @@ namespace Cat5201
                 orchestration.MarkSuccess("presentation_outline", $"{outline.SlideCount} 張 / {fileName}");
 
                 string note = $"已生成簡報大綱：{outline.SlideCount} 張投影片。";
+
+                // 使用者要了圖卻一張都沒有時，要講原因——不然看起來就是「說了沒用」。
+                if (wantsImages)
+                {
+                    int images = DeckScene.CountRenderedImages(outline, coverImageBytes);
+                    if (images == 0)
+                        note += "\n⚠ 這次沒有配圖：" + (ImageSkipReason() ?? "圖片步驟沒有產出可用的圖。") +
+                                "\n（可以在預覽裡展開任一頁的「編輯這一頁」，用「生成配圖」單獨補一張。）";
+                    else
+                        note += $"\n已配 {images} 張圖。";
+                }
+
                 if (!string.IsNullOrWhiteSpace(gammaUrl))
                     note += $"\n線上版（Gamma）：{gammaUrl}";
                 if (!string.IsNullOrWhiteSpace(notebookLmFile))
@@ -1881,16 +1938,48 @@ namespace Cat5201
         }
 
         // 使用者是否明確要求簡報配圖（避免每次簡報都呼叫圖片 API 造成額外成本）。
-        private static bool PresentationWantsCoverImage(string? userInput)
+        /// <summary>
+        /// 使用者這次有沒有要圖。
+        ///
+        /// 舊版是一串「相鄰字串」比對（配圖、附圖、要有圖…），所以「多放一些圖片」「圖文並茂」「每頁配一張照片」
+        /// 這些自然講法全都漏掉——使用者明明說了要圖，簡報卻是純文字。
+        /// 現在改成：先看有沒有明講不要，再看有沒有「圖片類名詞」，最後才是只寫「圖」時要搭動詞
+        /// （避免「圖表」「地圖」「藍圖」被當成要配圖）。
+        /// </summary>
+        public static bool PresentationWantsCoverImage(string? userInput)
         {
             string text = userInput ?? "";
             string lower = text.ToLowerInvariant();
 
+            // 明確說不要就是不要（使用者的規則：沒特別提就不配圖）。
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    text, @"(不要|不用|不需要|無需|別|勿)[^。，,\n]{0,6}(圖片|照片|插圖|插畫|配圖|附圖|圖)")
+                || text.Contains("純文字", StringComparison.Ordinal)
+                || lower.Contains("no image", StringComparison.Ordinal)
+                || lower.Contains("text only", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            // 圖片類名詞單獨出現就算數（「圖表」「地圖」「藍圖」不在其中，不會誤判）。
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    text, @"圖片|照片|插畫|插圖|配圖|附圖|示意圖|圖像|圖文並茂|視覺素材"))
+            {
+                return true;
+            }
+
+            // 帶量詞的講法：「配一張圖」「多放兩張圖」「幾張圖」。排除「圖表」。
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    text, @"[一二三四五六七八九十兩幾些\d]+\s*[張幅]\s*圖(?!表)"))
+            {
+                return true;
+            }
+
             return ContainsAnyText(text, lower,
-                "配圖", "插圖", "封面圖", "加圖", "加上圖", "附圖", "示意圖", "搭配圖",
-                "有圖", "要圖", "圖片簡報", "帶圖", "封面圖片",
-                "含圖", "含圖片", "包含圖", "需要圖", "加入圖", "放圖", "要有圖", "帶圖片",
-                "with image", "cover image", "with picture", "illustration", "with a picture");
+                "封面圖", "加圖", "加上圖", "搭配圖", "有圖", "要圖", "帶圖",
+                "含圖", "包含圖", "需要圖", "加入圖", "放圖", "要有圖",
+                "with image", "with images", "cover image", "with picture", "with pictures",
+                "illustration", "illustrated", "with a picture", "with photo", "with photos");
         }
 
         private static bool ContainsAnyText(string text, string lower, params string[] keywords)
@@ -1936,15 +2025,21 @@ namespace Cat5201
                 string brief = await BuildIllustrationBriefAsync(
                     node, BuildCoverBriefMaterial(outline), "簡報封面", ct, art);
                 if (string.IsNullOrWhiteSpace(brief))
+                {
+                    NoteImageSkipped("這份內容沒有適合入畫的具體主體（或主題屬於地圖、商標這類不該生成的東西），所以沒有硬湊一張圖。");
                     return (null, null); // No meaningful brief: a typographic cover is preferable to an arbitrary image.
+                }
                 // 封面圖跟著簡報的藝術方向走，並用寬幅構圖（左側留白給大標題壓字）。
                 string prompt = IllustrationStyle.Compose(brief, art, isCover: true);
 
                 var imageService = new OpenAIImageService("gpt-image-2");
-                var image = await imageService.GenerateAsync(prompt, "1536x1024", ct);
+                var image = await imageService.GenerateAsync(prompt, DeckImageSize, ct);
 
                 if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
+                {
+                    NoteImageSkipped(FailureExplainer.Describe(image.ErrorMessage));
                     return (null, null);
+                }
 
                 // 封面圖只嵌進 .pptx 封面頁，不另外寫成 .png 檔、也不加進 workspace 產出物，
                 // 避免在輸出區多出一個獨立的封面 png chip（使用者只要簡報，不要散落的封面圖）。
@@ -1954,9 +2049,10 @@ namespace Cat5201
             {
                 throw;
             }
-            catch
+            catch (Exception ex)
             {
-                // 配圖失敗不影響簡報主體。
+                // 配圖失敗不影響簡報主體，但要留下原因（最常見是沒有設定 OPENAI_API_KEY）。
+                NoteImageSkipped(FailureExplainer.Describe(ex.Message));
                 return (null, null);
             }
         }
@@ -1982,31 +2078,81 @@ namespace Cat5201
                 "1. 只輸出最終英文圖片提示本身，不要任何解釋、前後綴、引號或 markdown。\n" +
                 "2. 選擇內容中可具體描繪的景物、物件或作品。禁止用上升箭頭、硬幣、燈泡、握手或拼貼圖示代替內容；資料與趨勢留給原生圖表。若沒有合適主體，回傳空字串。\n" +
                 "3. 不要捏造任何文字、商標、數據或品牌名。\n" +
+                "   畫「類型」不要畫「特定個體」：溫帶雨林與湖面的晨霧可以，某座山的正確外形不行；" +
+                "法式主菜的擺盤特寫可以，某家餐廳的招牌菜照片不行。\n" +
+                "   只有地圖、國旗、商標、統計圖表、特定真人長相這幾類才回傳空字串（畫出來一定是錯的）；" +
+                "主題是真實的地方、食物、產業並不代表不能配圖——那些都畫得出漂亮又誠實的示意畫面。\n" +
                 $"4. {(art == null ? IllustrationStyle.BriefStyleGuidance : IllustrationStyle.StyleFor(art))}\n" +
                 "5. 生成圖只能是示意，不冒充真實景點、作品或事件的證據；保留完整主體，不加入圖表、文字或數據。\n\n" +
                 "=== 內容 ===\n" + material;
 
             var decision = new NodeExecutionDecision
             {
-                RequestedAgentId = "general-agent",
-                ActualAgentId = "general-agent",
+                RequestedAgentId = "image-agent",
+                ActualAgentId = "image-agent",
                 RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
-                ResolverLabel = "Illustration Brief (Claude)",
-                ResolverReason = "Claude 先把內容轉成具體、單一焦點的配圖畫面，避免生出無意義的抽象圖。",
+                ResolverLabel = "Illustration Brief",
+                ResolverReason = "先把內容轉成具體、單一焦點的配圖畫面，避免生出無意義的抽象圖。",
                 StatusLabel = "Auto",
-                ForceSingleModel = true
+                // 不鎖單一模型：某一家沒額度時要能換一家，不然整個配圖流程會被一家公司的餘額綁死。
+                ForceSingleModel = false
             };
 
             try
             {
                 var r = await _executeWithFallbackAsync(node, briefPrompt, decision, null, false, ct);
-                return r.IsSuccess ? (r.Text ?? "").Trim() : "";
+
+                // 呼叫失敗（餘額不足、金鑰無效、斷網…）跟「這頁沒有適合入畫的主體」是兩回事，
+                // 混在一起會讓使用者看到完全錯誤的理由（2026-09-25 實測：Anthropic 沒額度，卻回報「沒有合適主體」）。
+                if (!r.IsSuccess)
+                {
+                    NoteImageSkipped(FailureExplainer.Describe(r.ErrorMessage) + "（配圖企劃步驟）");
+                    AppLog.Warn("AgentRuntime", "配圖企劃失敗，改用本地簡化提示：" + FirstChars(r.ErrorMessage, 160));
+                    return LocalIllustrationBrief(material);
+                }
+
+                string brief = (r.Text ?? "").Trim();
+
+                // 查得到正確答案的東西（地圖／國旗／商標／圖表…）不配圖：畫出來的一定不是真的那個。
+                if (IllustrationStyle.IsFactualSubject(brief))
+                {
+                    AppLog.Info("AgentRuntime", "配圖主題屬於可查證的真實事物（地圖／標誌／圖表等），已略過配圖");
+                    return "";
+                }
+
+                return brief;
             }
             catch (OperationCanceledException) { throw; }
             catch { return ""; }
+        }
+
+        /// <summary>
+        /// 寫提示的模型全都不能用時的保底：直接用這一頁的標題／主題當畫面主體。
+        /// 品質不如模型寫的，但「有一張切題的圖」遠比「因為某一家沒額度就整份變純文字」好。
+        /// </summary>
+        private static string FirstChars(string? text, int max)
+        {
+            string t = (text ?? "").Trim();
+            return t.Length <= max ? t : t[..max];
+        }
+
+        private static string LocalIllustrationBrief(string material)
+        {
+            string text = (material ?? "")
+                .Replace("使用者指定的畫面：", " ")
+                .Replace("簡報標題：", " ")
+                .Replace("主題：", " ")
+                .Replace("\r", " ").Replace("\n", " ")
+                .Trim();
+
+            if (text.Length > 120) text = text[..120];
+            if (text.Length == 0) return "";
+
+            string brief = $"A single evocative subject representing: {text}";
+            return IllustrationStyle.IsFactualSubject(brief) ? "" : brief;
         }
 
         // 封面 brief 的素材：標題 + 主題 + 前幾個內容頁的重點，讓封面圖能代表整份簡報、與內容呼應。
@@ -2033,6 +2179,86 @@ namespace Cat5201
         // 簡報內容頁智慧配圖數量上限（控制成本）。
         private const int MaxContentSlideImages = 3;
 
+        /// <summary>簡報配圖的尺寸：版面上的圖欄是直的（約 3:4），用直式圖才不會裁掉一半。</summary>
+        public const string DeckImageSize = "1024x1536";
+
+        // 配圖為什麼沒生出來（沒金鑰、沒有適合入畫的主體、API 失敗…）。
+        // 生圖是並行的，所以要鎖；只留第一個原因，訊息才不會變成一串雜訊。
+        private readonly object _imageSkipLock = new();
+        private string? _imageSkipReason;
+
+        private void NoteImageSkipped(string reason)
+        {
+            if (string.IsNullOrWhiteSpace(reason)) return;
+            lock (_imageSkipLock) _imageSkipReason ??= reason.Trim();
+        }
+
+        private string? ImageSkipReason()
+        {
+            lock (_imageSkipLock) return _imageSkipReason;
+        }
+
+        /// <summary>
+        /// 單頁配圖：預覽裡針對某一頁重新生成／新增配圖。
+        /// 回傳圖片位元組；失敗時 Png 為 null，Error 是可以直接顯示給使用者的中文原因。
+        /// </summary>
+        public async Task<(byte[]? Png, string Error)> RegenerateSlideImageAsync(
+            INodeContext node,
+            PresentationOutlinePayload outline,
+            int slideOrder,
+            string instruction,
+            CancellationToken ct)
+        {
+            var slide = outline?.Slides?.FirstOrDefault(s => s.Order == slideOrder);
+            if (slide == null)
+                return (null, "找不到這一頁。");
+
+            bool isCover = string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase);
+            var art = DeckArtDirection.ForTopic($"{outline!.Title} {outline.Topic}");
+
+            // 使用者自己寫的描述優先；沒寫就用這一頁的內容（封面用整份的重點）。
+            var material = new System.Text.StringBuilder();
+            if (!string.IsNullOrWhiteSpace(instruction))
+                material.AppendLine("使用者指定的畫面：" + instruction.Trim()).AppendLine();
+            material.AppendLine(isCover
+                ? BuildCoverBriefMaterial(outline)
+                : $"{slide.Heading}\n{string.Join("\n", slide.Bullets ?? Array.Empty<string>())}");
+
+            try
+            {
+                node.SetLoadingHint($"正在重做第 {slideOrder} 頁的配圖");
+
+                string brief = await BuildIllustrationBriefAsync(
+                    node, material.ToString(), isCover ? "簡報封面" : "簡報內容頁", ct, art);
+
+                if (string.IsNullOrWhiteSpace(brief))
+                {
+                    return (null, IllustrationStyle.IsFactualSubject(instruction)
+                        ? "地圖、國旗、商標、真實地標或真人這類「查得到正確答案」的東西，生成出來不會是真的那個，反而變成錯誤資訊，所以不產生。\n\n可以改描述成氛圍或材質畫面，或自己放一張正確的圖。"
+                        : "這一頁沒有適合入畫的具體主體。可以在上面的描述欄寫清楚想要的畫面再試一次。");
+                }
+
+                var imageService = new OpenAIImageService("gpt-image-2");
+                var image = await imageService.GenerateAsync(
+                    IllustrationStyle.Compose(brief, art, isCover), DeckImageSize, ct);
+
+                if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
+                    return (null, FailureExplainer.Describe(image.ErrorMessage));
+
+                return (image.PngBytes, "");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLog.Warn("AgentRuntime", "單頁配圖失敗", ex);
+                return (null, FailureExplainer.Describe(ex.Message));
+            }
+            finally
+            {
+                node.SetLoadingHint(null);
+            }
+        }
+
         // 智慧內容頁配圖：由 Claude 從內容頁挑「最適合用圖表達」的頁並寫配圖提示，
         // 再用 gpt-image-2 生成與內容呼應的圖、填入 slide.ImageBytes（由 PptxBuilder / DeckPdfBuilder 嵌入）。
         // 缺 OPENAI_API_KEY / 任何失敗一律略過，不影響簡報主體。
@@ -2054,31 +2280,45 @@ namespace Cat5201
 
             var plan = await PlanIllustrationsAsync(node, sections, MaxContentSlideImages, "簡報", ct,
                 DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic));
-            if (plan.Count == 0) return;
+            if (plan.Count == 0)
+            {
+                NoteImageSkipped("內容頁沒有挑到適合配圖的主體（數據頁、流程頁本來就不配圖）。");
+                return;
+            }
 
             OpenAIImageService imageService;
             try { imageService = new OpenAIImageService("gpt-image-2"); }
-            catch { return; }  // 沒有 OPENAI_API_KEY → 略過內容頁配圖
-
-            foreach (var slide in outline.Slides)
+            catch (Exception ex)
             {
-                if (!string.Equals(slide.Kind, "content", System.StringComparison.OrdinalIgnoreCase))
-                    continue;
-                if (!plan.TryGetValue(slide.Order, out var brief) || string.IsNullOrWhiteSpace(brief))
-                    continue;
-
-                try
-                {
-                    var img = await imageService.GenerateAsync(
-                        IllustrationStyle.Compose(brief, DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}")), "1024x1024", ct);
-                    if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
-                    {
-                        slide.ImageBytes = img.PngBytes;
-                    }
-                }
-                catch (OperationCanceledException) { throw; }
-                catch (Exception ex) { AppLog.Warn("AgentRuntime", "內容配圖生成失敗（已略過）", ex); }
+                NoteImageSkipped(FailureExplainer.Describe(ex.Message));
+                return;  // 沒有 OPENAI_API_KEY → 略過內容頁配圖
             }
+
+            var art = DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}");
+
+            // 每張圖要一兩分鐘，三張排隊就是五、六分鐘；同時發只等最慢的那張。
+            var jobs = outline.Slides
+                .Where(s => string.Equals(s.Kind, "content", System.StringComparison.OrdinalIgnoreCase))
+                .Where(s => plan.TryGetValue(s.Order, out var b) && !string.IsNullOrWhiteSpace(b))
+                .Select(async slide =>
+                {
+                    try
+                    {
+                        var img = await imageService.GenerateAsync(
+                            IllustrationStyle.Compose(plan[slide.Order], art), DeckImageSize, ct);
+                        if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
+                            slide.ImageBytes = img.PngBytes;
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        AppLog.Warn("AgentRuntime", "內容配圖生成失敗（已略過）", ex);
+                        NoteImageSkipped(FailureExplainer.Describe(ex.Message));
+                    }
+                })
+                .ToList();
+
+            await Task.WhenAll(jobs);
         }
 
         // 用一次 Claude 呼叫，從內容區塊挑最多 maxCount 個適合配圖的，並寫具體英文配圖提示。
@@ -2104,6 +2344,8 @@ namespace Cat5201
                 $"你是{contextLabel}配圖總監。下面是內容區塊清單（每行開頭 [編號]）。\n" +
                 $"最多挑 {maxCount} 個有具體景物、物件、作品或可見場景的區塊，沒有合適的就回空陣列，禁止為湊數配圖。\n" +
                 "數據、成長率、市場比較、因果或流程頁不要生成象徵圖，讓文字與原生圖表解釋資訊。禁止上升箭頭、燈泡、硬幣和無關拼貼。\n" +
+                "畫「類型」不要畫「特定個體」：溫帶雨林的晨霧可以，某座山的正確外形不行；法式擺盤特寫可以，某家餐廳的招牌菜不行。\n" +
+                "只有地圖、國旗、商標、統計圖表、特定真人長相這幾類才不要畫；主題是真實的地方或食物並不代表不能配圖。\n" +
                 "英文提示直接描寫與該頁主張相關的單一主體；生成圖片是示意，不能冒充特定真實作品或現場照片。\n" +
                 "只輸出 JSON（不要 markdown 圍欄、不要多餘文字），格式：{\"items\":[{\"id\":編號,\"prompt\":\"英文提示\"}]}。\n" +
                 $"風格參考：{(art == null ? IllustrationStyle.BriefStyleGuidance : IllustrationStyle.StyleFor(art))}\n\n" +
@@ -2111,22 +2353,36 @@ namespace Cat5201
 
             var decision = new NodeExecutionDecision
             {
-                RequestedAgentId = "general-agent",
-                ActualAgentId = "general-agent",
+                RequestedAgentId = "image-agent",
+                ActualAgentId = "image-agent",
                 RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
-                ResolverLabel = "Illustration Plan (Claude)",
-                ResolverReason = "Claude 挑選適合配圖的區塊並寫具體配圖提示。",
+                ResolverLabel = "Illustration Plan",
+                ResolverReason = "挑選適合配圖的區塊並寫具體配圖提示。",
                 StatusLabel = "Auto",
-                ForceSingleModel = true
+                ForceSingleModel = false
             };
 
             try
             {
                 var r = await _executeWithFallbackAsync(node, planPrompt, decision, null, false, ct);
-                if (!r.IsSuccess || string.IsNullOrWhiteSpace(r.Text)) return result;
+
+                // 模型不能用時照實說，並用本地提示挑前兩段保底，不要整份變成純文字。
+                if (!r.IsSuccess)
+                {
+                    NoteImageSkipped(FailureExplainer.Describe(r.ErrorMessage) + "（配圖企劃步驟）");
+                    foreach (var section in sections.Take(Math.Min(2, maxCount)))
+                    {
+                        string local = LocalIllustrationBrief($"{section.title} {section.body}");
+                        if (!string.IsNullOrWhiteSpace(local))
+                            result[section.id] = local;
+                    }
+                    return result;
+                }
+
+                if (string.IsNullOrWhiteSpace(r.Text)) return result;
 
                 string json = ExtractFirstJsonObject(r.Text);
                 if (string.IsNullOrWhiteSpace(json)) return result;
@@ -2146,6 +2402,11 @@ namespace Cat5201
                         else if (!int.TryParse(o.GetString(), out id)) continue;
 
                         string prompt = (p.GetString() ?? "").Trim();
+                        if (IllustrationStyle.IsFactualSubject(prompt))
+                        {
+                            AppLog.Info("AgentRuntime", $"第 {id} 段的配圖主題是可查證的真實事物，已略過配圖");
+                            continue;
+                        }
                         if (sections.Any(s => s.id == id) && !string.IsNullOrWhiteSpace(prompt))
                             result[id] = prompt;
                     }
@@ -3043,8 +3304,9 @@ namespace Cat5201
         {
             var decision = new NodeExecutionDecision
             {
-                RequestedAgentId = "general-agent",
-                ActualAgentId = "general-agent",
+                // 這一步是「做文件」，不是泛用對話；決策窗的 Agent 欄要講實話。
+                RequestedAgentId = "presentation-agent",
+                ActualAgentId = "presentation-agent",
                 RequestedModelId = AiModelHelper.NormalizeNodeModel(authorModelId),
                 ModelId = AiModelHelper.NormalizeNodeModel(authorModelId),
                 ActualModelId = "",

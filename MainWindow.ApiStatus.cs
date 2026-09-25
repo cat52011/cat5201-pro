@@ -23,6 +23,10 @@ namespace Cat5201
         {
             public string ProviderId { get; init; } = "";
             public string DisplayName { get; init; } = "";
+            /// <summary>這個服務的計價幣別符號（Google 澳洲帳號是 A$）。</summary>
+            public string Symbol { get; init; } = "US$";
+            /// <summary>輸入框前的提示：「改成 A$」。</summary>
+            public string ChangeLabel => $"改成 {Symbol}";
             public string Note { get; init; } = "";
             public string BillingUrl { get; init; } = "";
 
@@ -31,13 +35,21 @@ namespace Cat5201
             private string _dot = "#C9CDD4";
             private string _spend = "";
             private string _topUp = "";
+            private string _balanceText = "未設定";
+            private string _problem = "";
+            private string _problemVisible = "Collapsed";
 
             public string State { get => _state; set => Set(ref _state, value); }
             public string Detail { get => _detail; set => Set(ref _detail, value); }
             public string Dot { get => _dot; set => Set(ref _dot, value); }
             public string Spend { get => _spend; set => Set(ref _spend, value); }
-            /// <summary>使用者填的儲值金額（美元），空＝不估算剩餘。</summary>
+            /// <summary>輸入框：要把餘額改成多少（送出後清空）。</summary>
             public string TopUp { get => _topUp; set => Set(ref _topUp, value); }
+            /// <summary>目前餘額（本機記帳，每一筆花費即時扣）。</summary>
+            public string BalanceText { get => _balanceText; set => Set(ref _balanceText, value); }
+            /// <summary>只有出問題（餘額用完、金鑰無效、連不上）才顯示的一行。</summary>
+            public string Problem { get => _problem; set => Set(ref _problem, value); }
+            public string ProblemVisible { get => _problemVisible; set => Set(ref _problemVisible, value); }
 
             public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -65,9 +77,7 @@ namespace Cat5201
                         DisplayName = p.DisplayName,
                         Note = p.Note,
                         BillingUrl = p.BillingUrl,
-                        TopUp = _providerTopUpUsd.TryGetValue(p.Id, out var amount) && amount > 0
-                            ? amount.ToString("0.##", CultureInfo.InvariantCulture)
-                            : ""
+                        Symbol = ApiHealthChecker.CurrencySymbol(p.Currency),
                     });
                 }
 
@@ -86,6 +96,12 @@ namespace Cat5201
             foreach (var snapshot in ProviderStatusMonitor.All())
                 ApplySnapshot(snapshot);
 
+            // 舊版「儲值金額 + 起算日」一次性轉進餘額簿，使用者不必重填。
+            foreach (var kv in _providerTopUpUsd)
+                ProviderBalance.SeedFromLegacyTopUp(
+                    kv.Key, kv.Value,
+                    _providerTopUpSince.TryGetValue(kv.Key, out var since) ? since : DateTime.Today);
+
             RefreshSpendColumns();
         }
 
@@ -100,6 +116,15 @@ namespace Cat5201
             row.Detail = string.IsNullOrWhiteSpace(snapshot.Action)
                 ? $"{snapshot.Message}（{snapshot.UpdatedAt:HH:mm}{(snapshot.FromLiveCall ? " 實際呼叫" : " 檢查")}）"
                 : $"{snapshot.Message}　→　{snapshot.Action}";
+
+            // 這一頁只講餘額；狀態只有在「真的不能用」時才佔一行版面。
+            bool problem = snapshot.State is ApiHealthChecker.HealthState.NoCredit
+                or ApiHealthChecker.HealthState.InvalidKey
+                or ApiHealthChecker.HealthState.Offline
+                or ApiHealthChecker.HealthState.RateLimited;
+            row.Problem = problem ? $"{StateLabel(snapshot.State)}：{snapshot.Message}" : "";
+            row.ProblemVisible = problem ? "Visible" : "Collapsed";
+
             RefreshSpendColumns();
         }
 
@@ -125,24 +150,16 @@ namespace Cat5201
             _ => "#C9CDD4"
         };
 
-        /// <summary>花費欄：今日／本月／（有填儲值時）估計剩餘。</summary>
+        /// <summary>這一頁只顯示「目前餘額」——花費明細在決策窗的成本明細裡，不在這裡重複一份。</summary>
         private void RefreshSpendColumns()
         {
             foreach (var row in ApiStatusRows)
             {
-                double today = SpendLedger.TodayUsdFor(row.ProviderId);
-                double month = SpendLedger.MonthUsdFor(row.ProviderId);
-                string text = $"今日 {ModelCostEstimator.FormatTwd(today)}　本月 {ModelCostEstimator.FormatTwd(month)}";
+                row.BalanceText = ProviderBalance.Has(row.ProviderId)
+                    ? $"{row.Symbol}{ProviderBalance.Remaining(row.ProviderId):0.00}"
+                    : "未設定";
 
-                if (_providerTopUpUsd.TryGetValue(row.ProviderId, out double topUp) && topUp > 0)
-                {
-                    var since = _providerTopUpSince.TryGetValue(row.ProviderId, out var d) ? d : DateTime.Today;
-                    double used = SpendLedger.UsdForSince(row.ProviderId, since);
-                    double left = Math.Max(0, topUp - used);
-                    text += $"　估計剩餘 US${left:0.00}（{since:MM/dd} 起用掉 US${used:0.00}）";
-                }
-
-                row.Spend = text;
+                row.Spend = $"今日 {ModelCostEstimator.FormatTwd(SpendLedger.TodayUsdFor(row.ProviderId))}";
             }
         }
 
@@ -197,27 +214,45 @@ namespace Cat5201
         private Dictionary<string, double> _providerTopUpUsd = new(StringComparer.OrdinalIgnoreCase);
         private Dictionary<string, DateTime> _providerTopUpSince = new(StringComparer.OrdinalIgnoreCase);
 
-        private void ProviderTopUp_Changed(object sender, RoutedEventArgs e)
+        /// <summary>
+        /// 送出＝把這個服務的餘額「改成」輸入的數字（充值後照官網顯示的餘額填即可），輸入框隨即清空。
+        /// 之後每一筆花費會自動扣掉，所以平常不需要再動它。
+        /// </summary>
+        private void ProviderTopUpSubmit_Click(object sender, RoutedEventArgs e)
+            => SubmitProviderTopUp(sender as FrameworkElement);
+
+        private void ProviderTopUp_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
         {
-            if (sender is not FrameworkElement fe || fe.DataContext is not ApiStatusRow row)
+            if (e.Key != System.Windows.Input.Key.Enter) return;
+            e.Handled = true;
+            SubmitProviderTopUp(sender as FrameworkElement);
+        }
+
+        private void SubmitProviderTopUp(FrameworkElement? source)
+        {
+            if (source?.DataContext is not ApiStatusRow row)
                 return;
 
-            string raw = (row.TopUp ?? "").Trim();
-            if (double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out double amount) && amount > 0)
+            string raw = (row.TopUp ?? "").Trim().TrimStart('$', 'U', 'S', 'u', 's', ' ');
+
+            if (raw.Length == 0)
             {
-                bool isNew = !_providerTopUpUsd.TryGetValue(row.ProviderId, out double old) || Math.Abs(old - amount) > 0.001;
-                _providerTopUpUsd[row.ProviderId] = amount;
-                if (isNew)
-                    _providerTopUpSince[row.ProviderId] = DateTime.Today; // 重新填金額＝重新起算
+                ProviderBalance.Forget(row.ProviderId);   // 清空送出＝不再追蹤這個服務的餘額
+            }
+            else if (double.TryParse(raw, NumberStyles.Any, CultureInfo.InvariantCulture, out double amount) && amount >= 0)
+            {
+                ProviderBalance.SetBalance(row.ProviderId, amount);
             }
             else
             {
-                _providerTopUpUsd.Remove(row.ProviderId);
-                _providerTopUpSince.Remove(row.ProviderId);
+                MenuConfirmDialog.ShowMessage(this, "目前餘額",
+                    $"請輸入目前的餘額（{row.Symbol}），例如 20。\n清空後送出＝不再追蹤這個服務。", this);
+                return;
             }
 
-            SavePreferences();
+            row.TopUp = "";                 // 送出即清空，畫面不常駐輸入值
             RefreshSpendColumns();
+            RefreshApiBalancePanel();
         }
 
         internal Dictionary<string, string> BuildProviderTopUpStorage()

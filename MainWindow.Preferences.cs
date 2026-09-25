@@ -51,7 +51,8 @@ namespace Cat5201
             bool DriveConvertToGoogleFormat = false,
             string LastProjectPath = "",                     // P2-2 會話還原：最後開啟的專案
             string DocumentEngine = "ClaudeSkills",          // 文件產出引擎（預設 Claude 文件技能）
-            Dictionary<string, string>? ProviderTopUp = null // 各服務儲值金額："金額|起算日"（估算剩餘用）
+            Dictionary<string, string>? ProviderTopUp = null, // 各服務儲值金額："金額|起算日"（估算剩餘用）
+            bool ShowApiBalancePanel = false                 // 右下角 API 餘額小面板
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -145,7 +146,8 @@ namespace Cat5201
                     DriveConvertToGoogleFormat: _driveConvertGoogle,
                     LastProjectPath: _currentFilePath ?? "",
                     DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine),
-                    ProviderTopUp: BuildProviderTopUpStorage()
+                    ProviderTopUp: BuildProviderTopUpStorage(),
+                    ShowApiBalancePanel: _showApiBalancePanel
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -210,6 +212,7 @@ namespace Cat5201
                 _videoStyleOverride = prefs.VideoStyleOverride ?? "";
                 _videoModelTier = VeoModels.ParseTier(prefs.VideoModelTier);
                 _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
+                _showApiBalancePanel = prefs.ShowApiBalancePanel;
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
                 SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
                 _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);

@@ -64,6 +64,7 @@ namespace Cat5201
             ["gpt-5.6-sol"] = new Price(4.00, 20.00),
             ["gpt-6-astra"] = new Price(10.00, 50.00),                  // OpenAI 官方（standard）
             ["claude-sonnet-5"] = new Price(2.00, 10.00),               // Anthropic 官方
+            ["claude-opus-5-5"] = new Price(4.00, 20.00),               // Anthropic 官方（2026-09-25 查證）
             ["claude-opus-5"] = new Price(5.00, 25.00),                 // Anthropic 官方
 
             // 舊世代：模型選單已移除，但舊專案的執行紀錄仍以這些 ID 算歷史成本——刪掉會退回預設價、歷史成本變錯。
@@ -90,6 +91,20 @@ namespace Cat5201
         // 約略匯率，僅用於估算顯示。公開＝全 App 單一真相（SpendLedger 也引用這裡，
         // 兩處各養一個匯率曾造成 10 倍級顯示錯誤，不再重演）。
         public const double UsdToTwd = 32.0;
+
+        /// <summary>
+        /// 美元 → 澳元（Google Cloud 澳洲帳號以 AUD 出帳）。所有成本都以美元計算，
+        /// 只有「顯示給使用者的餘額」需要換算；匯率會變，這裡是約略值，餘額本來就是本機推估。
+        /// </summary>
+        public const double UsdToAud = 1.52;
+
+        /// <summary>把美元換算成某個服務的計價幣別（USD 以外目前只有 AUD）。</summary>
+        public static double ConvertUsd(double usd, string? currency) => (currency ?? "USD").ToUpperInvariant() switch
+        {
+            "AUD" => usd * UsdToAud,
+            "TWD" => usd * UsdToTwd,
+            _ => usd,
+        };
 
         // 圖片生成成本（每張・美元）。OpenAI gpt-image 系列「以張計價」，依尺寸 / 品質不同，
         // 與文字模型的 token 計價邏輯不同（用字數估 token 會誤導），故獨立一張表。
@@ -124,6 +139,21 @@ namespace Cat5201
         {
             return BuildEstimate(modelId, Math.Max(0, inputTokens), Math.Max(0, outputTokens), isActual: true);
         }
+
+        /// <summary>
+        /// 快取讀取的單價倍率（相對於輸入單價）。官方 2026-09-25：多數模型 0.1x，
+        /// Opus 5.5 是 0.05x，Fable / Mythos 5.1 是 0.025x。寫死 0.1 會把 Opus 5.5 的快取算貴一倍。
+        /// </summary>
+        public static double CacheReadMultiplier(string? modelId)
+        {
+            string m = ResolvePricingModelId(modelId).ToLowerInvariant();
+            if (m.Contains("opus-5-5")) return 0.05;
+            if (m.Contains("fable-5-1") || m.Contains("mythos-5-1")) return 0.025;
+            return 0.10;
+        }
+
+        /// <summary>5 分鐘快取寫入的單價倍率（官方：1.25x 輸入單價；1 小時快取為 2x，本專案只用 5 分鐘）。</summary>
+        public const double CacheWriteMultiplier = 1.25;
 
         /// <summary>單張圖片的估算美元成本（依尺寸 / 品質查表，查無則退回 1024 高品質估算）。</summary>
         public static double ImageCostUsd(string? size, string? quality)

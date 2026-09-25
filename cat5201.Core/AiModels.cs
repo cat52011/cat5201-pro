@@ -11,7 +11,10 @@ namespace Cat5201
         public const string OpenAi_Gpt56 = "gpt-5.6-sol";
         public const string OpenAi_Gpt6 = "gpt-6-astra";
         public const string Claude_Sonnet5 = "claude-sonnet-5";
-        public const string Claude_Opus5 = "claude-opus-5";
+        // 2026-09-25：升到 Opus 5.5（官方最新，且比 Opus 5 便宜：$4/$20 vs $5/$25）。
+        // 常數名沿用 Claude_Opus5，避免 18 處呼叫端改名；歷史紀錄的 claude-opus-5 由
+        // AiModelRegistry 的 LegacyDisplayNames 照實顯示成「Claude Opus 5」，不會被改寫。
+        public const string Claude_Opus5 = "claude-opus-5-5";
         public const string Perplexity_Sonar = "pplx-sonar";
         public const string Perplexity_SonarDeepResearch = "pplx-sonar-deep-research";
 
