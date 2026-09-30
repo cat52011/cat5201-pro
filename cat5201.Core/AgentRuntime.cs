@@ -1612,12 +1612,13 @@ namespace Cat5201
             if (intent.WantsTable)
             {
                 string tablePdfMarkdown = $"# {title}\n\n{tableMarkdown}\n";
+                var tableArt = DeckArtDirection.ForTopic($"{title} {userInput}");
                 TryEmit(() => GeneratedFileWriter.WriteXlsx(
-                    genDir, title, XlsxReportBuilder.Build(tableMarkdown, title), sourceSummary), "table-agent");
+                    genDir, title, XlsxReportBuilder.Build(tableMarkdown, title, tableArt), sourceSummary), "table-agent");
                 // 報告也在時，表格 pdf 用不同檔名避免和報告 pdf 撞名。
                 string tablePdfTitle = intent.WantsReport ? title + "（表格）" : title;
                 TryEmit(() => GeneratedFileWriter.WritePdf(
-                    genDir, tablePdfTitle, PdfReportBuilder.Build(tablePdfMarkdown), sourceSummary), "table-agent");
+                    genDir, tablePdfTitle, PdfReportBuilder.Build(tablePdfMarkdown, tableArt), sourceSummary), "table-agent");
             }
 
             if (producedFiles.Count > 0)

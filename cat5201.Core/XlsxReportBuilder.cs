@@ -16,8 +16,9 @@ namespace Cat5201
     /// </summary>
     public static class XlsxReportBuilder
     {
-        public static byte[] Build(string answerText, string sheetName = "報告")
+        public static byte[] Build(string answerText, string sheetName = "報告", DeckArtDirection? art = null)
         {
+            _art = art ?? DeckArtDirection.ForTopic(sheetName);
             var rows = ExtractRows(answerText ?? "");
 
             using var ms = new MemoryStream();
@@ -40,19 +41,70 @@ namespace Cat5201
                     var row = new Row { RowIndex = rowIndex };
                     var cells = rows[r];
 
+                    if (isHeader) row.Height = 22; row.CustomHeight = isHeader;
+
                     for (int c = 0; c < cells.Count; c++)
                     {
+                        bool numeric = System.Text.RegularExpressions.Regex.IsMatch(
+                            (cells[c] ?? "").Trim(), @"^[+\-−]?[\d,.]+\s*[%％]?$");
+
                         row.Append(TextCell(
                             ColumnLetter(c) + rowIndex.ToString(),
                             cells[c],
-                            styleIndex: isHeader ? 1U : 0U));
+                            styleIndex: isHeader ? 1U : numeric ? 3U : 2U));
                     }
 
                     sheetData.Append(row);
                     rowIndex++;
                 }
 
-                wsPart.Worksheet = new Worksheet(sheetData);
+                // 欄寬依內容估算（中文算兩格），並凍結標題列——不然一捲就不知道欄位是什麼。
+                var columns = new Columns();
+                int columnCount = rows.Count == 0 ? 0 : rows.Max(r => r.Count);
+                for (int c = 0; c < columnCount; c++)
+                {
+                    double width = 10;
+                    foreach (var r in rows)
+                    {
+                        if (c >= r.Count) continue;
+                        double w = (r[c] ?? "").Sum(ch => ch > 0x2E80 ? 2.1 : 1.05) + 4;
+                        width = Math.Max(width, w);
+                    }
+                    columns.Append(new Column
+                    {
+                        Min = (uint)(c + 1), Max = (uint)(c + 1),
+                        Width = Math.Min(48, width), CustomWidth = true
+                    });
+                }
+
+                var views = new SheetViews(new SheetView
+                {
+                    WorkbookViewId = 0U,
+                    Pane = new Pane
+                    {
+                        VerticalSplit = 1D,
+                        TopLeftCell = "A2",
+                        ActivePane = PaneValues.BottomLeft,
+                        State = PaneStateValues.Frozen
+                    }
+                });
+
+                // 列印／轉 PDF 時縮成一頁寬——欄位被切到第二頁是最常見的「檔案很醜」來源。
+                var sheetProps = new SheetProperties(new PageSetupProperties { FitToPage = true });
+                var pageSetup = new PageSetup
+                {
+                    FitToWidth = 1U,
+                    FitToHeight = 0U,
+                    Orientation = columnCount >= 5 ? OrientationValues.Landscape : OrientationValues.Portrait
+                };
+                var margins = new PageMargins
+                {
+                    Left = 0.5D, Right = 0.5D, Top = 0.6D, Bottom = 0.6D, Header = 0.3D, Footer = 0.3D
+                };
+
+                wsPart.Worksheet = columnCount > 0
+                    ? new Worksheet(sheetProps, views, columns, sheetData, margins, pageSetup)
+                    : new Worksheet(sheetData);
                 wsPart.Worksheet.Save();
 
                 var sheets = wbPart.Workbook.AppendChild(new Sheets());
@@ -191,28 +243,57 @@ namespace Cat5201
             return cleaned.Length > 31 ? cleaned.Substring(0, 31) : cleaned;
         }
 
+        /// <summary>
+        /// 表格的視覺語言跟簡報／報告同一套（<see cref="DeckArtDirection"/>）：
+        /// 標題列用強調色底白字、資料列只有底部髮絲線、數字右對齊。
+        /// 原本是「粗體 + 淺灰底」的 Excel 預設樣子，跟重做過的簡報擺在一起像兩個產品。
+        /// </summary>
+        private static DeckArtDirection _art = DeckArtDirection.ById("modern");
+
         private static Stylesheet BuildStylesheet()
         {
+            string ink = "FF" + _art.Ink, accent = "FF" + _art.Accent, muted = "FF" + _art.Muted;
+            string body = _art.BodyEaFont;
+
             return new Stylesheet(
                 new Fonts(
-                    new Font(),                                   // 0：預設
-                    new Font(new Bold())),                        // 1：粗體（標題列）
+                    new Font(new FontSize { Val = 11 }, new Color { Rgb = ink }, new FontName { Val = body }),           // 0：內文
+                    new Font(new Bold(), new FontSize { Val = 11 }, new Color { Rgb = "FFFFFFFF" }, new FontName { Val = body }), // 1：標題列
+                    new Font(new Bold(), new FontSize { Val = 14 }, new Color { Rgb = ink }, new FontName { Val = body })),       // 2：大標
                 new Fills(
                     new Fill(new PatternFill { PatternType = PatternValues.None }),     // 0（規格保留）
                     new Fill(new PatternFill { PatternType = PatternValues.Gray125 }),  // 1（規格保留）
-                    new Fill(new PatternFill(                                            // 2：標題列淺灰底
-                        new ForegroundColor { Rgb = "FFF2F2F2" })
+                    new Fill(new PatternFill(new ForegroundColor { Rgb = accent })      // 2：標題列強調色
                     { PatternType = PatternValues.Solid })),
-                new Borders(new Border()),                        // 0
+                new Borders(
+                    new Border(),                                                       // 0：無框線
+                    new Border(new BottomBorder(new Color { Rgb = muted })              // 1：列間髮絲線
+                    { Style = BorderStyleValues.Hair })),
                 new CellFormats(
-                    new CellFormat(),                                                   // 0：預設
+                    new CellFormat { FontId = 0U, ApplyFont = true },                   // 0：內文
                     new CellFormat                                                      // 1：標題列
                     {
-                        FontId = 1U,
-                        FillId = 2U,
-                        ApplyFont = true,
-                        ApplyFill = true
-                    }));
+                        FontId = 1U, FillId = 2U, ApplyFont = true, ApplyFill = true,
+                        Alignment = new Alignment { Vertical = VerticalAlignmentValues.Center },
+                        ApplyAlignment = true
+                    },
+                    new CellFormat                                                      // 2：資料列（左）
+                    {
+                        FontId = 0U, BorderId = 1U, ApplyFont = true, ApplyBorder = true,
+                        Alignment = new Alignment { Vertical = VerticalAlignmentValues.Center, WrapText = true },
+                        ApplyAlignment = true
+                    },
+                    new CellFormat                                                      // 3：資料列（數字右對齊）
+                    {
+                        FontId = 0U, BorderId = 1U, ApplyFont = true, ApplyBorder = true,
+                        Alignment = new Alignment
+                        {
+                            Horizontal = HorizontalAlignmentValues.Right,
+                            Vertical = VerticalAlignmentValues.Center
+                        },
+                        ApplyAlignment = true
+                    },
+                    new CellFormat { FontId = 2U, ApplyFont = true }));                 // 4：大標
         }
     }
 }

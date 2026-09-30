@@ -19,8 +19,17 @@ namespace Cat5201
     /// </summary>
     public static class DocxReportBuilder
     {
-        public static byte[] Build(string markdownContent)
+        // 這份報告的視覺語言（跟簡報同一套：雜誌家族 / 商業家族）。
+        private static DeckArtDirection _art = DeckArtDirection.ById("modern");
+
+        public static byte[] Build(string markdownContent) => Build(markdownContent, null);
+
+        public static byte[] Build(string markdownContent, DeckArtDirection? art)
         {
+            string markdown = (markdownContent ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+            string title = markdown.Split('\n').FirstOrDefault(l => l.StartsWith("# ", StringComparison.Ordinal))?[2..].Trim() ?? "";
+            _art = art ?? DeckArtDirection.ForTopic(title);
+
             using var stream = new MemoryStream();
 
             using (var doc = WordprocessingDocument.Create(stream, WordprocessingDocumentType.Document))
@@ -28,8 +37,13 @@ namespace Cat5201
                 var mainPart = doc.AddMainDocumentPart();
                 var body = new Body();
 
-                AppendParagraphs(mainPart, body, markdownContent ?? "");
-                body.AppendChild(new SectionProperties());
+                AppendParagraphs(mainPart, body, markdown);
+
+                // 版面：頁邊留白 + 頁首（報告名）+ 頁尾（頁碼），跟 PDF 版對齊。
+                var section = new SectionProperties(
+                    new PageMargin { Top = 1418, Bottom = 1418, Left = 1418, Right = 1418, Header = 709, Footer = 709 });
+                AttachHeaderFooter(mainPart, section, title);
+                body.AppendChild(section);
 
                 mainPart.Document = new Document(body);
                 mainPart.Document.Save();
@@ -37,6 +51,57 @@ namespace Cat5201
 
             return stream.ToArray();
         }
+
+        /// <summary>頁首：報告名 + 底線；頁尾：頁碼。Word 的頁首頁尾是獨立 part，要自己掛上去。</summary>
+        private static void AttachHeaderFooter(MainDocumentPart mainPart, SectionProperties section, string title)
+        {
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                var headerPart = mainPart.AddNewPart<HeaderPart>();
+                var headerPara = new Paragraph(new ParagraphProperties(
+                    new ParagraphBorders(new BottomBorder
+                    {
+                        Val = BorderValues.Single, Size = 4, Space = 6, Color = _art.Muted
+                    }),
+                    new SpacingBetweenLines { After = "120" }));
+                headerPara.AppendChild(new Run(
+                    new RunProperties(
+                        Fonts(_art.BodyLatinFont, _art.BodyEaFont),
+                        new Color { Val = _art.Muted },
+                        new FontSize { Val = "16" },
+                        new Spacing { Val = 10 }),
+                    new Text(title.Length <= 48 ? title : title[..48] + "…") { Space = SpaceProcessingModeValues.Preserve }));
+                headerPart.Header = new Header(headerPara);
+                headerPart.Header.Save();
+
+                section.AppendChild(new HeaderReference
+                {
+                    Type = HeaderFooterValues.Default,
+                    Id = mainPart.GetIdOfPart(headerPart)
+                });
+            }
+
+            var footerPart = mainPart.AddNewPart<FooterPart>();
+            var footerPara = new Paragraph(new ParagraphProperties(
+                new Justification { Val = JustificationValues.Right }));
+            var pageRun = new Run(new RunProperties(
+                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
+                new Color { Val = _art.Muted },
+                new FontSize { Val = "17" }));
+            footerPara.AppendChild(new SimpleField { Instruction = "PAGE" });
+            footerPara.AppendChild(pageRun);
+            footerPart.Footer = new Footer(footerPara);
+            footerPart.Footer.Save();
+
+            section.AppendChild(new FooterReference
+            {
+                Type = HeaderFooterValues.Default,
+                Id = mainPart.GetIdOfPart(footerPart)
+            });
+        }
+
+        private static RunFonts Fonts(string latin, string eastAsian)
+            => new() { Ascii = latin, HighAnsi = latin, EastAsia = eastAsian };
 
         private static void AppendParagraphs(MainDocumentPart mainPart, Body body, string markdown)
         {
@@ -90,17 +155,17 @@ namespace Cat5201
                 }
 
                 if (rawLine.StartsWith("# "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(2).Trim(), 36, "480", "200"));
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(2).Trim(), 40, "360", "120", level: 1));
                 else if (rawLine.StartsWith("## "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(3).Trim(), 28, "320", "160"));
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(3).Trim(), 30, "360", "140", level: 2));
                 else if (rawLine.StartsWith("### "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(4).Trim(), 24, "200", "120"));
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(4).Trim(), 24, "240", "120", level: 3));
                 else if (rawLine.StartsWith("> "))
                     body.AppendChild(MakeMetaParagraph(rawLine.Substring(2).Trim()));
                 else if (Regex.IsMatch(rawLine, @"^[-*]\s+"))
                     body.AppendChild(MakeListParagraph(Regex.Replace(rawLine, @"^[-*]\s+", "")));
                 else if (Regex.IsMatch(rawLine, @"^\d+\.\s+"))
-                    body.AppendChild(MakeBodyParagraph(rawLine));
+                    body.AppendChild(MakeNumberedParagraph(rawLine));
                 else if (rawLine.Trim().Length > 0 && rawLine.Trim().Replace("-", "").Length == 0)
                 { /* horizontal rule — skip */ }
                 else if (string.IsNullOrWhiteSpace(rawLine))
@@ -111,18 +176,36 @@ namespace Cat5201
             }
         }
 
+        /// <summary>
+        /// 章節標題。雜誌家族用明體大標且不加粗（襯線字加粗會糊成一團），商業家族用半粗黑；
+        /// 第一層標題下面補一條強調色細線，就是簡報裡那個語彙。
+        /// </summary>
         private static Paragraph MakeHeadingParagraph(
-            string text, int halfPtSize, string spaceBefore, string spaceAfter)
+            string text, int halfPtSize, string spaceBefore, string spaceAfter, int level)
         {
-            var para = new Paragraph();
-            para.AppendChild(new ParagraphProperties(
-                new SpacingBetweenLines { Before = spaceBefore, After = spaceAfter }));
+            bool editorial = _art.Family == "editorial";
+            var props = new ParagraphProperties(
+                new SpacingBetweenLines { Before = spaceBefore, After = spaceAfter });
 
-            var run = new Run();
-            run.AppendChild(new RunProperties(
-                new Bold(),
-                new FontSize { Val = new StringValue(halfPtSize.ToString()) }));
-            run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
+            if (level == 1)
+            {
+                props.AppendChild(new ParagraphBorders(new BottomBorder
+                {
+                    Val = BorderValues.Single, Size = 12, Space = 6, Color = _art.Accent
+                }));
+            }
+
+            var para = new Paragraph(props);
+
+            var runProps = new RunProperties(
+                Fonts(editorial ? _art.DisplayLatinFont : _art.BodyLatinFont,
+                      editorial ? _art.DisplayEaFont : _art.BodyEaFont),
+                new Color { Val = _art.Ink },
+                new FontSize { Val = new StringValue(halfPtSize.ToString()) });
+
+            if (!editorial) runProps.AppendChild(new Bold());
+
+            var run = new Run(runProps, new Text(text) { Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(run);
             return para;
         }
@@ -131,14 +214,19 @@ namespace Cat5201
         {
             var para = new Paragraph();
             para.AppendChild(new ParagraphProperties(
-                new Indentation { Left = "360" },
-                new SpacingBetweenLines { Before = "0", After = "160" }));
+                new ParagraphBorders(new LeftBorder
+                {
+                    Val = BorderValues.Single, Size = 18, Space = 8, Color = _art.Accent
+                }),
+                new Indentation { Left = "240" },
+                new SpacingBetweenLines { Before = "160", After = "200" }));
 
             var run = new Run();
+            // 中文斜體是模擬出來的，很醜；用字級與顏色做層級即可。
             run.AppendChild(new RunProperties(
-                new Italic(),
-                new Color { Val = "666666" },
-                new FontSize { Val = "18" }));
+                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
+                new Color { Val = _art.Ink },
+                new FontSize { Val = "24" }));
             run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(run);
             return para;
@@ -151,11 +239,37 @@ namespace Cat5201
                 new Indentation { Left = "360", Hanging = "240" },
                 new SpacingBetweenLines { Before = "0", After = "80" }));
 
-            var bulletRun = new Run();
-            bulletRun.AppendChild(new Text("• ") { Space = SpaceProcessingModeValues.Preserve });
+            var bulletRun = new Run(new RunProperties(
+                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
+                new Color { Val = _art.Accent }));
+            bulletRun.AppendChild(new Text("— ") { Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(bulletRun);
 
             foreach (var run in ParseInlineRuns(text))
+                para.AppendChild(run);
+
+            return para;
+        }
+
+        /// <summary>編號清單：數字用強調色，跟 PDF 版同一個語彙。</summary>
+        private static Paragraph MakeNumberedParagraph(string text)
+        {
+            var m = Regex.Match(text, @"^\s*(\d+)\.\s+(.*)$");
+            string number = m.Success ? m.Groups[1].Value.PadLeft(2, '0') : "";
+            string bodyText = m.Success ? m.Groups[2].Value : text;
+
+            var para = new Paragraph(new ParagraphProperties(
+                new Indentation { Left = "420", Hanging = "420" },
+                new SpacingBetweenLines { Before = "0", After = "100" }));
+
+            para.AppendChild(new Run(
+                new RunProperties(
+                    Fonts(_art.DisplayLatinFont, _art.BodyEaFont),
+                    new Color { Val = _art.Accent },
+                    new FontSize { Val = "21" }),
+                new Text(number + "   ") { Space = SpaceProcessingModeValues.Preserve }));
+
+            foreach (var run in ParseInlineRuns(bodyText))
                 para.AppendChild(run);
 
             return para;
@@ -307,14 +421,15 @@ namespace Cat5201
 
         private static Table MakeTable(List<string> tableLines)
         {
+            // 年報式表格：沒有直線、沒有網格底色，只有表頭下的實線與列間髮絲線。
             var props = new TableProperties(
                 new TableBorders(
-                    new TopBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" },
-                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" },
-                    new LeftBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" },
-                    new RightBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" },
-                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" },
-                    new InsideVerticalBorder { Val = BorderValues.Single, Size = 4, Color = "BFBFBF" }),
+                    new TopBorder { Val = BorderValues.None },
+                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = _art.Muted },
+                    new LeftBorder { Val = BorderValues.None },
+                    new RightBorder { Val = BorderValues.None },
+                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 2, Color = _art.Muted },
+                    new InsideVerticalBorder { Val = BorderValues.None }),
                 new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct });
 
             var table = new Table(props);
@@ -331,15 +446,13 @@ namespace Cat5201
                         new TableCellWidth { Type = TableWidthUnitValues.Auto });
 
                     if (isHeader)
-                        cellProps.Append(new Shading
+                        cellProps.Append(new TableCellBorders(new BottomBorder
                         {
-                            Val = ShadingPatternValues.Clear,
-                            Color = "auto",
-                            Fill = "F2F2F2"
-                        });
+                            Val = BorderValues.Single, Size = 10, Color = _art.Ink
+                        }));
 
                     var para = new Paragraph(new ParagraphProperties(
-                        new SpacingBetweenLines { Before = "20", After = "20" }));
+                        new SpacingBetweenLines { Before = "60", After = "60" }));
 
                     foreach (var run in ParseInlineRuns(cellText, forceBold: isHeader))
                         para.AppendChild(run);
@@ -368,8 +481,12 @@ namespace Cat5201
                     continue;
 
                 var run = new Run();
-                if (i % 2 == 1 || forceBold)
-                    run.AppendChild(new RunProperties(new Bold()));
+                var runProps = new RunProperties(
+                    Fonts(_art.BodyLatinFont, _art.BodyEaFont),
+                    new Color { Val = _art.Ink },
+                    new FontSize { Val = "21" });
+                if (i % 2 == 1 || forceBold) runProps.AppendChild(new Bold());
+                run.AppendChild(runProps);
 
                 run.AppendChild(new Text(parts[i]) { Space = SpaceProcessingModeValues.Preserve });
                 yield return run;
