@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Cat5201
@@ -98,33 +98,96 @@ namespace Cat5201
         /// </summary>
         public const double UsdToAud = 1.52;
 
-        /// <summary>把美元換算成某個服務的計價幣別（USD 以外目前只有 AUD）。</summary>
-        public static double ConvertUsd(double usd, string? currency) => (currency ?? "USD").ToUpperInvariant() switch
+        /// <summary>
+        /// 美元 → 各幣別的約略匯率（2026-10 查）。
+        ///
+        /// 為什麼要有這張表：餘額的幣別是使用者自己從下拉選單選的。少一個幣別，
+        /// ConvertUsd 就會把它當成 1:1 的美元——¥3,000 的餘額會變成永遠扣不完，
+        /// 而畫面上完全看不出哪裡不對。所以「可以選的幣別」與「換算得出來的幣別」
+        /// 必須是同一份清單：SupportedCurrencies 負責順序（給下拉選單），這張表負責換算，
+        /// 並有測試盯著兩邊完全一致。
+        /// </summary>
+        private static readonly Dictionary<string, double> UsdRates = new(StringComparer.OrdinalIgnoreCase)
         {
-            "AUD" => usd * UsdToAud,
-            "TWD" => usd * UsdToTwd,
-            _ => usd,
+            ["USD"] = 1.0,
+            ["AUD"] = UsdToAud,
+            ["TWD"] = UsdToTwd,
+            ["EUR"] = 0.92,
+            ["JPY"] = 155.0,
+            ["GBP"] = 0.79,
         };
 
-        // 圖片生成成本（每張・美元）。OpenAI gpt-image 系列「以張計價」，依尺寸 / 品質不同，
-        // 與文字模型的 token 計價邏輯不同（用字數估 token 會誤導），故獨立一張表。
-        // 數字為估算：對 gpt-image-1 公布價目；gpt-image-2 尚無正式價目，取同級高品質估算。
+        /// <summary>可以換算的幣別（＝可以讓使用者選的幣別）。</summary>
+        public static IReadOnlyList<string> SupportedCurrencies { get; } =
+            new[] { "USD", "AUD", "TWD", "EUR", "JPY", "GBP" };
+
+        /// <summary>這個幣別換算得出來嗎（沒有匯率就不該出現在選單裡）。</summary>
+        public static bool CanConvert(string? currency)
+            => !string.IsNullOrWhiteSpace(currency) && UsdRates.ContainsKey(currency!.Trim());
+
+        /// <summary>
+        /// 反向：某個幣別的金額 → 美元。
+        /// 餘額是以各服務自己的計價幣別存的，但要把四家擺在一起比較時必須換回同一個單位，
+        /// 不然畫面上是 A$22.96 和 US$10.52 並排，誰多誰少得先心算一次。
+        /// </summary>
+        public static double ToUsd(double amount, string? currency)
+        {
+            double rate = ConvertUsd(1, currency);
+            return rate > 0 ? amount / rate : amount;
+        }
+
+        /// <summary>把美元換算成某個服務的計價幣別。沒有匯率的幣別原樣回傳並留紀錄，不要靜靜當成美元。</summary>
+        public static double ConvertUsd(double usd, string? currency)
+        {
+            string code = (currency ?? "USD").Trim();
+            if (code.Length == 0 || UsdRates.TryGetValue(code, out double rate) == false)
+            {
+                if (code.Length > 0 && !string.Equals(code, "USD", StringComparison.OrdinalIgnoreCase))
+                    AppLog.Warn("Cost", $"沒有「{code}」的匯率，餘額暫時以美元計（請補進 UsdRates）");
+                return usd;
+            }
+
+            return usd * rate;
+        }
+
+        // 圖片生成成本（每張輸出・美元）。gpt-image 系列實際是按 token 計價
+        // （影像輸出 $30/M、影像輸入 $8/M、文字輸入 $5/M），但官方同時公布了
+        // 「各尺寸 × 品質的輸出費用」估算表，對不透明的 token 數來說這是唯一可用的數字。
+        //
+        // 2026-10-13 依官方價目重新核對過一次。上一版是手寫的猜測（1536 寬的一律記 $0.25），
+        // 直向 1024x1536 其實比正方形便宜，被多記了五成；正方形反而少記兩成。
+        // 一張圖的單價記錯，在一份 12 頁簡報上會放大成十幾倍的誤差。
         // key 格式："{size}:{quality}"（小寫）。
         private static readonly Dictionary<string, double> ImagePriceUsd = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["1024x1024:high"] = 0.17,
-            ["1024x1024:medium"] = 0.04,
-            ["1024x1024:low"] = 0.01,
-            ["1536x1024:high"] = 0.25,
-            ["1024x1536:high"] = 0.25,
-            ["1792x1024:high"] = 0.25,
-            ["1024x1792:high"] = 0.25,
-            // I2V 英雄圖精確 9:16 / 16:9：像素比 1024x1536 少，保守沿用同價（寧可高估不低估）。
-            ["864x1536:high"] = 0.25,
-            ["1536x864:high"] = 0.25,
+            ["1024x1024:high"] = 0.211,
+            ["1024x1024:medium"] = 0.053,
+            ["1024x1024:low"] = 0.006,
+            ["1024x1536:high"] = 0.165,
+            ["1024x1536:medium"] = 0.041,
+            ["1024x1536:low"] = 0.005,
+            ["1536x1024:high"] = 0.165,
+            ["1536x1024:medium"] = 0.041,
+            ["1536x1024:low"] = 0.005,
+            ["1792x1024:high"] = 0.165,
+            ["1024x1792:high"] = 0.165,
+            // I2V 英雄圖精確 9:16 / 16:9：像素數與 1024x1536 同級，沿用同價。
+            ["864x1536:high"] = 0.165,
+            ["1536x864:high"] = 0.165,
         };
 
-        private const double DefaultImageUsd = 0.17; // 1024 高品質估算
+        private const double DefaultImageUsd = 0.211; // 查不到時用最貴的那一格（寧可高估）
+
+        /// <summary>文字輸入單價（gpt-image 系列的提示詞走這個價）。</summary>
+        private const double ImageTextInputPerMillion = 5.00;
+
+        /// <summary>
+        /// 一次圖片生成的完整估算：輸出（查表）＋提示詞的文字輸入。
+        /// 提示詞只值千分之幾，但把它算進來，帳目才對得上官方帳單的組成方式。
+        /// </summary>
+        public static double ImageCallCostUsd(string? size, string? quality, string? prompt)
+            => ImageCostUsd(size, quality)
+               + EstimateTokens(prompt) / 1_000_000.0 * ImageTextInputPerMillion;
 
         public static Estimate Compute(string? modelId, string? inputText, string? outputText)
         {
@@ -138,6 +201,37 @@ namespace Cat5201
         public static Estimate FromUsage(string? modelId, int inputTokens, int outputTokens)
         {
             return BuildEstimate(modelId, Math.Max(0, inputTokens), Math.Max(0, outputTokens), isActual: true);
+        }
+
+        /// <summary>
+        /// 命中提示快取的輸入 token 單價倍率（相對於一般輸入單價）。
+        /// OpenAI 官方 2026-10：gpt-5.6-sol $4.00 → 快取 $0.40、gpt-6-astra $10.00 → 快取 $1.00，都是一折。
+        /// </summary>
+        public const double OpenAiCachedInputMultiplier = 0.10;
+
+        /// <summary>
+        /// 真實用量 + 其中命中快取的輸入 token。
+        ///
+        /// 為什麼要分開算：OpenAI 回報的 input_tokens **含**快取命中的部分，但那部分只收一折。
+        /// 全部用原價算，一個系統提示重複送幾十次的工作階段會被高估好幾倍——
+        /// 2026-10-13 實測，本機記了 US$1.48 的 OpenAI 文字費用，官網實際只扣了約 US$0.43。
+        /// </summary>
+        public static Estimate FromUsageWithCache(
+            string? modelId, int inputTokens, int outputTokens, int cachedInputTokens)
+        {
+            int input = Math.Max(0, inputTokens);
+            int output = Math.Max(0, outputTokens);
+            int cached = Math.Clamp(cachedInputTokens, 0, input);
+
+            var full = BuildEstimate(modelId, input - cached, output, isActual: true);
+            if (cached == 0)
+                return full;
+
+            // 快取那段用同一個模型的輸入單價再乘上倍率。
+            double cachedUsd = BuildEstimate(modelId, cached, 0, isActual: true).UsdCost * OpenAiCachedInputMultiplier;
+
+            // token 數照實回報（含快取），使用者看到的「讀進多少」才跟官方帳單對得上。
+            return new Estimate(input, output, full.UsdCost + cachedUsd, isActual: true);
         }
 
         /// <summary>

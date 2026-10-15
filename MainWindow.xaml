@@ -459,7 +459,32 @@
                         </ListBox.ItemContainerStyle>
                     </ListBox>
 
-                    <Grid Grid.Row="2" Margin="0,6,0,0">
+                    <!-- 最近刪除入口：刪掉的存檔在這裡待 7 天，可完整復原 -->
+                    <Button x:Name="TrashButton"
+                            Grid.Row="2"
+                            VerticalAlignment="Top"
+                            HorizontalAlignment="Left"
+                            Margin="0,0,0,8"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Visibility="Collapsed"
+                            Click="OpenTrash_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <TextBlock x:Name="tt" Text="{TemplateBinding Content}"
+                                           FontSize="12" Foreground="#8A8A84"/>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="tt" Property="Foreground" Value="#2A2A28"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <Grid Grid.Row="2" Margin="0,26,0,0">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
@@ -1034,6 +1059,112 @@ Margin="0,20,20,0"
         </Grid>
 
         <!-- 個人化設定對話框（齒輪點開） -->
+        <!-- 最近刪除：刪掉的存檔留 7 天，可完整復原 -->
+        <Grid x:Name="TrashOverlay"
+              Visibility="Collapsed"
+              Panel.ZIndex="10001"
+              Background="#55000000">
+
+            <Border Width="540"
+                    MaxHeight="560"
+                    CornerRadius="18"
+                    Background="White"
+                    Padding="24,20"
+                    VerticalAlignment="Center"
+                    HorizontalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="28" ShadowDepth="2" Direction="270" Color="#000000" Opacity="0.18"/>
+                </Border.Effect>
+
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <TextBlock Text="最近刪除" FontSize="16" FontWeight="SemiBold" Foreground="#2A2A28"/>
+                        <Button Content="&#215;" HorizontalAlignment="Right" Width="28" Height="28"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                FontSize="15" Foreground="#8A8A84" Click="CloseTrash_Click"/>
+                    </Grid>
+
+                    <TextBlock Grid.Row="1" Margin="0,8,0,14" FontSize="11.5" Foreground="#9A9A94" TextWrapping="Wrap"
+                               Text="刪掉的存檔連同附件與該存檔的記憶都留在這裡，7 天後自動永久刪除。全域記憶不受影響。"/>
+
+                    <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock x:Name="TrashEmptyText" Visibility="Collapsed"
+                                       Text="沒有最近刪除的存檔。" FontSize="12.5" Foreground="#A0A09A" Margin="0,8,0,0"/>
+
+                            <ItemsControl x:Name="TrashList">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Background="#FAFAF8" BorderBrush="#EAEAE6" BorderThickness="1"
+                                                CornerRadius="10" Padding="14,11" Margin="0,0,0,8">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DisplayName}" FontSize="13"
+                                                               FontWeight="SemiBold" Foreground="#2A2A28"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="#9A9A94"
+                                                               Margin="0,3,0,0" TextWrapping="Wrap"/>
+                                                </StackPanel>
+
+                                                <Button Grid.Column="1" Content="復原" Height="30" Margin="10,0,0,0"
+                                                        FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
+                                                        Background="#1F1F1C" Click="RestoreTrashItem_Click">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="rb" Background="{TemplateBinding Background}"
+                                                                    CornerRadius="8" Padding="16,0">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                                  TextElement.Foreground="White"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="rb" Property="Background" Value="#3A3A35"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <Button Grid.Column="2" Content="永久刪除" Height="30" Margin="8,0,0,0"
+                                                        FontSize="12" Cursor="Hand" Foreground="#C0453B" BorderThickness="0"
+                                                        Background="Transparent" Click="PurgeTrashItem_Click">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="pb" Background="{TemplateBinding Background}"
+                                                                    CornerRadius="8" Padding="12,0">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="pb" Property="Background" Value="#FBECEA"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
         <Grid x:Name="SettingsOverlay"
               Visibility="Collapsed"
               Panel.ZIndex="10000"
@@ -1107,8 +1238,13 @@ Margin="0,20,20,0"
                     <Border Grid.Row="0" Height="1" Background="#ECECEC"
                             VerticalAlignment="Bottom" Margin="0,0,0,0"/>
 
-                    <!-- 分頁切換：個人化 / API -->
-                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,12,0,2">
+                    <!-- 分頁切換：個人化 / API（右端是使用說明） -->
+                    <Grid Grid.Row="1" Margin="0,12,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
                         <Button x:Name="TabPersonalizationBtn"
                                 Content="個人化"
                                 Height="32"
@@ -1199,6 +1335,36 @@ Margin="0,20,20,0"
                         </Button>
                     </StackPanel>
 
+                    <!-- 使用說明：原本是 API 分頁裡那顆「重新看一次首次啟動說明」。
+                         它講的是資料會送去哪裡、金鑰怎麼存，任何分頁都該叫得出來。 -->
+                    <Button x:Name="HelpBtn"
+                            Grid.Column="1"
+                            Width="26" Height="26"
+                            VerticalAlignment="Center"
+                            Background="Transparent"
+                            Foreground="#8A8A8F"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            ToolTip="使用說明"
+                            Click="ShowOnboarding_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="hbd" Background="{TemplateBinding Background}"
+                                        BorderBrush="#DCDCE0" BorderThickness="1" CornerRadius="13">
+                                    <TextBlock Text="?" FontSize="13" FontWeight="SemiBold"
+                                               Foreground="{TemplateBinding Foreground}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="hbd" Property="Background" Value="#F1F1F3"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    </Grid>
+
                     <!-- 個人化分頁（可捲動） -->
                     <ScrollViewer x:Name="PersonalizationScroll"
                                   Grid.Row="2"
@@ -1210,11 +1376,6 @@ Margin="0,20,20,0"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
-                                   Margin="0,0,0,2"/>
-                        <TextBlock Text="告訴它你的偏好，之後每次回答都會遵守。例如：回答用中文與韓文、以後簡潔一點、盡量用便宜的模型。"
-                                   FontSize="11.5"
-                                   Foreground="#9A9A9E"
-                                   TextWrapping="Wrap"
                                    Margin="0,0,0,8"/>
 
                         <Border CornerRadius="10"
@@ -1396,12 +1557,7 @@ Margin="0,20,20,0"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
-                                   Margin="0,14,0,2"/>
-                        <TextBlock Text="偵測到多階段任務（研究→撰寫→簡報／檔案等）時，要怎麼把它拆成下游節點並執行。"
-                                   FontSize="11.5"
-                                   Foreground="#9A9A9E"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,8"/>
+                                   Margin="0,14,0,8"/>
 
                         <StackPanel>
                             <RadioButton x:Name="DownstreamModeOneClick"
@@ -1436,7 +1592,8 @@ Margin="0,20,20,0"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
 
-                        <TextBlock Text="最佳品質由 Claude 用官方文件技能製作，約需數分鐘、費用較高；沒有 Claude 金鑰或失敗時自動改用快速版"
+                        <!-- 差別是「誰來排版」，不只是快慢——而這會一路影響到預覽與單頁編輯。 -->
+                        <TextBlock Text="最佳品質：Claude 親自設計每一頁。慢、貴，預覽是近似版面，單頁只能改文字。&#10;快速版：內建版型。快、便宜，預覽完全重現，單頁可連版面一起重做。&#10;沒金鑰或失敗時自動改用快速版。"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1445,14 +1602,14 @@ Margin="0,20,20,0"
                         <StackPanel>
                             <RadioButton x:Name="DocumentEngineSkills"
                                          GroupName="DocumentEngine"
-                                         Content="最佳品質（與 Claude App 同級）"
+                                         Content="最佳品質（Claude 親自設計版面）"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
                                          Checked="DocumentEngine_Checked"/>
                             <RadioButton x:Name="DocumentEngineBuiltin"
                                          GroupName="DocumentEngine"
-                                         Content="快速版（內建排版，快又便宜）"
+                                         Content="快速版（內建版型，快又便宜）"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
@@ -1479,13 +1636,6 @@ Margin="0,20,20,0"
                             <RadioButton x:Name="PresentationEngineGpt"
                                          GroupName="PresentationEngine"
                                          Content="GPT"
-                                         FontSize="12.5"
-                                         Foreground="#333"
-                                         Margin="0,3"
-                                         Checked="PresentationEngine_Checked"/>
-                            <RadioButton x:Name="PresentationEngineGamma"
-                                         GroupName="PresentationEngine"
-                                         Content="Gamma（需 GAMMA_API_KEY，未設時自動改用內建）"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
@@ -1574,31 +1724,128 @@ Margin="0,20,20,0"
 
                         <StackPanel x:Name="TaskRoutingList"/>
 
-                        <!-- §15 成本控制：關閉高成本模型 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="產出檔案"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,0"/>
+                        <Grid Margin="0,12,0,0" ToolTip="簡報、報告、表格除了原始檔外再產一份 PDF。關閉可明顯加快產出與單頁編輯；已經有 PDF 的舊檔仍會跟著更新，以免兩份內容對不起來。">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="同時產出對照 PDF"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <CheckBox x:Name="CompanionPdfSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="CompanionPdfSwitch_Changed"
+                                      Unchecked="CompanionPdfSwitch_Changed"/>
+                        </Grid>
+
+                        <!-- 存放位置：產出的檔案本來就不隨聊天刪除消失（它們在所有存檔共用的資料夾），
+                             但使用者看不出這件事，也會想把成品放到自己的位置（雲端同步、交作業的資料夾）。 -->
+                        <TextBlock Text="存放位置"
+                                   FontSize="12.5" Foreground="#333"
+                                   Margin="0,14,0,4"/>
+                        <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1"
+                                CornerRadius="9" Padding="10,7">
+                            <TextBlock x:Name="OutputDirText"
+                                       Text=""
+                                       FontSize="11.5" Foreground="#5F6368"
+                                       TextWrapping="Wrap" LineHeight="17"/>
+                        </Border>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Button Content="變更…" Height="30" Margin="0,0,6,0"
+                                    FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
+                                    Background="#1F1F1C" Click="ChangeOutputDir_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                                CornerRadius="9" Padding="14,0">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="White"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="bd" Property="Background" Value="#3A3A35"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                            <Button Content="開啟資料夾" Height="30" Margin="0,0,6,0" Padding="12,0"
+                                    FontSize="12" Cursor="Hand" Foreground="#66665F"
+                                    Background="#F4F4F0" BorderThickness="0"
+                                    Click="OpenOutputDir_Click"/>
+                            <Button Content="還原預設" Height="30" Padding="12,0"
+                                    FontSize="12" Cursor="Hand" Foreground="#8A8A82"
+                                    Background="Transparent" BorderThickness="0"
+                                    Click="ResetOutputDir_Click"/>
+                        </StackPanel>
+
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="畫面"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,0"/>
+                        <Grid Margin="0,12,0,0" ToolTip="每次執行用了哪個模型、為什麼選它、花了多少、根據哪些記憶。關掉只影響顯示，紀錄仍然會留下。">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="右上角顯示決策視窗"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <CheckBox x:Name="DecisionPanelSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="DecisionPanelSwitch_Changed"
+                                      Unchecked="DecisionPanelSwitch_Changed"/>
+                        </Grid>
+                        <Grid Margin="0,12,0,0" ToolTip="各家都沒有查餘額的 API，這裡用「你填的餘額 − 本機記到的花費」推估；充值後到 API 分頁更新金額。">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="右下角顯示 API 餘額"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <CheckBox x:Name="ApiBalancePanelSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="ApiBalancePanelSwitch_Changed"
+                                      Unchecked="ApiBalancePanelSwitch_Changed"/>
+                        </Grid>
+
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
                         <TextBlock Text="成本控制"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
-                                   Margin="0,14,0,2"/>
-                        <TextBlock Text="僅影響自動選模型（Auto）模式：關閉後，Auto 不會選用這些高成本模型，會降級為同公司的標準模型。手動模式不受影響，你選什麼就用什麼。"
+                                   Margin="0,14,0,0"/>
+                        <TextBlock Text="只影響自動選模型（Auto）；手動選的不受影響。"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
-                                   Margin="0,0,0,8"/>
-
-                        <Grid Margin="0,3">
+                                   Margin="0,4,0,0"/>
+                        <Grid Margin="0,12,0,0" ToolTip="Auto 不會選用，改用 Claude Sonnet。">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="關閉 Claude Opus（高成本）"
-                                           FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="降級為 Claude Sonnet"
-                                           FontSize="11" Foreground="#A8A8AC"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="0" Text="關閉 Claude Opus（高成本）"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="BlockOpusSwitch"
                                       Grid.Column="1"
                                       Style="{StaticResource AppleSwitchStyle}"
@@ -1606,18 +1853,14 @@ Margin="0,20,20,0"
                                       Checked="BlockOpusSwitch_Changed"
                                       Unchecked="BlockOpusSwitch_Changed"/>
                         </Grid>
-
-                        <Grid Margin="0,3">
+                        <Grid Margin="0,12,0,0" ToolTip="Auto 不會選用，改用 Perplexity Sonar。">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="關閉 Perplexity Deep Research（高成本）"
-                                           FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="降級為 Perplexity Sonar"
-                                           FontSize="11" Foreground="#A8A8AC"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="0" Text="關閉 Perplexity Deep Research（高成本）"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="BlockDeepResearchSwitch"
                                       Grid.Column="1"
                                       Style="{StaticResource AppleSwitchStyle}"
@@ -1626,45 +1869,27 @@ Margin="0,20,20,0"
                                       Unchecked="BlockDeepResearchSwitch_Changed"/>
                         </Grid>
 
-                        <!-- 上游附件繼承 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <Grid Margin="0,14,0,3">
+                        <TextBlock Text="上游附件"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,0"/>
+                        <Grid Margin="0,12,0,0" ToolTip="開啟時讀取完整上游檔案，關閉時只讀取上游節點的文字輸出。">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="完整讀取上游附件"
-                                           FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
-                                <TextBlock Text="開啟時讀取完整上游檔案，關閉時只讀取文字輸出"
-                                           FontSize="11" Foreground="#A8A8AC" Margin="0,2,0,0"/>
-                            </StackPanel>
+                            <TextBlock Grid.Column="0" Text="完整讀取上游附件"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="ReadUpstreamAttachmentsSwitch"
                                       Grid.Column="1"
                                       Style="{StaticResource AppleSwitchStyle}"
                                       VerticalAlignment="Center"
                                       Checked="ReadUpstreamAttachmentsSwitch_Changed"
                                       Unchecked="ReadUpstreamAttachmentsSwitch_Changed"/>
-                        </Grid>
-
-                        <Grid Margin="0,14,0,3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="右下角顯示 API 餘額"
-                                           FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
-                                <TextBlock Text="各家都沒有查餘額的 API，這裡用「你填的儲值金額 − 本機記到的花費」推估；儲值後到 API 分頁更新金額"
-                                           FontSize="11" Foreground="#A8A8AC" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                            </StackPanel>
-                            <CheckBox x:Name="ApiBalancePanelSwitch"
-                                      Grid.Column="1"
-                                      Style="{StaticResource AppleSwitchStyle}"
-                                      VerticalAlignment="Center"
-                                      Checked="ApiBalancePanelSwitch_Changed"
-                                      Unchecked="ApiBalancePanelSwitch_Changed"/>
                         </Grid>
 
                         <!-- §15 逾時上限 -->
@@ -2041,27 +2266,11 @@ Margin="0,20,20,0"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Margin="0,8,0,0">
                         <StackPanel Margin="0,8,4,0">
-                            <!-- 即時狀態：各服務現在能不能用 + 本機花費（各家都沒有查餘額的 API） -->
-                            <Grid Margin="0,0,0,6">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="API 餘額"
-                                           FontSize="14" FontWeight="SemiBold" Foreground="#2A2A28" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Content="重新檢查" Height="28" Padding="12,0" Margin="0,0,6,0"
-                                        FontSize="11.5" Cursor="Hand" Background="#F4F4F0" Foreground="#66665F"
-                                        BorderThickness="0" Click="RefreshApiStatus_Click"/>
-                                <Button Grid.Column="2" Content="深入檢查" Height="28" Padding="12,0"
-                                        FontSize="11.5" Cursor="Hand" Background="#F4F4F0" Foreground="#66665F"
-                                        BorderThickness="0" ToolTip="送一個最小請求，才查得出餘額不足（合計約 NT$0.3）"
-                                        Click="DeepCheckApiStatus_Click"/>
-                            </Grid>
-
-                            <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#A5A59E" Margin="0,0,0,12" LineHeight="18">
-                                <Run Text="各家都沒有查餘額的 API。充值後把官網顯示的餘額填進來，之後每一筆花費會自動扣掉。"/>
-                            </TextBlock>
+                            <!-- 狀態本來就由 ProviderStatusMonitor 即時推上來，不需要手動檢查鈕；
+                                 說明搬到右上角的「?」使用說明。 -->
+                            <TextBlock Text="API 餘額"
+                                       FontSize="14" FontWeight="SemiBold" Foreground="#2A2A28"
+                                       Margin="0,0,0,14"/>
 
                             <ItemsControl x:Name="ApiStatusList" Margin="0,0,0,16">
                                 <ItemsControl.ItemTemplate>
@@ -2077,51 +2286,68 @@ Margin="0,20,20,0"
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
 
+                                                    <!-- 這顆點一直沒有任何說明，而且會變色；使用者看不出它在講什麼。 -->
                                                     <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
-                                                             Margin="0,1,9,0" Fill="{Binding Dot}"/>
+                                                             Margin="0,1,9,0" Fill="{Binding Dot}"
+                                                             ToolTip="這個服務現在的狀態&#10;綠＝可用　黃＝接近用完或被限流　紅＝餘額不足／金鑰無效／連不上　灰＝還沒檢查過&#10;每次真的呼叫成功或失敗都會即時更新，也可以按上面的「重新檢查」"/>
 
                                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
                                                                FontSize="13" FontWeight="SemiBold" Foreground="#2A2A28"
                                                                VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
 
                                                     <TextBlock Grid.Column="2" Text="{Binding BalanceText}"
-                                                               FontSize="15" FontWeight="SemiBold" Foreground="#1F1F1C"
+                                                               FontSize="16" FontWeight="SemiBold" Foreground="#1F1F1C"
                                                                VerticalAlignment="Center" Margin="12,0,0,0"/>
                                                 </Grid>
 
+                                                <!-- 餘額是本機估的，就要說清楚是從哪天起估的 -->
+                                                <TextBlock Text="{Binding Meta}" FontSize="11" Foreground="#A8A8A1"
+                                                           TextWrapping="Wrap" Margin="17,4,0,0" LineHeight="16"/>
+
                                                 <!-- 只有出問題才出現的一行 -->
                                                 <TextBlock Text="{Binding Problem}" FontSize="11.5" Foreground="#C0453B"
-                                                           TextWrapping="Wrap" Margin="17,6,0,0"
+                                                           TextWrapping="Wrap" Margin="17,5,0,0"
                                                            Visibility="{Binding ProblemVisible}"/>
 
-                                                <!-- 第二行：改成多少 + 送出（右邊放帳單頁） -->
-                                                <Grid Margin="17,10,0,0">
+                                                <!-- 操作列：幣別 → 金額 → 送出，最後是帳單頁。
+                                                     設定卡只有 440 寬（扣掉內距後約 345），五欄固定寬度會把最後一顆按鈕
+                                                     整個推出可視範圍——所以只有金額欄吃 *，其餘各自 Auto。 -->
+                                                <Grid Margin="17,11,0,0">
                                                     <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="Auto"/>
-                                                        <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
 
-                                                    <TextBlock Grid.Column="0" Text="{Binding ChangeLabel}" FontSize="11.5" Foreground="#9A9A94"
-                                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <!-- 跟影片模型選單同一套樣式：系統預設的 ComboBox 在這張白卡上
+                                                         是唯一一個長得像 Win32 控制項的東西，整列就被它拉低了。 -->
+                                                    <ComboBox Grid.Column="0" Width="78"
+                                                              Style="{StaticResource RoutingComboBoxStyle}"
+                                                              ToolTip="這個服務向你收費的幣別（照官網帳單填）。改了之後現有餘額會自動換算。"
+                                                              ItemsSource="{Binding CurrencyOptions}"
+                                                              SelectedItem="{Binding Currency, Mode=OneWay}"
+                                                              SelectionChanged="ProviderCurrency_Changed"/>
 
-                                                    <Border Grid.Column="1" Width="88" Height="30" CornerRadius="8"
-                                                            Background="#F6F6F3" BorderBrush="#E2E2DC" BorderThickness="1">
+                                                    <Border Grid.Column="1" Height="32" MinWidth="86" Margin="8,0,0,0"
+                                                            CornerRadius="9"
+                                                            Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1">
                                                         <TextBox Text="{Binding TopUp, UpdateSourceTrigger=PropertyChanged}"
-                                                                 FontSize="13" Padding="8,0" VerticalContentAlignment="Center"
+                                                                 FontSize="13" Padding="9,0" VerticalContentAlignment="Center"
                                                                  Background="Transparent" BorderThickness="0"
+                                                                 ToolTip="填官網現在顯示的餘額（例 20）。清空後送出＝不再追蹤這個服務。"
                                                                  KeyDown="ProviderTopUp_KeyDown"/>
                                                     </Border>
 
-                                                    <Button Grid.Column="2" Content="送出" Height="30" Margin="8,0,0,0"
+                                                    <Button Grid.Column="2" Content="送出" Height="32" Margin="8,0,0,0"
                                                             FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
-                                                            Background="#1F1F1C" Click="ProviderTopUpSubmit_Click">
+                                                            Background="#1F1F1C"
+                                                            ToolTip="把餘額改成左邊填的數字，並以此刻為新的對帳起點"
+                                                            Click="ProviderTopUpSubmit_Click">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
                                                                 <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                                                        CornerRadius="8" Padding="16,0">
+                                                                        CornerRadius="9" Padding="14,0">
                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                                       TextElement.Foreground="White"/>
                                                                 </Border>
@@ -2134,14 +2360,16 @@ Margin="0,20,20,0"
                                                         </Button.Template>
                                                     </Button>
 
-                                                    <Button Grid.Column="4" Content="帳單頁" Height="30" VerticalAlignment="Center"
-                                                            FontSize="12" Cursor="Hand" Foreground="#77776F" BorderThickness="0"
+                                                    <Button Grid.Column="3" Content="帳單頁" Height="32" Margin="4,0,0,0"
+                                                            VerticalAlignment="Center"
+                                                            FontSize="12" Cursor="Hand" Foreground="#8A8A82" BorderThickness="0"
                                                             Background="Transparent"
+                                                            ToolTip="開啟這個服務的官方帳單頁，查目前真正的餘額"
                                                             Tag="{Binding BillingUrl}" Click="OpenBillingPage_Click">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
                                                                 <Border x:Name="bd" Background="{TemplateBinding Background}"
-                                                                        CornerRadius="8" Padding="12,0">
+                                                                        CornerRadius="9" Padding="9,0">
                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                                 </Border>
                                                                 <ControlTemplate.Triggers>
@@ -2167,14 +2395,8 @@ Margin="0,20,20,0"
                             <TextBlock TextWrapping="Wrap"
                                        FontSize="11.5"
                                        Foreground="#9A9A9E"
-                                       Margin="0,0,0,4">
-                                <Run Text="解析順序：系統環境變數 → 這裡輸入的金鑰 → 都沒有就自動切換到其他可用模型（顯示於決策窗），全部不可用才回報失敗。"/>
-                            </TextBlock>
-                            <TextBlock TextWrapping="Wrap"
-                                       FontSize="11"
-                                       Foreground="#B0B0B6"
                                        Margin="0,0,0,12">
-                                <Run Text="輸入的金鑰以 Windows DPAPI 加密後存在本機（只有你的帳號能解密），不會上傳。留空＝不變更；按各列「清除」可移除。"/>
+                                <Run Text="解析順序：系統環境變數 → 這裡輸入的金鑰 → 都沒有就自動切換到其他可用模型（顯示於決策窗），全部不可用才回報失敗。"/>
                             </TextBlock>
 
                             <!-- OpenAI -->
@@ -2273,31 +2495,6 @@ Margin="0,20,20,0"
                                     <PasswordBox x:Name="ApiKeyBox_Perplexity" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
                                 <Button Grid.Column="1" Content="清除" Tag="PERPLEXITY_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
-                                    <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
-                                </Button>
-                            </Grid>
-
-                            <!-- Gamma -->
-                            <Grid Margin="0,6,0,4">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                                    <TextBlock Text="Gamma" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（AI 簡報設計引擎，九月啟用）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
-                                </StackPanel>
-                                <TextBlock x:Name="ApiStatus_Gamma" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
-                            </Grid>
-                            <Grid Margin="0,-6,0,16">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
-                                    <PasswordBox x:Name="ApiKeyBox_Gamma" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
-                                </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="GAMMA_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2542,6 +2739,7 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
 
                             <Border Grid.Column="0"
@@ -2597,7 +2795,7 @@ Margin="0,20,20,0"
 
                             <Button x:Name="PreviewUndoButton"
                                     Grid.Column="2"
-                                    Content="回到上一版"
+                                    Content="上一版"
                                     Height="34"
                                     Margin="8,0,0,0"
                                     Padding="14,0"
@@ -2627,8 +2825,40 @@ Margin="0,20,20,0"
                                 </Button.Template>
                             </Button>
 
-                            <Button x:Name="PreviewRegenButton"
+                            <Button x:Name="PreviewRedoButton"
                                     Grid.Column="3"
+                                    Content="下一版"
+                                    Height="34"
+                                    Margin="6,0,0,0"
+                                    Padding="14,0"
+                                    FontSize="12.5"
+                                    Cursor="Hand"
+                                    Background="#F1F1F3"
+                                    Foreground="#555"
+                                    BorderThickness="0"
+                                    IsEnabled="False"
+                                    ToolTip="退回之後又想要新版時，前進回去（不用重新生成）"
+                                    Click="PreviewRedo_Click">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="prdb" Background="{TemplateBinding Background}" CornerRadius="9" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="prdb" Property="Background" Value="#E6E6E9"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="prdb" Property="Opacity" Value="0.45"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+
+                            <Button x:Name="PreviewRegenButton"
+                                    Grid.Column="4"
                                     Content="重新生成"
                                     Height="34"
                                     Margin="10,0,0,0"

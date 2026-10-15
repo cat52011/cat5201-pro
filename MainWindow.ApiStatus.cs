@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -8,6 +8,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows;
+using System.Windows.Controls;
 
 namespace Cat5201
 {
@@ -23,10 +24,28 @@ namespace Cat5201
         {
             public string ProviderId { get; init; } = "";
             public string DisplayName { get; init; } = "";
-            /// <summary>這個服務的計價幣別符號（Google 澳洲帳號是 A$）。</summary>
-            public string Symbol { get; init; } = "US$";
-            /// <summary>輸入框前的提示：「改成 A$」。</summary>
-            public string ChangeLabel => $"改成 {Symbol}";
+
+            private string _currency = "USD";
+
+            /// <summary>
+            /// 這個服務向使用者收費的幣別。可以自己改——帳單國別不同的人，
+            /// 預設值不見得對（寫死「Google ＝ AUD」是某一個帳號的事實，不是通則）。
+            /// </summary>
+            public string Currency
+            {
+                get => _currency;
+                set
+                {
+                    if (!Set(ref _currency, value)) return;
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Symbol)));
+                }
+            }
+
+            /// <summary>這個服務的計價幣別符號。</summary>
+            public string Symbol => ApiHealthChecker.CurrencySymbol(_currency);
+
+            public IReadOnlyList<string> CurrencyOptions => ProviderBalance.SupportedCurrencies;
+
             public string Note { get; init; } = "";
             public string BillingUrl { get; init; } = "";
 
@@ -38,6 +57,7 @@ namespace Cat5201
             private string _balanceText = "未設定";
             private string _problem = "";
             private string _problemVisible = "Collapsed";
+            private string _meta = "";
 
             public string State { get => _state; set => Set(ref _state, value); }
             public string Detail { get => _detail; set => Set(ref _detail, value); }
@@ -47,17 +67,27 @@ namespace Cat5201
             public string TopUp { get => _topUp; set => Set(ref _topUp, value); }
             /// <summary>目前餘額（本機記帳，每一筆花費即時扣）。</summary>
             public string BalanceText { get => _balanceText; set => Set(ref _balanceText, value); }
+            /// <summary>
+            /// 餘額底下那一行小字：上次對帳是什麼時候、之後本機記了多少。
+            ///
+            /// 這一行存在的理由：沒有任何一家提供查餘額的 API，圖片與影片又是按張 / 按秒
+            /// 的估算價，官方的工具費與沙盒費更是完全不回報。所以上面那個數字必然會漂。
+            /// 與其讓它看起來像查來的真實餘額，不如老實說它是「從某一天起本機自己扣的」。
+            /// </summary>
+            public string Meta { get => _meta; set => Set(ref _meta, value); }
+
             /// <summary>只有出問題（餘額用完、金鑰無效、連不上）才顯示的一行。</summary>
             public string Problem { get => _problem; set => Set(ref _problem, value); }
             public string ProblemVisible { get => _problemVisible; set => Set(ref _problemVisible, value); }
 
             public event PropertyChangedEventHandler? PropertyChanged;
 
-            private void Set(ref string field, string value, [CallerMemberName] string? name = null)
+            private bool Set(ref string field, string value, [CallerMemberName] string? name = null)
             {
-                if (field == value) return;
+                if (field == value) return false;
                 field = value;
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+                return true;
             }
         }
 
@@ -77,7 +107,7 @@ namespace Cat5201
                         DisplayName = p.DisplayName,
                         Note = p.Note,
                         BillingUrl = p.BillingUrl,
-                        Symbol = ApiHealthChecker.CurrencySymbol(p.Currency),
+                        Currency = ProviderBalance.CurrencyOf(p.Id),
                     });
                 }
 
@@ -150,56 +180,74 @@ namespace Cat5201
             _ => "#C9CDD4"
         };
 
+        /// <summary>
+        /// 使用者在下拉選單裡換了計價幣別：餘額一起換算過去，數字的意思才不會變。
+        /// </summary>
+        private void ProviderCurrency_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (sender is not FrameworkElement fe || fe.DataContext is not ApiStatusRow row)
+                return;
+
+            if (e.AddedItems.Count == 0 || e.AddedItems[0] is not string picked)
+                return;
+
+            if (string.Equals(picked, ProviderBalance.CurrencyOf(row.ProviderId), StringComparison.OrdinalIgnoreCase))
+                return;
+
+            ProviderBalance.SetCurrency(row.ProviderId, picked);
+            row.Currency = picked;
+            RefreshSpendColumns();
+            RefreshApiBalancePanel();
+        }
+
         /// <summary>這一頁只顯示「目前餘額」——花費明細在決策窗的成本明細裡，不在這裡重複一份。</summary>
         private void RefreshSpendColumns()
         {
             foreach (var row in ApiStatusRows)
             {
-                row.BalanceText = ProviderBalance.Has(row.ProviderId)
-                    ? $"{row.Symbol}{ProviderBalance.Remaining(row.ProviderId):0.00}"
-                    : "未設定";
+                row.Currency = ProviderBalance.CurrencyOf(row.ProviderId);
+
+                if (!ProviderBalance.Has(row.ProviderId))
+                {
+                    row.BalanceText = "未設定";
+                    row.Meta = "填入官網目前顯示的餘額，之後每一筆花費就會自動扣。";
+                }
+                else
+                {
+                    double left = ProviderBalance.Remaining(row.ProviderId);
+                    // 扣成負數代表本機記到的花費比使用者填的餘額還多。數字顯示 0，
+                    // 但要說出超了多少——這正是「該去官網對一次帳」的訊號。
+                    row.BalanceText = $"{row.Symbol}{Math.Max(0, left):0.00}";
+                    row.Meta = BuildBalanceMeta(row, left);
+                }
 
                 row.Spend = $"今日 {ModelCostEstimator.FormatTwd(SpendLedger.TodayUsdFor(row.ProviderId))}";
             }
         }
 
-        private async void RefreshApiStatus_Click(object sender, RoutedEventArgs e)
-            => await RunApiCheckAsync(deep: false);
-
-        private async void DeepCheckApiStatus_Click(object sender, RoutedEventArgs e)
+        /// <summary>餘額底下那行小字：這個數字是從哪一天起本機自己扣出來的。</summary>
+        private static string BuildBalanceMeta(ApiStatusRow row, double left)
         {
-            bool ok = MenuConfirmDialog.ShowConfirm(this, "深入檢查",
-                "會對每個已設定金鑰的服務送出一個最小請求（合計約 NT$0.3），\n" +
-                "這是唯一能查出「餘額不足」的方法（各家都沒有提供查餘額的 API）。\n\n要繼續嗎？",
-                this, confirmText: "檢查", cancelText: "取消");
-            if (ok)
-                await RunApiCheckAsync(deep: true);
+            var parts = new List<string>();
+
+            var reconciled = ProviderBalance.LastReconciledUtc(row.ProviderId);
+            parts.Add(reconciled == null
+                ? "本機記帳"
+                : $"{reconciled.Value.ToLocalTime():M/d HH:mm} 對帳");
+
+            double since = ProviderBalance.DeductedSinceReconcile(row.ProviderId);
+            if (since > 0)
+                parts.Add($"之後扣了 {row.Symbol}{since:0.00}");
+
+            if (left < -0.005)
+                parts.Add($"已超出 {row.Symbol}{-left:0.00}，建議重新對帳");
+
+            return string.Join("・", parts);
         }
 
-        private async System.Threading.Tasks.Task RunApiCheckAsync(bool deep)
-        {
-            EnsureApiStatusRows();
-
-            foreach (var row in ApiStatusRows)
-            {
-                row.State = "檢查中…";
-                row.Dot = "#C9CDD4";
-            }
-
-            try
-            {
-                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(40));
-                var results = await ApiHealthChecker.CheckAllAsync(deep, cts.Token);
-                foreach (var result in results)
-                    ProviderStatusMonitor.ReportCheck(result);
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("ApiStatus", "API 狀態檢查失敗", ex);
-            }
-
-            RefreshSpendColumns();
-        }
+        // 「重新檢查／深入檢查」兩顆鈕已移除（2026-10-15）：
+        // 狀態本來就由 ProviderStatusMonitor 在每一次真實呼叫後即時推上來，
+        // 手動檢查只是多花一次錢做同一件事。
 
         private void OpenBillingPage_Click(object sender, RoutedEventArgs e)
         {

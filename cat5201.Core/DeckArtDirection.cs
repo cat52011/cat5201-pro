@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
@@ -14,7 +14,7 @@ namespace Cat5201
     ///   corporate＝商業科技／銀行業正式：嚴謹格線、頁首頁尾、半粗黑標題、列間細線、克制的強調色。
     /// 家族決定「排版語言」，Id 決定「色盤與圖像語言」，所以同一家族裡展覽風和雜誌風仍然看得出差別。
     /// </summary>
-    public sealed class DeckArtDirection
+    public sealed record DeckArtDirection
     {
         public string Id { get; private init; } = "modern";
         /// <summary>中文名稱（決策窗／說明用）。</summary>
@@ -93,8 +93,47 @@ namespace Cat5201
             }),
         };
 
+        /// <summary>
+        /// 這一份簡報的配色變體（0 ＝ 原始配色）。由 ForOutline 依簡報身分決定，
+        /// 同一份簡報每次重算都一樣，不同簡報才會不一樣。
+        /// </summary>
+        public int Variant { get; private init; }
+
+        /// <summary>
+        /// 依「整份簡報」挑選藝術方向——包含配色變體。
+        ///
+        /// 只看主題字串的話，主題相近的簡報每一次都會長得一模一樣：
+        /// 使用者連做三份餐飲簡報，拿到三份同樣的米色＋朱紅。
+        /// 變體的種子取自標題、副標與建立時間，所以：
+        ///   · 同一份簡報重新渲染（預覽 / pptx / pdf 三條路徑）結果一致，單頁編輯也不會換色；
+        ///   · 不同時間做的兩份簡報就算主題相同，也會拿到不同的配色。
+        /// </summary>
+        public static DeckArtDirection ForOutline(PresentationOutlinePayload? outline)
+        {
+            if (outline == null) return ForTopic(null);
+
+            return ForTopic(
+                $"{outline.Title} {outline.Topic}",
+                VariantSeed($"{outline.Title}|{outline.Topic}|{outline.CreatedAtUtc.Ticks}"));
+        }
+
+        /// <summary>穩定的非負雜湊（string.GetHashCode 每次啟動都不同，不能用）。</summary>
+        private static int VariantSeed(string key)
+        {
+            unchecked
+            {
+                int hash = 17;
+                foreach (char c in key ?? "")
+                    hash = hash * 31 + c;
+                return Math.Abs(hash == int.MinValue ? 0 : hash);
+            }
+        }
+
         /// <summary>依主題文字挑選藝術方向；都沒命中時用現代簡約。</summary>
-        public static DeckArtDirection ForTopic(string? topic)
+        public static DeckArtDirection ForTopic(string? topic) => ForTopic(topic, 0);
+
+        /// <summary>依主題文字挑選藝術方向，並套用第 <paramref name="seed"/> 號配色變體。</summary>
+        public static DeckArtDirection ForTopic(string? topic, int seed)
         {
             string text = (topic ?? "").ToLowerInvariant();
             // Engineering design is not a visual-design brief; ASCII keywords must be whole words.
@@ -108,10 +147,45 @@ namespace Cat5201
                     ? text.Contains(k, StringComparison.OrdinalIgnoreCase)
                     : Regex.IsMatch(text, @"(?<![a-z])" + Regex.Escape(k) + @"(?![a-z])", RegexOptions.IgnoreCase))))
                     .OrderByDescending(rule => rule.Score).First();
-                if (choice.Score > 0) return ById(choice.Id);
+                if (choice.Score > 0) return WithVariant(ById(choice.Id), seed);
             }
 
-            return ById("modern");
+            return WithVariant(ById("modern"), seed);
+        }
+
+        /// <summary>
+        /// 每個藝術方向的替代強調色與反白底色。
+        ///
+        /// 只換強調色與反白頁底色，不動背景與主文字色——那兩個決定了「這是哪一種簡報」，
+        /// 換掉會變成另一套設計；強調色換掉只是同一套設計的另一個調子。
+        /// </summary>
+        private static readonly Dictionary<string, (string Accent, string InverseBackground)[]> Palettes = new()
+        {
+            ["gallery"]  = new[] { ("C9A227", "EFEBE3"), ("B5563C", "1A1715"), ("8C9A7E", "EFEBE3") },
+            ["editorial"]= new[] { ("C2432C", "141210"), ("1F4E5F", "141210"), ("A8761F", "2A2320") },
+            ["nature"]   = new[] { ("2F6B4F", "1B2A22"), ("3E6B86", "16242C"), ("8A6B2F", "25231B") },
+            ["finance"]  = new[] { ("B08D3F", "0E2441"), ("1F5AE0", "0E2441"), ("1F6B57", "10261C") },
+            ["tech"]     = new[] { ("4CC2FF", "E9EEF3"), ("7C8BFF", "E9EEF3"), ("48E0A0", "E9EEF3") },
+            ["academic"] = new[] { ("2F4858", "1F2937"), ("7A4A2F", "2B2320"), ("3A5A3F", "1E2B22") },
+            ["modern"]   = new[] { ("1F5AE0", "16181D"), ("D4502E", "16181D"), ("117A68", "10201D") },
+        };
+
+        private static DeckArtDirection WithVariant(DeckArtDirection art, int seed)
+        {
+            if (seed <= 0 || !Palettes.TryGetValue(art.Id, out var palette) || palette.Length <= 1)
+                return art;
+
+            int index = seed % palette.Length;
+            if (index == 0) return art;
+
+            var (accent, inverseBackground) = palette[index];
+
+            return art with
+            {
+                Variant = index,
+                Accent = accent,
+                InverseBackground = inverseBackground,
+            };
         }
 
         public static DeckArtDirection ById(string id) => id switch
@@ -259,6 +333,16 @@ namespace Cat5201
             var sb = new System.Text.StringBuilder();
             sb.AppendLine($"【藝術方向：{DisplayName}】（依主題「{(topic ?? "").Trim()}」自動選定；若你判斷另一種語言更貼切，可以調整，但整份必須一致）");
             sb.AppendLine(DirectionForModel);
+
+            // 配色變體換掉了強調色，但 DirectionForModel 裡寫的還是原本那個色碼。
+            // 不覆寫的話，文件技能排出來的版本會跟內建排版器、預覽、PDF 三者不同色。
+            if (Variant > 0)
+            {
+                sb.AppendLine(
+                    $"Accent override for this deck: #{Accent} (use this instead of the accent colour named above); " +
+                    $"inverse/quote panels use #{InverseBackground}. Everything else stays as described.");
+            }
+
             return sb.ToString();
         }
 

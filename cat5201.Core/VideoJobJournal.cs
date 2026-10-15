@@ -17,6 +17,9 @@ namespace Cat5201
     /// </summary>
     public static class VideoJobJournal
     {
+        /// <summary>影片任務日誌的格式版本。改變 VideoJob 欄位意義時要加一號。</summary>
+        private const int CurrentSchema = 1;
+
         public sealed class VideoJob
         {
             public string OperationName { get; set; } = "";
@@ -48,9 +51,10 @@ namespace Cat5201
                 try
                 {
                     string? json = AtomicFile.ReadAllTextWithFallback(_filePath);
+                    // 信封讀得懂舊的裸陣列（schema 0），升級不會讓既有任務紀錄消失。
                     _jobs = string.IsNullOrWhiteSpace(json)
                         ? new List<VideoJob>()
-                        : (JsonSerializer.Deserialize<List<VideoJob>>(json!) ?? new List<VideoJob>());
+                        : (SchemaEnvelope.Read<List<VideoJob>>(json).Data ?? new List<VideoJob>());
                 }
                 catch (Exception ex)
                 {
@@ -189,7 +193,7 @@ namespace Cat5201
 
             try
             {
-                AtomicFile.WriteAllText(_filePath, JsonSerializer.Serialize(_jobs, new JsonSerializerOptions { WriteIndented = true }));
+                AtomicFile.WriteAllText(_filePath, SchemaEnvelope.Write(_jobs, CurrentSchema));
             }
             catch (Exception ex) { AppLog.Warn("VideoJobs", "影片任務日誌寫入失敗", ex); }
         }

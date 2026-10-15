@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -120,13 +120,15 @@ namespace Cat5201
             string? estimateInputText = null,
             string? estimateOutputText = null,
             string note = "",
-            double extraUsd = 0)
+            double extraUsd = 0,
+            int cachedInputTokens = 0)
         {
             string modelId = ModelCostEstimator.ResolvePricingModelId(serviceModel);
             bool actual = actualInputTokens > 0 || actualOutputTokens > 0;
 
+            // 命中快取的輸入只收一折；不扣掉的話，重複送同一段系統提示的工作階段會被高估好幾倍。
             var est = actual
-                ? ModelCostEstimator.FromUsage(modelId, actualInputTokens, actualOutputTokens)
+                ? ModelCostEstimator.FromUsageWithCache(modelId, actualInputTokens, actualOutputTokens, cachedInputTokens)
                 : ModelCostEstimator.Compute(modelId, estimateInputText, estimateOutputText);
 
             if (est.TotalTokens == 0 && extraUsd <= 0)
@@ -182,6 +184,7 @@ namespace Cat5201
                 : $"{record.Purpose}・{record.ModelId}";
 
             string providerId = ApiHealthChecker.ProviderIdForModel(record.ModelId);
+            WarnIfUnattributed(providerId, record);
 
             if (record.UsdCost > 0)
                 SpendLedger.Add(record.UsdCost, label, providerId);
@@ -196,6 +199,28 @@ namespace Cat5201
                 ProviderStatusMonitor.ReportSuccess(providerId);
 
             _scope.Value?.Add(record);
+        }
+
+        // 認不出服務的模型 ID，同一個只念一次：帳本與餘額簿收到空的服務代號都會直接丟掉這筆錢，
+        // 而畫面上看不出任何異常。2026-10 使用者回報「餘額跟官網差了好幾倍」時，
+        // 第一件要排除的事就是「有沒有哪一類呼叫根本沒進帳」——當時沒有任何線索可查。
+        private static readonly HashSet<string> _unattributedWarned = new(StringComparer.OrdinalIgnoreCase);
+
+        private static void WarnIfUnattributed(string providerId, UsageRecord record)
+        {
+            if (!string.IsNullOrEmpty(providerId) || record.UsdCost <= 0)
+                return;
+
+            lock (_unattributedWarned)
+            {
+                if (!_unattributedWarned.Add(record.ModelId ?? ""))
+                    return;
+            }
+
+            AppLog.Warn("Usage",
+                $"不認得模型 ID「{record.ModelId}」（{record.Purpose}），" +
+                $"這筆 US${record.UsdCost:0.#####} 不會記到任何服務的帳上，餘額也不會扣。" +
+                "請把它的前綴補進 ApiHealthChecker.ProviderIdForModel。");
         }
 
         private sealed class Restore : IDisposable

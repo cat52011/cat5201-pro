@@ -26,6 +26,13 @@ namespace Cat5201
         /// <summary>使用者指定的投影片張數；0＝沒指定，由內容決定。</summary>
         public int RequestedSlides { get; init; }
 
+        /// <summary>
+        /// 這次請求明確指定的輸出語言（沒指定＝空字串）。
+        /// 由第一層語意判斷得出，讓程式可以先解析出「這次到底用哪個語言」，
+        /// 而不是把「全域偏好說繁中」和「這次要求英文」兩條規則一起丟給模型自己喬。
+        /// </summary>
+        public string RequestedLanguage { get; init; } = "";
+
         // debug：API 原始回覆 / 判斷來源
         public string Source { get; init; } = "";
 

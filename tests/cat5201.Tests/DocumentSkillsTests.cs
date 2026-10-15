@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
@@ -177,6 +177,48 @@ data: {""type"":""message_stop""}
             Assert.Null(noFallback["container"]!["id"]);
         }
 
+        /// <summary>
+        /// 沙箱迴圈的錢幾乎全花在「每一步都把前面所有 stdout 再當輸入送一次」。
+        /// 少了這段，一份簡報 2026-10-15 實測跑到 US$10.48。
+        /// </summary>
+        [Fact]
+        public void RequestBody_ClearsOldToolResults_ToStopPayingForThemEveryStep()
+        {
+            var messages = new JsonArray { new JsonObject { ["role"] = "user", ["content"] = "hi" } };
+            var body = ClaudeDocumentSkillsService.BuildRequestBody(
+                "claude-sonnet-5", "sys", messages, new[] { "docx" }, null,
+                ClaudeDocumentSkillsService.ToolTypeCurrent, useFallbacks: true);
+
+            var edit = (JsonObject)body["context_management"]!["edits"]![0]!;
+            Assert.Equal("clear_tool_uses_20250919", (string?)edit["type"]);
+            Assert.Equal("input_tokens", (string?)edit["trigger"]!["type"]);
+            Assert.True((int)edit["keep"]!["value"]! > 0);            // 最近幾步一定要留著
+            Assert.True((int)edit["clear_at_least"]!["value"]! > 0);  // 清太少不值得打斷快取
+            Assert.Null(edit["clear_tool_inputs"]);                   // 它寫過的程式碼要留著
+
+            // 伺服器不收這個參數時要能整包拿掉重送。
+            var off = ClaudeDocumentSkillsService.BuildRequestBody(
+                "claude-sonnet-5", "sys", messages, new[] { "docx" }, null,
+                ClaudeDocumentSkillsService.ToolTypeCurrent, useFallbacks: true,
+                useCache: true, useContextEditing: false);
+            Assert.Null(off["context_management"]);
+        }
+
+        /// <summary>費用上限是「已經花了這麼多」才回的訊息，再重試一次就是再花一次。</summary>
+        [Fact]
+        public void CostCeiling_IsNotRetried()
+        {
+            var hitCeiling = new ClaudeDocumentSkillsService.Result
+            {
+                Success = false,
+                ToolSteps = 12,
+                Rounds = 3,
+                ErrorMessage = "已達這份文件的費用上限 US$3.00（實際已用 US$3.12，3 輪 / 12 步），已停止以免繼續累積費用。"
+            };
+
+            Assert.False(ClaudeDocumentSkillsService.IsRetryable(hitCeiling));
+        }
+
         [Fact]
         public void Prompt_ListsRequestedFiles_SlideCount_AndSources()
         {
@@ -196,18 +238,59 @@ data: {""type"":""message_stop""}
             Assert.Contains("書面報告 .docx", prompt);
             Assert.Contains("https://investor.tsmc.com/", prompt);
             Assert.Contains("台積電 Q2 營收", prompt);
-            Assert.Equal(new[] { "pptx", "docx" }, DocumentSkillsPrompt.SkillIds(r));
+            // 簡報不掛 pptx 技能（它一個人就注入 118 萬 token，2026-10-15 實測），
+            // 改用沙箱預裝的 python-pptx + 明確指示；docx / xlsx 技能照掛。
+            Assert.Equal(new[] { "docx" }, DocumentSkillsPrompt.SkillIds(r));
+            Assert.Contains("python-pptx", prompt);
             Assert.Contains(".pdf", DocumentSkillsPrompt.WantedExtensions(r));
             Assert.DoesNotContain(".xlsx", DocumentSkillsPrompt.WantedExtensions(r));
         }
 
         [Fact]
-        public void Engine_DefaultsToSkills_AndRespectsOpusBlock()
+        public void Engine_DefaultsToBuiltin_AndRespectsOpusBlock()
         {
-            Assert.Equal(DocumentEngine.ClaudeSkills, DocumentEngineHelper.Parse(null));
+            // 2026-10-13 起預設改成內建快速版：最佳品質模式做簡報三次全失敗，
+            // 單次 8～14 分鐘而且每次失敗照樣收錢，使用者的結論是
+            // 「不如原本的簡報，不管品質、時間還是成本」。等它穩定了再換回去。
+            Assert.Equal(DocumentEngine.Builtin, DocumentEngineHelper.Parse(null));
+            Assert.Equal(DocumentEngine.Builtin, DocumentEngineHelper.Parse(""));
+
+            // 使用者自己選過最佳品質模式時要照舊（存檔裡的設定不能被預設值蓋掉）。
+            Assert.Equal(DocumentEngine.ClaudeSkills, DocumentEngineHelper.Parse("ClaudeSkills"));
             Assert.Equal(DocumentEngine.Builtin, DocumentEngineHelper.Parse("Builtin"));
             Assert.Equal("claude-opus-5-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: false));
             Assert.Equal("claude-sonnet-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: true)); // 使用者自己封鎖 Opus 時尊重
         }
+
+        [Fact]
+        public async Task 每收到一行都會回報一次活著()
+        {
+            // 「沒動靜就放棄」的計時器完全靠這個回報活著。沒有它，連線掛住跟
+            // 真的在跑長工作看起來一模一樣，只能用很長的總上限去等——
+            // 2026-10-13 的紀錄裡，四次簡報產出各白等了 8 分鐘。
+            int beats = 0;
+            var assembler = new ClaudeDocumentSkillsService.SseMessageAssembler();
+
+            await assembler.ReadAsync(new StringReader(SampleStream), default, onActivity: () => beats++);
+
+            // 每一個 data: 行至少要回報一次。
+            int dataLines = System.Text.RegularExpressions.Regex.Matches(SampleStream, "data:").Count;
+            Assert.True(beats >= dataLines, $"只回報了 {beats} 次，資料行有 {dataLines} 行");
+        }
+
+        [Fact]
+        public async Task 串流讀取會真的被取消()
+        {
+            // ReadLineAsync 不帶 token 的話，沒有資料時會卡在那一行，
+            // 迴圈開頭的取消檢查永遠輪不到——這正是原本卡 8 分鐘的機制。
+            using var cts = new System.Threading.CancellationTokenSource();
+            cts.Cancel();
+
+            var assembler = new ClaudeDocumentSkillsService.SseMessageAssembler();
+
+            await Assert.ThrowsAnyAsync<System.OperationCanceledException>(
+                () => assembler.ReadAsync(new StringReader(SampleStream), cts.Token));
+        }
+
     }
 }

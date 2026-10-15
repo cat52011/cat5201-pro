@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using Cat5201;
 using Xunit;
 
@@ -96,14 +96,21 @@ namespace Cat5201.Tests
         }
 
         [Fact]
-        public void RemainingNeverGoesNegative()
+        public void OverspendIsKeptSoTheNextTopUpIsNotOverstated()
         {
             FreshDir();
             string id = NewProvider();
             ProviderBalance.AddTopUp(id, 1);
             ProviderBalance.Deduct(id, 5);
 
-            Assert.Equal(0, ProviderBalance.Remaining(id), 4);
+            // 以前這裡夾在 0。夾掉的那 4 元不會憑空消失在官網那邊：
+            // 使用者下次充值 10 元填進來，本機會以為還有 10，實際上只剩 6。
+            // 帳要留真的，要不要顯示成 0 是畫面自己的事（見 RefreshSpendColumns）。
+            Assert.Equal(-4, ProviderBalance.Remaining(id), 4);
+
+            // 去官網對一次帳就把誤差吸收掉，不會一直累積下去。
+            ProviderBalance.SetBalance(id, 6);
+            Assert.Equal(6, ProviderBalance.Remaining(id), 4);
         }
     }
 }

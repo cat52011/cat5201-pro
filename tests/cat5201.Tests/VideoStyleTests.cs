@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -72,7 +72,11 @@ namespace Cat5201.Tests
             Assert.Equal(0, w % 16);                      // gpt-image-2 自訂尺寸限制
             Assert.Equal(0, h % 16);
             Assert.True(w * h >= 655_360);
-            Assert.True(ModelCostEstimator.ImageCostUsd($"{w}x{h}", "high") >= 0.25); // 有價目，不掉到較便宜的預設
+            // 這個尺寸要在價目表裡有自己的一格，不是掉到預設值：
+            // 預設是「查不到就用最貴的那一格」，那會讓英雄圖的成本提示比實際高。
+            Assert.Equal(
+                ModelCostEstimator.ImageCostUsd("1024x1536", "high"),   // 同像素級別的直/橫向價
+                ModelCostEstimator.ImageCostUsd($"{w}x{h}", "high"));
         }
 
         [Theory]

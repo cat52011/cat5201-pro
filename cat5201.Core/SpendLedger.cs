@@ -16,6 +16,9 @@ namespace Cat5201
     /// </summary>
     public static class SpendLedger
     {
+        /// <summary>花費帳本的格式版本。改變每日金額的意義時要加一號。</summary>
+        private const int CurrentSchema = 1;
+
         // 匯率單一真相＝ModelCostEstimator.UsdToTwd（兩處各養一個匯率曾造成顯示不一致，不再重演）。
         private const double UsdToTwd = ModelCostEstimator.UsdToTwd;
 
@@ -155,8 +158,33 @@ namespace Cat5201
         /// <summary>
         /// 是否已達每日上限。budgetTwd &lt;= 0 = 不限制。
         /// </summary>
+        /// <summary>
+        /// 今日是否已達預算上限。含「執行中預留」——只看已入帳的金額，等於快到上限時
+        /// 還能同時放行好幾個長任務，跑完才發現超支（預算變成啟動門檻而不是上限）。
+        /// </summary>
+        /// <summary>
+        /// 今日預算（台幣，0＝不限制）。由個人化設定，Core 這邊需要它才能在「預留的同一刻」
+        /// 判斷會不會超過上限——檢查與佔用分開做的話，預算只會是啟動門檻。
+        /// </summary>
+        public static int DailyBudgetTwd { get; set; }
+
+        /// <summary>匯率（給需要自行換算的呼叫端）。</summary>
+        public static double UsdToTwdRate => UsdToTwd;
+
         public static bool IsOverDailyBudget(int budgetTwd)
-            => budgetTwd > 0 && TodayTwd >= budgetTwd;
+            => budgetTwd > 0 && CommittedTwd >= budgetTwd;
+
+        /// <summary>今日已花 + 執行中預留（台幣）。</summary>
+        public static double CommittedTwd => (TodayUsd + SpendReservations.ReservedUsd) * UsdToTwd;
+
+        /// <summary>今日已花 + 執行中預留的說明文字（給預算訊息用）。</summary>
+        public static string CommittedDisplay()
+        {
+            double reserved = SpendReservations.ReservedUsd * UsdToTwd;
+            return reserved <= 0.005
+                ? $"約 NT${TodayTwd:0.#}"
+                : $"約 NT${TodayTwd:0.#}（另有執行中預留 NT${reserved:0.#}）";
+        }
 
         // 檔案格式：新版 {"days":{...},"providers":{day:{provider:usd}}}；
         // 舊版是純 {day: usd}，照樣讀得進來（分服務資料從那天起才有）。
@@ -201,7 +229,8 @@ namespace Cat5201
                 foreach (var key in _usdByDayProvider.Keys.Where(k => string.CompareOrdinal(k, cutoff) < 0).ToList())
                     _usdByDayProvider.Remove(key);
 
-                var payload = new { days = _usdByDay, providers = _usdByDayProvider };
+                // 這份本來就有自己的外層，補上 schema 讓它跟其他落地檔案一致。
+                var payload = new { schema = CurrentSchema, days = _usdByDay, providers = _usdByDayProvider };
                 AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }));
             }
             catch (Exception ex) { AppLog.Warn("Spend", "帳本寫入失敗", ex); }

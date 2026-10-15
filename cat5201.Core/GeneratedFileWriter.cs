@@ -45,6 +45,9 @@ namespace Cat5201
                     return Failed("輸出路徑超出允許範圍。", title);
                 }
 
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
+
                 content ??= "";
                 File.WriteAllText(fullPath, content, Utf8Bom);
 
@@ -92,6 +95,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -141,6 +147,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -190,6 +199,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -239,6 +251,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -289,6 +304,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -339,6 +357,9 @@ namespace Cat5201
                 if (!fullPath.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                     return Failed("輸出路徑超出允許範圍。", title);
 
+
+                fullPath = UniquePath(fullPath);
+                fileName = Path.GetFileName(fullPath);
                 File.WriteAllBytes(fullPath, content);
 
                 NotifyWritten(fullPath);
@@ -381,6 +402,29 @@ namespace Cat5201
                 ErrorMessage = error ?? "未知錯誤",
                 Title = title ?? ""
             };
+        }
+
+        /// <summary>
+        /// 讓檔名唯一。檔名時間戳只到秒，同一秒內寫兩份同標題的檔案會撞名，
+        /// 後寫的那份會把先寫的覆蓋掉——覆蓋掉的是使用者已經拿到的產出。
+        /// 撞到就加 -2、-3…，不動既有檔案的名字（chip 已經指著它們了）。
+        /// </summary>
+        private static string UniquePath(string fullPath)
+        {
+            if (!File.Exists(fullPath))
+                return fullPath;
+
+            string dir = Path.GetDirectoryName(fullPath) ?? "";
+            string stem = Path.GetFileNameWithoutExtension(fullPath);
+            string ext = Path.GetExtension(fullPath);
+
+            for (int n = 2; n < 1000; n++)
+            {
+                string candidate = Path.Combine(dir, $"{stem}-{n}{ext}");
+                if (!File.Exists(candidate))
+                    return candidate;
+            }
+            return fullPath;
         }
 
         private static string SanitizeFileName(string name)

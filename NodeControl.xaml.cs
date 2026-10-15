@@ -1097,10 +1097,19 @@ namespace Cat5201
 
             if (paths != null)
             {
-                foreach (var p in paths)
+                foreach (var raw in paths)
                 {
+                    // 檔案可能被搬過（整理成各存檔子資料夾、刪存檔後集中到 other、
+                    // 使用者自己改了存放位置）。只認原本那條路徑的話，chip 會**無聲消失**，
+                    // 而且下一次存檔就把空的狀態寫回去——2026-10-15 就這樣弄丟了兩個存檔的附件清單。
+                    string? p = _parent?.ResolveGeneratedFile(raw) ?? raw;
+
                     if (string.IsNullOrWhiteSpace(p) || !System.IO.File.Exists(p))
+                    {
+                        if (!string.IsNullOrWhiteSpace(raw))
+                            AppLog.Warn("Output", $"附件找不到，已從清單移除：{System.IO.Path.GetFileName(raw)}");
                         continue;
+                    }
 
                     _outputFiles.Add(new OutputFileVm
                     {
@@ -1459,13 +1468,24 @@ namespace Cat5201
             // §18：已連結 Google Drive 時提供雙來源選單；未連結行為與以前完全相同（直開本機選檔）。
             if (_parent.IsGoogleDriveLinked() && sender is FrameworkElement anchorEl)
             {
-                var menu = new ContextMenu();
+                // 這個選單原本是裸的 ContextMenu，也就是 Windows 的預設外觀——
+                // 整個畫布上就它一個長得像 1990 年代的控制項。節點右鍵選單早就有自己的樣式，
+                // 直接沿用同一套（圓角、淺底、無陰影、hover 變淡）。
+                var menu = new ContextMenu
+                {
+                    Style = TryFindResource("NodeContextMenuStyle") as Style,
+                    Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom,
+                    HorizontalOffset = 0,
+                    VerticalOffset = 4,
+                };
 
-                var local = new MenuItem { Header = "📁 本機檔案…" };
+                var itemStyle = TryFindResource("NodeMenuItemStyle") as Style;
+
+                var local = new MenuItem { Header = "本機檔案…", Style = itemStyle };
                 local.Click += (_, __) => PickLocalAttachments();
                 menu.Items.Add(local);
 
-                var drive = new MenuItem { Header = "☁️ Google Drive…" };
+                var drive = new MenuItem { Header = "Google Drive…", Style = itemStyle };
                 drive.Click += async (_, __) =>
                 {
                     if (await _parent.AttachFromDriveAsync(this))
@@ -2518,6 +2538,15 @@ namespace Cat5201
             seg.Point1 = new Point((_startPoint.X + current.X) / 2, _startPoint.Y);
             seg.Point2 = new Point((_startPoint.X + current.X) / 2, current.Y);
             seg.Point3 = current;
+
+            // 停在一個接得起來的節點上就轉成藍色——不然使用者沒有理由相信
+            // 「放在別的節點上」跟「放在空白處」會有不同結果。
+            // （這個藍色只是「放開會接起來」的預覽，接出來的是一般灰線。）
+            bool overTarget = _parent != null &&
+                              _parent.CanConnectNodes(this, _parent.FindNodeAtCanvasPoint(current, this));
+            _tempPath.Stroke = overTarget
+                ? (Brush)new BrushConverter().ConvertFromString("#5B6CFF")!
+                : Brushes.DimGray;
         }
 
         private void Corner_DragCompleted(object sender, DragCompletedEventArgs e)
@@ -2541,6 +2570,17 @@ namespace Cat5201
             }
 
             Point current = Mouse.GetPosition(mw.MainCanvas);
+
+            // 放在一個已經存在的節點上＝把它接成下游（匯流就是這樣做出來的）；
+            // 放在空白處才生一個新節點。接不起來（自己、重複、會形成環）時出個聲就好，
+            // 不要默默生出一個莫名其妙的新節點。
+            var dropTarget = mw.FindNodeAtCanvasPoint(current, this);
+            if (dropTarget != null)
+            {
+                if (!_parent.TryConnectToExistingNode(this, thumb.Name, dropTarget, current))
+                    System.Media.SystemSounds.Asterisk.Play();
+                return;
+            }
 
             var newNode = new NodeControl();
             double newWidth = newNode.Width;

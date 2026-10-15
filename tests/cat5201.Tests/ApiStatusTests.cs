@@ -11,7 +11,7 @@ namespace Cat5201.Tests
     /// 決策窗說人話 + API 即時狀態（2026-09-24）：
     /// 使用者 2026-09-24 那次失敗只有日誌裡看得到「credit balance is too low」，介面什麼都沒說。
     /// </summary>
-    [Collection("SpendLedger")]
+    [Collection("spend-ledger")]  // 全域帳本是共用靜態狀態：所有碰到它的測試必須在同一個集合裡循序執行
     public class ApiStatusTests
     {
         [Theory]

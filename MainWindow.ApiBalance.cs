@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -48,6 +48,29 @@ namespace Cat5201
         public bool IsApiBalancePanelEnabled() => _showApiBalancePanel;
 
         /// <summary>個人化開關：開啟時面板出現在右下角自動模型開關上方。</summary>
+        // 決策窗：這個產品的賣點，但不是每個人每次都想看，小螢幕上它也會擋到畫布。
+        // 預設開啟，跟 API 餘額面板同一組「面板顯示」設定。
+        private bool _showDecisionPanel = true;
+
+        public bool IsDecisionPanelEnabled() => _showDecisionPanel;
+
+        private void DecisionPanelSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+
+            _showDecisionPanel = DecisionPanelSwitch?.IsChecked == true;
+            ApplyDecisionPanelVisibility();
+            SavePreferences();
+        }
+
+        /// <summary>套用決策窗的顯示狀態（載入偏好與切換開關時都會呼叫）。</summary>
+        private void ApplyDecisionPanelVisibility()
+        {
+            if (DecisionPanel != null)
+                DecisionPanel.Visibility = _showDecisionPanel ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         private void ApiBalancePanelSwitch_Changed(object sender, RoutedEventArgs e)
         {
             if (_syncingCostControls)
@@ -103,7 +126,15 @@ namespace Cat5201
             {
                 bool tracked = ProviderBalance.Has(provider.Id);
                 double month = SpendLedger.MonthUsdFor(provider.Id);
-                string symbol = ApiHealthChecker.CurrencySymbol(provider.Currency);
+
+                // 這個小面板一律以美元顯示，不管每個服務各自的計價幣別是什麼。
+                //
+                // 它的工作是「四家並排，一眼看出哪一家快沒了」。A$ 跟 US$ 混在一起排，
+                // 要比大小得先心算一次匯率，那就不叫快捷查看了。
+                // 各自的原幣別留在「個人化 → API」——那一頁的工作是對帳，
+                // 單位必須跟官網帳單一致，兩邊的用途不同，單位也就不該一樣。
+                string nativeCurrency = ProviderBalance.CurrencyOf(provider.Id);
+                const string symbol = "US$";
                 if (!tracked && month <= 0)
                     continue;
 
@@ -112,18 +143,33 @@ namespace Cat5201
 
                 if (tracked)
                 {
-                    double left = ProviderBalance.Remaining(provider.Id);
-                    double total = ProviderBalance.TotalToppedUp(provider.Id);
+                    double nativeLeft = ProviderBalance.Remaining(provider.Id);
+                    double left = ModelCostEstimator.ToUsd(nativeLeft, nativeCurrency);
+                    double total = ModelCostEstimator.ToUsd(
+                        ProviderBalance.TotalToppedUp(provider.Id), nativeCurrency);
+                    var reconciled = ProviderBalance.LastReconciledUtc(provider.Id);
 
-                    row.Amount = $"{symbol}{left:0.00}";
-                    row.Tip = $"{provider.DisplayName}：剩餘 {symbol}{left:0.00}，累計儲值 {symbol}{total:0.00}。\n" +
-                              "各家都沒有查餘額的 API，這是本機扣帳：每一筆花費即時扣、沖銷加回。\n" +
-                              "再次充值後到「個人化 → API」填入新增的金額按送出。";
+                    // 原幣別不是美元時，tooltip 補上官網上看到的那個數字：
+                    // 換算是為了好比較，不是為了把原始事實藏起來。
+                    string native = string.Equals(nativeCurrency, "USD", StringComparison.OrdinalIgnoreCase)
+                        ? ""
+                        : $"（{ApiHealthChecker.CurrencySymbol(nativeCurrency)}{System.Math.Max(0, nativeLeft):0.00}）";
+
+                    row.Amount = $"{symbol}{Math.Max(0, left):0.00}";
+                    row.Tip = $"{provider.DisplayName}：剩餘 {symbol}{Math.Max(0, left):0.00}{native}，累計儲值 {symbol}{total:0.00}。\n" +
+                              (reconciled == null
+                                  ? "各家都沒有查餘額的 API，這是本機扣帳：每一筆花費即時扣、沖銷加回。\n"
+                                  : $"上次對帳 {reconciled.Value.ToLocalTime():M/d HH:mm}，之後本機扣了 " +
+                                    $"{symbol}{ModelCostEstimator.ToUsd(ProviderBalance.DeductedSinceReconcile(provider.Id), nativeCurrency):0.00}。\n") +
+                              (left < -0.005
+                                  ? $"已超出 {symbol}{-left:0.00}——本機估的花費比你填的餘額多，請到官網對一次帳。\n"
+                                  : "") +
+                              "再次充值後到「個人化 → API」填入官網顯示的餘額按送出。";
                     row.Dot = BalanceDot(left, total, states.GetValueOrDefault(provider.Id));
                 }
                 else
                 {
-                    row.Amount = $"本月 {symbol}{ModelCostEstimator.ConvertUsd(month, provider.Currency):0.00}";
+                    row.Amount = $"本月 {symbol}{month:0.00}";
                     row.Tip = $"{provider.DisplayName}：尚未設定餘額，先顯示本月花費。\n到「個人化 → API」填入儲值金額按送出，就會改顯示剩餘。";
                     row.Dot = StateColor(states.TryGetValue(provider.Id, out var s) ? s.State : ApiHealthChecker.HealthState.Unknown);
                 }

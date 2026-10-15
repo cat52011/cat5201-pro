@@ -154,6 +154,18 @@ namespace Cat5201
                      || a.FileName.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
                      || a.FileName.EndsWith(".webp", StringComparison.OrdinalIgnoreCase)));
 
+            // 使用者可以在確認框裡授權「這一次超過今日上限」；範圍限這一次執行。
+            using var budgetScope = SpendReservations.BeginOverBudgetScope();
+
+            // 輸出判斷（§6）到這一步才需要結果。NodeService 已經先把它發出去了，
+            // 這段期間「自動選模型」與能力規劃都跑完了，所以多半已經回來，await 不用再等一次來回。
+            var outputIntent = request.OutputIntent;
+            if (outputIntent == null && request.OutputIntentTask != null)
+            {
+                try { outputIntent = await request.OutputIntentTask.ConfigureAwait(true); }
+                catch (Exception ex) { AppLog.Warn("AgentRuntime", "輸出判斷失敗，改用關鍵字", ex); }
+            }
+
             // 第一層意圖閘門（§first-layer-intent-routing）：
             // 在規劃之前先判斷這次是否會產生影片/圖片/檔案。
             //  - 純手動模式：完全不自動轉換——選什麼模型就只做純文字回答，不偷偷加生影片/圖片/檔案。
@@ -168,21 +180,21 @@ namespace Cat5201
                     detectedTaskType = OrchestrationTaskType.ImageEdit;
                 // 與 OrchestrationPlanner.Build 同步：關鍵字沒抓到但第一層 LLM 判斷要影片/圖片時，
                 // 讓 detectedTaskType 反映出來，確認框才會顯示正確的「影片／圖片」而非籠統的「檔案／媒體」。
-                else if (request.OutputIntent?.WantsVideo == true && !OrchestrationPlanner.ProducesMediaOrFile(detectedTaskType))
+                else if (outputIntent?.WantsVideo == true && !OrchestrationPlanner.ProducesMediaOrFile(detectedTaskType))
                     detectedTaskType = OrchestrationTaskType.VideoGeneration;
-                else if (request.OutputIntent?.WantsImage == true && !OrchestrationPlanner.ProducesMediaOrFile(detectedTaskType))
+                else if (outputIntent?.WantsImage == true && !OrchestrationPlanner.ProducesMediaOrFile(detectedTaskType))
                     detectedTaskType = OrchestrationTaskType.ImageGeneration;
 
                 bool producesOutput =
                     OrchestrationPlanner.ProducesMediaOrFile(detectedTaskType) ||
-                    (request.OutputIntent?.WantsAny ?? false);
+                    (outputIntent?.WantsAny ?? false);
 
                 if (producesOutput)
                 {
                     // 手動/Auto 一律彈二次確認（2026-07-04 修正）：先前手動模式直接封殺媒體生成，
                     // 導致使用者明確要求「生成照片」也只得到純文字。確認框＝明確徵詢，不是偷偷轉換，
                     // 不違反「純手動不自動轉換」的本意；使用者按「否」仍是純文字。
-                    allowGeneration = await _main.ConfirmGenerationAsync(detectedTaskType, request.OutputIntent);
+                    allowGeneration = await _main.ConfirmGenerationAsync(detectedTaskType, outputIntent);
                 }
             }
 
@@ -194,7 +206,7 @@ namespace Cat5201
                 autoMode,
                 capabilityContext.Attachments != null && capabilityContext.Attachments.Count > 0,
                 hasImageAttachment,
-                request.OutputIntent,
+                outputIntent,
                 allowGeneration);
 
             // Sub-agents (DelegationDepth > 0) write internal orchestration_plans only;
@@ -842,6 +854,12 @@ namespace Cat5201
 
             bool isFinanceTask = FinanceTaskDetector.IsFinanceFocused(capabilityAugmentedText);
             bool enforceFinalSynthesisFormat = hasVerifiedFacts && isFinanceTask;
+            bool requiresSources = RequiresSourceEvidence(capabilityData, workspace, decision.TaskMode);
+
+            // 回答語言一律講明：沒有明確指示時模型會從上下文猜，而記憶裡一條
+            // 「我是西班牙人」比提問用的中文更像指示（2026-10-15 實測，整段答案變成西班牙文）。
+            string languageBlock = AnswerLanguage.BuildBlock(
+                request.TopText, request.OutputIntent?.RequestedLanguage);
 
             string finalInput = capabilityAugmentedText;
 
@@ -858,6 +876,11 @@ namespace Cat5201
 
                 if (enforceFinalSynthesisFormat)
                     parts.Add(BuildFinalOutputFormatBlock());
+
+                if (requiresSources)
+                    parts.Add(BuildSourceEvidenceBlock());
+
+                parts.Add(languageBlock);
 
                 AddCodeInstructionBlocks(parts);
 
@@ -878,6 +901,11 @@ namespace Cat5201
 
                 if (enforceFinalSynthesisFormat)
                     parts.Add(BuildFinalOutputFormatBlock());
+
+                if (requiresSources)
+                    parts.Add(BuildSourceEvidenceBlock());
+
+                parts.Add(languageBlock);
 
                 AddCodeInstructionBlocks(parts);
 
@@ -902,6 +930,11 @@ namespace Cat5201
 
                 if (enforceFinalSynthesisFormat)
                     parts.Add(BuildFinalOutputFormatBlock());
+
+                if (requiresSources)
+                    parts.Add(BuildSourceEvidenceBlock());
+
+                parts.Add(languageBlock);
                 AddCodeInstructionBlocks(parts);
                 parts.Add("【Delegated Analysis Omitted】\nDelegated/parallel agent text was omitted because structured verified_facts exist. Use delegated analysis only as internal reasoning, not as a source for numeric facts.");
                 parts.Add("【目前任務】\n" + capabilityAugmentedText);
@@ -1112,7 +1145,7 @@ namespace Cat5201
 
             // §6 第一層輸出判斷：優先用 NodeService 先跑 API 得到的 OutputIntent（要簡報/報告/表格哪幾個）；
             // 沒有時（例如子代理委派）退回關鍵字 + TaskType。報告→docx、表格→xlsx、簡報→pptx，且一律再配一份 pdf。
-            OutputIntent intent = request.OutputIntent ?? new OutputIntent
+            OutputIntent intent = outputIntent ?? new OutputIntent
             {
                 WantsReport = orchestrationPlan.TaskType == OrchestrationTaskType.GenerateFile
                               || OutputFormatDetector.WantsWrittenReport(capabilityAugmentedText),
@@ -1135,6 +1168,9 @@ namespace Cat5201
                 !string.IsNullOrWhiteSpace(execution.Text) &&
                 _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills)
             {
+                // 簡報仍然交給 Claude 排版（使用者說那幾份做得不錯），只是**不掛 pptx 技能**
+                // ——2026-10-15 量到技能那包自己就注入 118 萬 token，而我們的請求只有 1.5 萬。
+                // 沙箱預裝 python-pptx，改用明確指示一樣做得出來，見 DocumentEngine.SkillIds。
                 bool deckViaSkills = doDeck && _main.GetPresentationEngine() != PresentationEngine.Gamma;
                 if (doReport || doTable || deckViaSkills)
                 {
@@ -1273,6 +1309,87 @@ namespace Cat5201
                 WorkspaceSummary = workspaceSummary
             };
         }
+        /// <summary>
+        /// 替「交給 Claude 排版的簡報」先生好照片並上傳。
+        ///
+        /// 沙箱裡沒有圖片模型——Claude 在容器裡只畫得出色塊、線條與圖表，永遠生不出照片。
+        /// 使用者 2026-10-15：「這個簡報沒圖我覺得不太合適」。
+        /// 所以照片由我們這邊生（跟內建版型同一套配圖判斷與藝術方向），
+        /// 上傳到 Files API 之後以 container_upload 送進容器。
+        /// 生不出來、上傳失敗都不影響簡報本身，只是少了照片。
+        /// </summary>
+        private async Task<List<ClaudeDocumentSkillsService.ContainerFile>> BuildContainerPhotosAsync(
+            INodeContext node,
+            AgentDefinition? runtimeAgent,
+            string userInput,
+            AiFallbackExecutionResult execution,
+            AgentWorkspace workspace,
+            OrchestrationPlanPayload orchestrationPlan,
+            CancellationToken ct)
+        {
+            var files = new List<ClaudeDocumentSkillsService.ContainerFile>();
+
+            try
+            {
+                // 借用內建版型那一套：從最終答案切出大綱，再用同樣的配圖企劃生圖，
+                // 這樣兩條路徑的照片風格與「哪些主題不該生圖」的判斷完全一致。
+                var outline = PresentationOutlineBuilder.Build(new PresentationOutlineBuilder.Request
+                {
+                    UserInput = userInput,
+                    FinalAnswer = execution.Text ?? "",
+                    Workspace = workspace,
+                    PipelineId = orchestrationPlan.PipelineId,
+                    ModelId = execution.ActualModelId ?? orchestrationPlan.ModelId,
+                    AgentId = runtimeAgent?.Id ?? "",
+                });
+
+                var coverTask = TryGenerateCoverImageAsync(node, runtimeAgent, outline, workspace, orchestrationPlan, ct);
+                var slidesTask = GenerateSlideIllustrationsAsync(node, outline, ct);
+                await Task.WhenAll(coverTask, slidesTask);
+
+                var (cover, _) = await coverTask;
+                if (cover is { Length: > 0 })
+                    await AddPhotoAsync(files, cover, "cover.png", ct);
+
+                foreach (var slide in outline.Slides.Where(x => x.ImageBytes is { Length: > 0 }).Take(6))
+                    await AddPhotoAsync(files, slide.ImageBytes!, $"photo-{slide.Order}.png", ct);
+
+                if (files.Count > 0)
+                    AppLog.Info("DocSkills", $"已把 {files.Count} 張照片送進沙箱供簡報使用");
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLog.Warn("DocSkills", "替簡報準備照片失敗（簡報照常做，只是沒有照片）", ex);
+            }
+
+            return files;
+        }
+
+        private static async Task AddPhotoAsync(
+            List<ClaudeDocumentSkillsService.ContainerFile> files, byte[] png, string name, CancellationToken ct)
+        {
+            string? id = await ClaudeFilesApi.UploadAsync(png, name, "image/png", ct);
+            if (!string.IsNullOrWhiteSpace(id))
+                files.Add(new ClaudeDocumentSkillsService.ContainerFile(id!, name));
+        }
+
+        /// <summary>告訴 Claude 容器裡有哪些照片、怎麼用。沒有照片時回空字串。</summary>
+        private static string PhotoBlock(IReadOnlyList<ClaudeDocumentSkillsService.ContainerFile> photos)
+        {
+            if (photos.Count == 0)
+                return "";
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("\n\n【可用的照片】\n");
+            sb.Append("這些檔案已經放進你的工作目錄，是依這份內容生成的照片，請實際嵌進簡報：\n");
+            foreach (var f in photos)
+                sb.Append("- ").Append(f.FileName).Append(f.FileName == "cover.png" ? "（封面用）" : "").Append('\n');
+            sb.Append("用 python-pptx 的 add_picture 放進去；滿版或大面積配置都可以，但不要把主體裁掉，也不要壓在文字上。\n");
+            sb.Append("用不到的就不要硬放。除了這些照片，其餘視覺元素仍然只能用色塊、線條與圖表。");
+            return sb.ToString();
+        }
+
         private sealed record SkillsOutcome(AiFallbackExecutionResult Execution, bool Deck, bool Report, bool Table);
 
         /// <summary>
@@ -1330,9 +1447,12 @@ namespace Cat5201
                 RequestedSlides = !wantsDeck ? 0
                     : intent?.RequestedSlides > 0 ? intent.RequestedSlides
                     : PresentationOutlineBuilder.DetectRequestedSlideCount(userInput),
-                WantsImages = intent?.WantsIllustrations ?? PresentationWantsCoverImage(userInput),
+                // 跟內建版型同一套判斷：使用者沒明講時，看內容需不需要圖，不是看請求那一行字。
+                WantsImages = DeckIllustrationPolicy.ShouldIllustrate(
+                    userInput, null, intent?.WantsIllustrations ?? false, out _, execution.Text),
                 Sources = sources,
-                PreferenceBlock = preferenceBlock ?? ""
+                PreferenceBlock = preferenceBlock ?? "",
+                Language = intent?.RequestedLanguage ?? ""
             };
 
             var whatParts = new List<string>();
@@ -1347,6 +1467,19 @@ namespace Cat5201
             ClaudeDocumentSkillsService.Result result;
             var budget = ClaudeDocumentSkillsService.DefaultBudget;
             var skillsStarted = DateTime.UtcNow;
+
+            // 這一步可能跑好幾分鐘、花好幾美元；先把額度佔住，別讓同時啟動的其他任務一起放行。
+            // 佔不到（會超過今日上限）就不要開始——跑到一半才發現超支是最糟的結果。
+            using var skillsReservation = SpendReservations.TryReserveWithinBudget(
+                $"Claude 文件技能（{what}）", ClaudeDocumentSkillsService.DefaultJobBudgetUsd);
+            if (skillsReservation == null)
+            {
+                // 佔不到額度就不要開始：跑到一半才發現超支是最糟的結果。
+                // 回 none 代表「這條路沒產出任何東西」，內建的快速版引擎會接手。
+                node.SetLoadingHint(null);
+                AppLog.Info("Spend", $"文件技能未啟動：會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                return none;
+            }
             int skillSteps = 0;
 
             // 技能一輪可能在伺服器端跑好幾分鐘，只在換輪時更新提示等於畫面像當掉。
@@ -1355,9 +1488,13 @@ namespace Cat5201
             using var ticker = new System.Threading.PeriodicTimer(TimeSpan.FromSeconds(10));
             using var tickerStop = new CancellationTokenSource();
 
+            // 「為什麼這麼久」要寫在等待的那句話裡。使用者看到的是一份簡報做了四分鐘，
+            // 而個人化裡其實有一個「快速版」選項——不講的話他只會覺得這個軟體很慢。
+            // budget 現在是「含重試的總時間」，顯示的也是總時間。
             void ShowProgress() => node.SetLoadingHint(
-                $"Claude 正在製作{what}（{(DateTime.UtcNow - skillsStarted).TotalMinutes:0.0} / {budget.TotalMinutes:0} 分鐘" +
-                (skillSteps > 0 ? $"，已執行 {skillSteps} 個步驟" : "") + "）");
+                $"最佳品質模式製作{what}中（{(DateTime.UtcNow - skillsStarted).TotalMinutes:0.0} / {budget.TotalMinutes:0} 分鐘" +
+                (skillSteps > 0 ? $"，已完成 {skillSteps} 個步驟" : "") +
+                "）・想要快一點可到 個人化 → 簡報與報告品質 改成快速版");
 
             async Task TickAsync()
             {
@@ -1368,22 +1505,136 @@ namespace Cat5201
             ShowProgress();
             var ticking = TickAsync();
 
+            // 失敗就重來，不要一次不成就退回內建版型。
+            //
+            // 使用者要的是高品質簡報，不是一句「這次超時了」。實測紀錄顯示失敗有兩種樣子：
+            // ① 串流開了之後完全沒動靜（1 輪 / 0 步，白等整個上限）；
+            // ② 跑了十幾二十步卻沒有回傳任何檔案。
+            // 兩種都是「這一次不順」而不是「這題做不出來」——同一份提示隔幾十秒再送一次就成功過。
+            // 所以：整段給一個總時間預算，在預算內一直重試；只有預算用完才交給內建版型。
             try
             {
-                result = await service.GenerateAsync(
-                    DocumentSkillsPrompt.SystemPrompt,
-                    DocumentSkillsPrompt.BuildUserPrompt(prompt),
-                    DocumentSkillsPrompt.SkillIds(prompt),
-                    DocumentSkillsPrompt.WantedExtensions(prompt),
-                    (round, steps) => { skillSteps = steps; ShowProgress(); },
-                    ct,
-                    budget);
-            }
-            catch (OperationCanceledException) { throw; }
-            catch (Exception ex)
+            var totalDeadline = DateTime.UtcNow + budget;
+            int attempt = 0;
+            result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = "尚未開始" };
+
+            // 一次只掛一個技能。
+            //
+            // 每個技能的說明與參考檔都由伺服器注入並算進輸入 token。三個一起掛，
+            // 2026-10-15 被退回 prompt is too long: 1,634,773 tokens——我們自己的提示只有 1,419 字，
+            // 所以那一百多萬幾乎全是技能內容。拆開之後注入量剩三分之一，
+            // 而且簡報做不出來也不會連累報告與表格。
+            var subRequests = DocumentSkillsPrompt.SplitByArtifact(prompt);
+
+            // 照片：沙箱裡沒有圖片模型，Claude 只畫得出色塊與圖表。
+            // 所以我們這邊先用 gpt-image 生好，上傳到 Files API，
+            // 再以 container_upload 送進容器讓它嵌進簡報。
+            var deckPhotos = prompt.WantsDeck && prompt.WantsImages
+                ? await BuildContainerPhotosAsync(node, null, userInput, execution, workspace, orchestrationPlan, ct)
+                : new List<ClaudeDocumentSkillsService.ContainerFile>();
+
+            var collected = new List<ClaudeDocumentSkillsService.SkillFile>();
+            var summaries = new List<string>();
+            var failures = new List<string>();
+
+            // 費用上限：預留了多少就真的只准花多少。
+            //
+            // 之前只有時間預算，於是「在 14 分鐘內一直重試」等於「在 14 分鐘內一直花錢」——
+            // 2026-10-15 一份簡報跑掉 US$10.48，而同一天的預留額度寫的是 US$3。
+            double skillsBudgetUsd = ClaudeDocumentSkillsService.DefaultJobBudgetUsd;
+            double skillsSpentUsd = 0;
+
+            foreach (var sub in subRequests)
             {
-                AppLog.Warn("DocSkills", "文件技能執行失敗，改用內建快速版", ex);
-                result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = ex.Message };
+            attempt = 0;
+            result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = "尚未開始" };
+
+            while (true)
+            {
+                attempt++;
+                var remaining = totalDeadline - DateTime.UtcNow;
+                if (remaining < TimeSpan.FromSeconds(45))
+                    break;
+
+                double remainingUsd = skillsBudgetUsd - skillsSpentUsd;
+                if (remainingUsd <= 0.25)
+                {
+                    AppLog.Warn("DocSkills",
+                        $"已用 US${skillsSpentUsd:0.00}／上限 US${skillsBudgetUsd:0.00}，不再重試{what}，改用內建版型。");
+                    break;
+                }
+
+                // 上一次跑了步驟卻沒交出檔案：把問題直接講給它聽，不要原封不動再送一次。
+                string retryNote = attempt == 1 ? "" :
+                    result.ToolSteps > 0
+                        ? "\n\n【重要】上一次你執行了步驟，但沒有把最終檔案輸出成可下載的檔案。" +
+                          "這一次請務必把成品存成檔案並輸出，不要只在訊息裡描述內容。"
+                        : "\n\n【重要】上一次這個請求沒有回應。請直接開始動手做，不要先寫長篇說明。";
+
+                try
+                {
+                    var photos = sub.WantsDeck ? deckPhotos : new List<ClaudeDocumentSkillsService.ContainerFile>();
+
+                    result = await service.GenerateAsync(
+                        DocumentSkillsPrompt.SystemPrompt,
+                        DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos) + retryNote,
+                        DocumentSkillsPrompt.SkillIds(sub),
+                        DocumentSkillsPrompt.WantedExtensions(sub),
+                        (round, steps) => { skillSteps = steps; ShowProgress(); },
+                        ct,
+                        remaining,
+                        photos,
+                        remainingUsd);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("DocSkills", $"文件技能第 {attempt} 次執行拋出例外", ex);
+                    result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = ex.Message };
+                }
+
+                skillsSpentUsd += result.UsdCost;
+
+                if (result.Success)
+                {
+                    if (attempt > 1)
+                        AppLog.Info("DocSkills", $"第 {attempt} 次成功產出{what}。");
+                    break;
+                }
+
+                if (!ClaudeDocumentSkillsService.IsRetryable(result))
+                    break;
+
+                AppLog.Warn("DocSkills",
+                    $"第 {attempt} 次沒有產出{what}（{result.Rounds} 輪 / {result.ToolSteps} 步）：{result.ErrorMessage}　→ 重試");
+                skillSteps = 0;
+                node.SetLoadingHint($"最佳品質模式製作{what}中（第 {attempt + 1} 次嘗試）・上一次沒有產出檔案，正在重來");
+            }
+
+            // 這一種產出的結果收起來，再做下一種。
+            if (result.Success)
+            {
+                collected.AddRange(result.Files);
+                if (!string.IsNullOrWhiteSpace(result.Summary)) summaries.Add(result.Summary.Trim());
+            }
+            else
+            {
+                failures.Add(result.ErrorMessage);
+                AppLog.Warn("DocSkills",
+                    $"{string.Join("/", DocumentSkillsPrompt.SkillIds(sub))} 沒有產出：{result.ErrorMessage}");
+            }
+            }
+
+            // 合併：只要有任何一種做出來就算成功，其餘走內建版型補。
+            result = new ClaudeDocumentSkillsService.Result
+            {
+                Success = collected.Count > 0,
+                Files = collected,
+                Summary = string.Join("\n", summaries),
+                ErrorMessage = collected.Count > 0 ? "" : string.Join("；", failures.Distinct()),
+                Rounds = result.Rounds,
+                ToolSteps = result.ToolSteps,
+            };
             }
             finally
             {
@@ -1441,7 +1692,7 @@ namespace Cat5201
             {
                 var deckFile = GeneratedFileWriter.WritePptx(genDir, deckTitle, pptx.Bytes, sourceSummary);
                 deckDone = Emit(deckFile, "presentation-agent");
-                var pdf = PdfFor(pptx);
+                var pdf = DeliveryOptions.CompanionPdf ? PdfFor(pptx) : null;
                 GeneratedFilePayload? deckPdf = null;
                 if (deckDone && pdf != null)
                 {
@@ -1455,7 +1706,7 @@ namespace Cat5201
             if (wantsReport && docx != null)
             {
                 reportDone = Emit(GeneratedFileWriter.WriteDocx(genDir, reportTitle, docx.Bytes, sourceSummary), "report-agent");
-                var pdf = PdfFor(docx);
+                var pdf = DeliveryOptions.CompanionPdf ? PdfFor(docx) : null;
                 if (reportDone && pdf != null)
                     Emit(GeneratedFileWriter.WritePdf(genDir, reportTitle, pdf.Bytes, sourceSummary), "report-agent");
             }
@@ -1463,7 +1714,7 @@ namespace Cat5201
             if (wantsTable && xlsx != null)
             {
                 tableDone = Emit(GeneratedFileWriter.WriteXlsx(genDir, tableTitle, xlsx.Bytes, sourceSummary), "table-agent");
-                var pdf = PdfFor(xlsx);
+                var pdf = DeliveryOptions.CompanionPdf ? PdfFor(xlsx) : null;
                 if (tableDone && pdf != null)
                     Emit(GeneratedFileWriter.WritePdf(genDir, tableTitle, pdf.Bytes, sourceSummary), "table-agent");
             }
@@ -1535,11 +1786,11 @@ namespace Cat5201
                     : authorTable ? "表格代理整理內容中" : "報告代理整理內容中");
 
             Task<string?> reportTask = authorReport
-                ? AuthorCleanAsync(node, DocumentAuthor.BuildReportPrompt(userInput, sourceMaterial), "Report Author", ct)
+                ? AuthorCleanAsync(node, DocumentAuthor.BuildReportPrompt(userInput, sourceMaterial, intent.RequestedLanguage), "Report Author", ct)
                 : Task.FromResult<string?>(null);
 
             Task<string?> tableTask = authorTable
-                ? AuthorCleanAsync(node, DocumentAuthor.BuildTablePrompt(userInput, sourceMaterial), "Table Author", ct)
+                ? AuthorCleanAsync(node, DocumentAuthor.BuildTablePrompt(userInput, sourceMaterial, intent.RequestedLanguage), "Table Author", ct)
                 : Task.FromResult<string?>(null);
 
             await Task.WhenAll(reportTask, tableTask).ConfigureAwait(false);
@@ -1599,26 +1850,57 @@ namespace Cat5201
             if (intent.WantsReport)
             {
                 // 階段3：報告智慧配圖（同簡報規格）——使用者要圖時，Claude 挑適合的章節生成呼應的圖並嵌入。
-                if (intent.WantsIllustrations || PresentationWantsCoverImage(userInput))
+                // 報告跟簡報同一個道理：內容需要圖就配圖，純數字與條文的報告不配。
+                if (DeckIllustrationPolicy.ShouldIllustrate(
+                        userInput, null, intent.WantsIllustrations, out _, reportMarkdown))
+                {
                     reportMarkdown = await IllustrateReportMarkdownAsync(node, reportMarkdown, genDir, ct);
+                }
 
+                // 藝術方向跟表格同一套算法（標題 + 使用者輸入）：使用者講的風格線索常在輸入裡，
+                // 只看標題會讓同一次請求的報告與表格長得不像同一份東西。
+                var docArt = DeckArtDirection.ForTopic($"{title} {userInput}");
                 TryEmit(() => GeneratedFileWriter.WriteDocx(
-                    genDir, title, DocxReportBuilder.Build(reportMarkdown), sourceSummary), "report-agent");
-                TryEmit(() => GeneratedFileWriter.WritePdf(
-                    genDir, title, PdfReportBuilder.Build(reportMarkdown), sourceSummary), "report-agent");
+                    genDir, title, DocxReportBuilder.Build(reportMarkdown, docArt, intent.RequestedLanguage), sourceSummary), "report-agent");
+                if (DeliveryOptions.CompanionPdf)
+                    TryEmit(() => GeneratedFileWriter.WritePdf(
+                        genDir, title, PdfReportBuilder.Build(reportMarkdown, docArt, intent.RequestedLanguage), sourceSummary), "report-agent");
             }
 
             // 表格：.xlsx + 內容一致的 table.pdf（兩者都吃 tableMarkdown）。
             if (intent.WantsTable)
             {
+                // 整欄都查不到的欄位先拿掉——那一欄存在的唯一效果是把空白排得很整齊。
+                tableMarkdown = TableQuality.DropAllMissingColumns(tableMarkdown);
+
+                // 整張表都查不到時，交出一張空表比誠實地說「查不到」更糟
+                //（2026-10-15：四個品牌 × 四欄全是「資料不足」，使用者的評語是「在跟我開玩笑嗎」）。
+                if (!TableQuality.HasUsableData(tableMarkdown))
+                {
+                    AppLog.Warn("AgentRuntime", "表格每一欄都沒有資料，不產生 xlsx（交一張空表比誠實說查不到更糟）");
+                    orchestration.MarkFailed("generate_file", "查不到足以組成表格的資料");
+                    return ReplaceExecutionText(execution,
+                        (execution.Text ?? "").TrimEnd() +
+                        "\n\nℹ 這次查不到足以組成表格的數據，所以沒有產生 .xlsx。" +
+                        "表格裡每一格都寫「資料不足」沒有意義——需要的話可以指定資料來源、縮小範圍，或改問特定一家的數字。");
+                }
+            }
+
+            if (intent.WantsTable)
+            {
                 string tablePdfMarkdown = $"# {title}\n\n{tableMarkdown}\n";
                 var tableArt = DeckArtDirection.ForTopic($"{title} {userInput}");
+                // 表格也要說清楚「這是什麼、哪天做的、資料哪來的」——來源用這次實際查證的紀錄。
+                string tableSourceNote = MarkdownReportBuilder.SourceNote(workspace, intent.RequestedLanguage);
                 TryEmit(() => GeneratedFileWriter.WriteXlsx(
-                    genDir, title, XlsxReportBuilder.Build(tableMarkdown, title, tableArt), sourceSummary), "table-agent");
+                    genDir, title,
+                    XlsxReportBuilder.Build(tableMarkdown, title, tableArt, tableSourceNote, intent.RequestedLanguage),
+                    sourceSummary), "table-agent");
                 // 報告也在時，表格 pdf 用不同檔名避免和報告 pdf 撞名。
                 string tablePdfTitle = intent.WantsReport ? title + "（表格）" : title;
-                TryEmit(() => GeneratedFileWriter.WritePdf(
-                    genDir, tablePdfTitle, PdfReportBuilder.Build(tablePdfMarkdown, tableArt), sourceSummary), "table-agent");
+                if (DeliveryOptions.CompanionPdf)
+                    TryEmit(() => GeneratedFileWriter.WritePdf(
+                        genDir, tablePdfTitle, PdfReportBuilder.Build(tablePdfMarkdown, tableArt, intent.RequestedLanguage), sourceSummary), "table-agent");
             }
 
             if (producedFiles.Count > 0)
@@ -1626,8 +1908,70 @@ namespace Cat5201
             else
                 orchestration.MarkFailed("generate_file", string.IsNullOrWhiteSpace(lastError) ? "報告寫檔失敗" : lastError);
 
-            // 報告文字顯示在對話框，各檔 chip 提供下載，兩者並存。
+            // 產出檔案之後，對話框不再貼一次一模一樣的全文。
+            //
+            // 使用者 2026-10-13 的原話：「生了報告還在輸出端打一次一模一樣的幹嘛」。
+            // 這份內容已經在 .docx / .xlsx 裡，chip 點下去就看得到；在節點裡再放一份，
+            // 畫布上每個產檔節點都會變成一面要捲好幾頁的牆，真正的重點反而被埋掉。
+            if (producedFiles.Count > 0)
+                return ReplaceExecutionText(execution, BuildFileHandoffText(execution.Text, producedFiles));
+
             return execution;
+        }
+
+        /// <summary>
+        /// 檔案產出後要顯示在節點裡的那段話：留一個「不用開檔也看得懂」的摘要，其餘交給檔案。
+        ///
+        /// 保留的是開頭那一段（報告的摘要、表格的前言）與「資料來源」段——
+        /// 來源要能在畫布上直接看到，那是查證類任務的憑據，不該只藏在檔案裡。
+        /// </summary>
+        private static string BuildFileHandoffText(string? fullText, IReadOnlyList<string> producedFiles)
+        {
+            const int LeadLimit = 420;
+
+            string text = (fullText ?? "").Trim();
+            var lines = text.Replace("\r\n", "\n").Split('\n');
+
+            // 開頭：跳過標題行，取到第一個空行為止（最多 LeadLimit 字）。
+            var lead = new System.Text.StringBuilder();
+            foreach (var raw in lines)
+            {
+                string line = raw.Trim();
+                if (line.StartsWith("#", StringComparison.Ordinal)) continue;
+                if (line.Length == 0 && lead.Length > 0) break;
+                if (line.Length == 0) continue;
+                if (lead.Length + line.Length > LeadLimit)
+                {
+                    lead.Append(line.AsSpan(0, Math.Max(0, LeadLimit - lead.Length))).Append('…');
+                    break;
+                }
+                if (lead.Length > 0) lead.Append('\n');
+                lead.Append(line);
+            }
+
+            // 來源段原樣保留。
+            var sources = new System.Text.StringBuilder();
+            bool inSources = false;
+            foreach (var raw in lines)
+            {
+                string line = raw.Trim();
+                if (line.Contains("資料來源", StringComparison.Ordinal) && line.Length <= 24)
+                {
+                    inSources = true;
+                    sources.Append("資料來源\n");
+                    continue;
+                }
+                if (!inSources) continue;
+                if (line.StartsWith("#", StringComparison.Ordinal)) break;
+                if (line.Length > 0) sources.Append(line).Append('\n');
+            }
+
+            var parts = new List<string>();
+            if (lead.Length > 0) parts.Add(lead.ToString());
+            parts.Add($"📄 已產出：{string.Join("、", producedFiles)}（完整內容在檔案裡，點一下就看得到）");
+            if (sources.Length > 0) parts.Add(sources.ToString().TrimEnd());
+
+            return string.Join("\n\n", parts);
         }
 
         private static string ExtractReportTitle(string userInput)
@@ -1695,7 +2039,6 @@ namespace Cat5201
 
             // 「要不要配圖」「幾張投影片」一律以第一層的語意判斷為準（任何語言都認得）；
             // 只有那一步失敗（沒金鑰／API 不通）時才退回關鍵字，關鍵字只認繁中講法。
-            bool wantsImages = intent?.WantsIllustrations ?? PresentationWantsCoverImage(userInput);
 
             int factCount = workspace.GetByType("verified_facts")
                 .Select(x => x.Payload)
@@ -1739,7 +2082,19 @@ namespace Cat5201
                     "presentation_outline",
                     outline));
 
-            // Image Gen → Presentation：使用者明確要求配圖時，生成一張封面圖嵌入 deck / pptx（不另外輸出 png chip）。
+            // 要不要配圖，看這份簡報**實際寫了什麼**。
+            //
+            // 以前的規則是「使用者沒特別提就不配圖」，於是一份介紹日本高檔餐飲的簡報
+            // 做出來是 10 頁純文字，而使用者得每次都記得加一句「附配圖」。
+            // 那不是設定問題，是判斷問題——內容需要圖就該配圖。
+            // 判斷放在大綱做好之後，因為請求那一行字看不出這份簡報會長成什麼樣子。
+            bool wantsImages = DeckIllustrationPolicy.ShouldIllustrate(
+                userInput, outline, intent?.WantsIllustrations ?? false, out var illustrationReason);
+
+            AppLog.Info("AgentRuntime",
+                $"簡報配圖判斷：{(wantsImages ? "要配圖" : "不配圖")}（{illustrationReason}）");
+
+            // Image Gen → Presentation：要配圖時，生成一張封面圖嵌入 deck / pptx（不另外輸出 png chip）。
             byte[]? coverImageBytes = null;
             if (wantsImages)
             {
@@ -1785,7 +2140,8 @@ namespace Cat5201
             }
 
             // Native exports share a scene. A native PDF cannot represent Gamma's external design.
-            if (gammaUrl == null)
+            // 個人化關掉對照 PDF 時也跳過——那是整個產出流程裡最慢的一步。
+            if (gammaUrl == null && DeliveryOptions.CompanionPdf)
             {
             try
             {
@@ -1839,6 +2195,12 @@ namespace Cat5201
                 orchestration.MarkSuccess("presentation_outline", $"{outline.SlideCount} 張 / {fileName}");
 
                 string note = $"已生成簡報大綱：{outline.SlideCount} 張投影片。";
+
+                // 「檔案寫出來了」不等於「這份簡報可以拿出去」：字級、溢出、圖片比例都檢查一次，
+                // 有問題照實說，不要安靜交付一份版面壞掉的檔案。
+                string quality = DeckQuality.CheckAndLog(outline, coverImageBytes, fileName);
+                if (!string.IsNullOrWhiteSpace(quality))
+                    note += "\n⚠ " + quality;
 
                 // 使用者要了圖卻一張都沒有時，要講原因——不然看起來就是「說了沒用」。
                 if (wantsImages)
@@ -2022,7 +2384,7 @@ namespace Cat5201
 
                 // 「沒意義」的舊作法是把標題塞進死板模板；改成讓 Claude 讀簡報實際內容，
                 // 萃取「一個能代表整份簡報的具體象徵畫面」，再套統一的簡約資訊示意風格。
-                var art = DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}");
+                var art = DeckArtDirection.ForOutline(outline);
                 string brief = await BuildIllustrationBriefAsync(
                     node, BuildCoverBriefMaterial(outline), "簡報封面", ct, art);
                 if (string.IsNullOrWhiteSpace(brief))
@@ -2034,6 +2396,13 @@ namespace Cat5201
                 string prompt = IllustrationStyle.Compose(brief, art, isCover: true);
 
                 var imageService = new OpenAIImageService("gpt-image-2");
+                using var reservation = SpendReservations.TryReserveWithinBudget(
+                    "簡報封面圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                if (reservation == null)
+                {
+                    NoteImageSkipped($"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                    return (null, null);
+                }
                 var image = await imageService.GenerateAsync(prompt, DeckImageSize, ct);
 
                 if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
@@ -2215,14 +2584,14 @@ namespace Cat5201
                 return (null, "找不到這一頁。");
 
             bool isCover = string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase);
-            var art = DeckArtDirection.ForTopic($"{outline!.Title} {outline.Topic}");
+            var art = DeckArtDirection.ForOutline(outline);
 
             // 使用者自己寫的描述優先；沒寫就用這一頁的內容（封面用整份的重點）。
             var material = new System.Text.StringBuilder();
             if (!string.IsNullOrWhiteSpace(instruction))
                 material.AppendLine("使用者指定的畫面：" + instruction.Trim()).AppendLine();
             material.AppendLine(isCover
-                ? BuildCoverBriefMaterial(outline)
+                ? BuildCoverBriefMaterial(outline!)
                 : $"{slide.Heading}\n{string.Join("\n", slide.Bullets ?? Array.Empty<string>())}");
 
             try
@@ -2240,6 +2609,10 @@ namespace Cat5201
                 }
 
                 var imageService = new OpenAIImageService("gpt-image-2");
+                using var reservation = SpendReservations.TryReserveWithinBudget(
+                    "單頁配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                if (reservation == null)
+                    return (null, $"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
                 var image = await imageService.GenerateAsync(
                     IllustrationStyle.Compose(brief, art, isCover), DeckImageSize, ct);
 
@@ -2280,7 +2653,7 @@ namespace Cat5201
                 .ToList();
 
             var plan = await PlanIllustrationsAsync(node, sections, MaxContentSlideImages, "簡報", ct,
-                DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic));
+                DeckArtDirection.ForOutline(outline));
             if (plan.Count == 0)
             {
                 NoteImageSkipped("內容頁沒有挑到適合配圖的主體（數據頁、流程頁本來就不配圖）。");
@@ -2295,7 +2668,7 @@ namespace Cat5201
                 return;  // 沒有 OPENAI_API_KEY → 略過內容頁配圖
             }
 
-            var art = DeckArtDirection.ForTopic($"{outline.Title} {outline.Topic}");
+            var art = DeckArtDirection.ForOutline(outline);
 
             // 每張圖要一兩分鐘，三張排隊就是五、六分鐘；同時發只等最慢的那張。
             var jobs = outline.Slides
@@ -2305,6 +2678,14 @@ namespace Cat5201
                 {
                     try
                     {
+                        using var reservation = SpendReservations.TryReserveWithinBudget(
+                            "簡報配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                        if (reservation == null)
+                        {
+                            // 這些工作是並行的，不是迴圈——這一張放棄就好，其餘各自會得到同樣結果。
+                            NoteImageSkipped($"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                            return;
+                        }
                         var img = await imageService.GenerateAsync(
                             IllustrationStyle.Compose(plan[slide.Order], art), DeckImageSize, ct);
                         if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
@@ -2509,6 +2890,88 @@ namespace Cat5201
             return sb.ToString();
         }
 
+        /// <summary>
+        /// 依指示改寫某一頁的文字，**行數必須一樣**。
+        ///
+        /// 由 Claude 排版的簡報沒有可重建的大綱，所以單頁不能重做版面；
+        /// 但「改文字」不需要重建版面——把每一段的字換掉就好，位置、字級、顏色、圖片全部不動。
+        /// 行數一樣是硬條件：多一行或少一行就對不回原本的段落。
+        /// </summary>
+        public async Task<IReadOnlyList<string>> RewriteSlideTextAsync(
+            INodeContext node, IReadOnlyList<string> lines, string instruction, CancellationToken ct)
+        {
+            if (lines == null || lines.Count == 0)
+                return Array.Empty<string>();
+
+            using var usagePurpose = UsageMeter.Purpose("單頁改字");
+
+            var numbered = string.Join("\n", lines.Select((l, i) => $"{i + 1}. {l}"));
+            string prompt =
+                "下面是一張投影片上的文字，每一行是一個段落。請依使用者的指示改寫。\n\n" +
+                "嚴格規則：\n" +
+                $"1. 輸出**正好 {lines.Count} 行**，一行對應一段，順序不變。多一行或少一行都會讓版面錯位。\n" +
+                "2. 每行開頭保留「編號. 」的格式，不要加引號、不要 markdown、不要任何解釋。\n" +
+                "3. 長度盡量接近原文：變太長會擠出版面外。\n" +
+                "4. 指示沒有要求改的段落，原文照抄。\n\n" +
+                "=== 使用者的指示 ===\n" + (instruction ?? "").Trim() + "\n\n" +
+                "=== 這一頁的文字 ===\n" + numbered;
+
+            var decision = new NodeExecutionDecision
+            {
+                RequestedAgentId = "general-agent",
+                ActualAgentId = "general-agent",
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                ActualModelId = "",
+                TaskMode = NodeTaskMode.Chat,
+                ResolverLabel = "Slide Text Rewrite",
+                ResolverReason = "只改這一頁的文字，不動版面。",
+                StatusLabel = "Auto",
+                ForceSingleModel = true,
+            };
+
+            try
+            {
+                var r = await _executeWithFallbackAsync(node, prompt, decision, null, false, ct);
+                if (!r.IsSuccess) return Array.Empty<string>();
+
+                var parsed = ParseNumberedLines(r.Text ?? "", lines.Count);
+                if (parsed.Count != lines.Count)
+                {
+                    AppLog.Warn("Preview", $"單頁改字回了 {parsed.Count} 行，需要 {lines.Count} 行，放棄這次改寫");
+                    return Array.Empty<string>();
+                }
+
+                return parsed;
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Preview", "單頁改字失敗", ex);
+                return Array.Empty<string>();
+            }
+        }
+
+        /// <summary>把「1. xxx」這種編號清單拆回純文字；數量不符就原樣回傳讓呼叫端放棄。</summary>
+        private static List<string> ParseNumberedLines(string text, int expected)
+        {
+            var result = new List<string>();
+
+            foreach (var raw in (text ?? "").Replace("\r\n", "\n").Split('\n'))
+            {
+                string line = raw.Trim();
+                if (line.Length == 0) continue;
+
+                var m = System.Text.RegularExpressions.Regex.Match(line, @"^(\d{1,3})[.、)]\s*(.*)$");
+                if (!m.Success) continue;
+
+                result.Add(m.Groups[2].Value.Trim());
+                if (result.Count == expected) break;
+            }
+
+            return result;
+        }
+
         // 把（可能含上游搜尋結果的）原始輸入交給 Claude，萃取真正主體並寫成具體、可畫的圖片提示。
         private async Task<string> BuildImageBriefAsync(INodeContext node, string rawRequest, CancellationToken ct)
         {
@@ -2578,6 +3041,14 @@ namespace Cat5201
             try
             {
                 var imageService = new OpenAIImageService("gpt-image-2");
+                using var reservation = SpendReservations.TryReserveWithinBudget(
+                    "圖片生成", ModelCostEstimator.ImageCostUsd("1024x1024", "high"));
+                if (reservation == null)
+                {
+                    throw new InvalidOperationException(
+                        $"這張圖的估算費用會超過今日預算上限（{SpendLedger.CommittedDisplay()}）。"
+                        + "請調高個人化裡的每日預算。");
+                }
                 image = await imageService.GenerateAsync(prompt, "1024x1024", ct);
             }
             catch (OperationCanceledException)
@@ -2941,6 +3412,21 @@ namespace Cat5201
 
             // 3) 影片產生器：Veo 3.1（唯一 provider）——依個人化選的檔位（標準 / Fast / Lite）。
             var veo = new VeoVideoService(_main.GetEffectiveVeoModel());
+
+            // 影片是最貴的一項（依秒計價），整段先把估算額度佔住，跑完才釋放。
+            // 影片是最貴的一項（依秒計價）。預留與預算檢查必須是同一個動作：
+            // 分開做的話，正在獲准的這支影片自己就能把今日金額推過上限。
+            using var videoReservation = SpendReservations.TryReserveWithinBudget(
+                "影片生成",
+                VeoModels.UsdPerSecondForModel(_main.GetEffectiveVeoModel()) * Math.Max(1, targetSeconds));
+
+            if (videoReservation == null)
+            {
+                orchestration.MarkFailed("generate_video",
+                    $"估算費用會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                node.SetLoadingHint(null);
+                return execution;
+            }
 
             int curSegment = 1; // OnProgress 顯示用：目前在第幾段 / 第幾個鏡頭
             string unitWord = fastCut ? "鏡頭" : "段";
@@ -3632,6 +4118,10 @@ namespace Cat5201
                 ? BuildFinanceFinalSynthesisInstructions()
                 : BuildGeneralFinalSynthesisInstructions();
 
+            // 查證／研究類的整合也要附來源——不然平行代理這條路會變成唯一的漏洞。
+            if (hasVerifiedFacts || workspace.GetByType("search_summary").Count > 0)
+                synthesisInstructions += "\n\n" + BuildSourceEvidenceBlock();
+
             string prefHeader = string.IsNullOrWhiteSpace(preferenceBlock)
                 ? ""
                 : preferenceBlock.Trim() +
@@ -4195,6 +4685,46 @@ $@"這個請求目前先不直接產生 patch，因為它是大型檔案的全�
             }
         }
 
+        /// <summary>
+        /// 查證 / 研究 / 分析任務的來源規則。
+        ///
+        /// 這類回答的價值全在「這句話憑什麼」。沒有來源的數字跟猜的沒有差別，
+        /// 但使用者看不出差別——所以寧可要求模型自己把沒來源的話標出來，
+        /// 也不要讓它混在有來源的句子中間一起被當成事實。
+        /// </summary>
+        internal static string BuildSourceEvidenceBlock()
+        {
+            return
+@"【來源規則 — 必須遵守】
+1. 每一個關於外部世界的事實（數字、日期、事件、引述、他人的主張）都要能追到來源。
+2. 在最終答案最後加一段「資料來源」，逐條列出：來源名稱 — 網址 — 取得/發布日期。
+   網址用完整的 https:// 開頭，不要縮寫、不要寫「官網」兩個字了事。
+3. 工具層（【Search Results】/【Search Summary】/ verified_facts）給了來源就照抄那個來源，不要自己改寫或換一個看起來更權威的。
+4. 如果某個說法你找不到來源，不要刪掉也不要假裝有來源：把那一句標成
+   「（無來源，為模型判斷）」，並在「資料來源」那段寫一行「以下內容無外部來源：…」。
+5. 整份都沒有任何外部來源時，必須在開頭第一行寫明
+   「以下內容沒有查到外部來源，是模型依既有知識的判斷，請自行查證。」
+6. 不要寫 [1][2] 這種編號引用——系統會把它們清掉，寫了等於沒寫。來源請直接寫名稱與網址。";
+        }
+
+        /// <summary>
+        /// 這次要不要強制附來源：使用者是在查證 / 研究 / 分析，而不是在聊天或改寫。
+        /// 跑過搜尋能力＝一定要；任務模式是 Research 也一定要。
+        /// </summary>
+        private static bool RequiresSourceEvidence(
+            System.Collections.Generic.IReadOnlyDictionary<string, object> capabilityData,
+            AgentWorkspace workspace,
+            NodeTaskMode taskMode)
+        {
+            if (taskMode == NodeTaskMode.Research)
+                return true;
+
+            return capabilityData.ContainsKey("search_summary")
+                || capabilityData.ContainsKey("verified_facts")
+                || workspace.GetByType("search_summary").Count > 0
+                || workspace.GetByType("verified_facts").Count > 0;
+        }
+
         private static string BuildFinalOutputFormatBlock()
         {
             return
@@ -4215,7 +4745,11 @@ $@"這個請求目前先不直接產生 patch，因為它是大型檔案的全�
 - 只列真正衝突或缺失。不同交易時段的收盤價、盤後價、盤前價不是衝突。
 
 總結一句話
-- 用一句話收束。";
+- 用一句話收束。
+
+資料來源
+- 逐條列出：來源名稱 — 網址 — 日期。每一個數字都要對得到其中一條。
+- 沒有來源的數字不要寫進「關鍵資料」，改寫在「短期走勢判斷」並標明是推論。";
         }
 
         private static string BuildCodeDiffOutputInstructionBlock()

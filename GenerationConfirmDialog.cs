@@ -10,16 +10,25 @@ using System.Windows.Threading;
 namespace Cat5201
 {
     /// <summary>
-    /// 產檔／媒體生成的專屬確認框——這是產品「AI 即將花你的錢」的招牌時刻，
-    /// 不用通用文字牆（MenuConfirmDialog），改成逐項卡片＋成本徽章＋倒數提示的正式設計。
-    /// 行為與舊版一致：回傳 true=執行；支援手機遠端設 DialogResult；autoConfirmSeconds 逾時自動同意。
+    /// 產檔／媒體生成的確認框——這是「AI 即將花你的錢」的那一刻，所以它必須講清楚
+    /// 要做什麼、大概多少錢、按「否」會怎樣，然後讓人一眼看完。
+    ///
+    /// 2026-10-13 重做版面：拿掉 ✨ 與每一列的 emoji 圖示，改用排版層次（標題 / 清單 / 註腳）。
+    /// 一堆表情符號配上「偵測到這次輸入可能需要產生：」這種句子，看起來像機器在自我介紹，
+    /// 而不是一個軟體在問你一個明確的問題。
+    ///
+    /// 行為：回傳 true=執行；支援手機遠端設 DialogResult；autoConfirmSeconds 逾時自動同意。
     /// </summary>
     public sealed class GenerationConfirmDialog : Window
     {
+        /// <summary>超支警告（null＝這次不會超過今日上限）。</summary>
+        public sealed record BudgetWarning(string CommittedDisplay, int BudgetTwd, double EstimatedUsd);
+
         public GenerationConfirmDialog(
             Window owner,
             IReadOnlyList<(string Icon, string Name, string Detail)> items,
-            int autoConfirmSeconds)
+            int autoConfirmSeconds,
+            BudgetWarning? budget = null)
         {
             Owner = owner;
             WindowStyle = WindowStyle.None;
@@ -29,23 +38,27 @@ namespace Cat5201
             ShowInTaskbar = false;
             Topmost = true;
             WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Width = 408;
+            Width = 400;
             SizeToContent = SizeToContent.Height;
-            MaxHeight = 620;
+            MaxHeight = 640;
+
+            var ink = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1E));
+            var muted = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x90));
+            var hairline = new SolidColorBrush(Color.FromRgb(0xEC, 0xEC, 0xEE));
 
             var card = new Border
             {
                 Background = Brushes.White,
-                CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(22, 20, 22, 18),
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(24, 22, 24, 18),
                 Margin = new Thickness(14), // 留空間給陰影
                 SnapsToDevicePixels = true,
                 Effect = new DropShadowEffect
                 {
                     Color = Colors.Black,
-                    Opacity = 0.18,
-                    BlurRadius = 24,
-                    ShadowDepth = 4,
+                    Opacity = 0.16,
+                    BlurRadius = 28,
+                    ShadowDepth = 5,
                 },
             };
             card.MouseLeftButtonDown += (_, e) =>
@@ -58,87 +71,88 @@ namespace Cat5201
 
             var root = new StackPanel();
 
-            // 標題列：icon + 標題
-            var titleRow = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
-            titleRow.Children.Add(new TextBlock { Text = "✨", FontSize = 17, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-            titleRow.Children.Add(new TextBlock
-            {
-                Text = "要產生檔案／媒體嗎？",
-                FontSize = 15,
-                FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1E)),
-                VerticalAlignment = VerticalAlignment.Center,
-            });
-            root.Children.Add(titleRow);
-
+            // 標題：直接問要不要做，不講「偵測到」。
             root.Children.Add(new TextBlock
             {
-                Text = "偵測到這次輸入可能需要產生：",
-                FontSize = 12,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x90)),
-                Margin = new Thickness(0, 0, 0, 12),
+                Text = budget == null ? "要產生這些檔案嗎？" : "這次會超過今日花費上限",
+                FontSize = 16,
+                FontWeight = FontWeights.Bold,
+                Foreground = ink,
+                Margin = new Thickness(0, 0, 0, 14),
             });
 
-            // 逐項卡片：icon + 名稱 + 成本/說明徽章
-            foreach (var (icon, name, detail) in items)
+            // 清單：一行一項，名稱在左、說明靠右，中間用細線分隔。
+            for (int i = 0; i < items.Count; i++)
             {
-                var row = new Border
-                {
-                    Background = new SolidColorBrush(Color.FromRgb(0xF6, 0xF7, 0xFA)),
-                    CornerRadius = new CornerRadius(11),
-                    Padding = new Thickness(14, 11, 14, 11),
-                    Margin = new Thickness(0, 0, 0, 7),
-                };
-                var grid = new Grid();
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                var (_, name, detail) = items[i];
 
-                var iconText = new TextBlock { Text = icon, FontSize = 16, Margin = new Thickness(0, 0, 10, 0), VerticalAlignment = VerticalAlignment.Center };
-                Grid.SetColumn(iconText, 0);
-                grid.Children.Add(iconText);
+                var grid = new Grid { Margin = new Thickness(0, 9, 0, 9) };
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) });
+                grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
 
                 var nameText = new TextBlock
                 {
                     Text = name,
-                    FontSize = 13,
+                    FontSize = 13.5,
                     FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x30)),
+                    Foreground = ink,
                     VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 0, 14, 0),
                 };
-                Grid.SetColumn(nameText, 1);
+                Grid.SetColumn(nameText, 0);
                 grid.Children.Add(nameText);
 
                 if (!string.IsNullOrWhiteSpace(detail))
                 {
-                    var badge = new Border
+                    var detailText = new TextBlock
                     {
-                        Background = new SolidColorBrush(Color.FromRgb(0xEC, 0xEE, 0xF6)),
-                        CornerRadius = new CornerRadius(7),
-                        Padding = new Thickness(8, 3, 8, 3),
+                        Text = detail,
+                        FontSize = 11.5,
+                        Foreground = muted,
+                        TextWrapping = TextWrapping.Wrap,
+                        TextAlignment = TextAlignment.Right,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Child = new TextBlock
-                        {
-                            Text = detail,
-                            FontSize = 11,
-                            Foreground = new SolidColorBrush(Color.FromRgb(0x5B, 0x63, 0x8F)),
-                        },
                     };
-                    Grid.SetColumn(badge, 2);
-                    grid.Children.Add(badge);
+                    Grid.SetColumn(detailText, 1);
+                    grid.Children.Add(detailText);
                 }
 
-                row.Child = grid;
-                root.Children.Add(row);
+                root.Children.Add(grid);
+
+                if (i < items.Count - 1)
+                    root.Children.Add(new Border { Height = 1, Background = hairline });
+            }
+
+            // 超支：講清楚現在花到哪、上限多少、這次估多少，而不是只說「超過了」。
+            if (budget != null)
+            {
+                root.Children.Add(new Border
+                {
+                    Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xF4, 0xE5)),
+                    CornerRadius = new CornerRadius(9),
+                    Padding = new Thickness(13, 10, 13, 10),
+                    Margin = new Thickness(0, 14, 0, 0),
+                    Child = new TextBlock
+                    {
+                        Text =
+                            $"今日已花 {budget.CommittedDisplay}，上限 NT${budget.BudgetTwd}；" +
+                            $"這次估計再花 {ModelCostEstimator.FormatTwd(budget.EstimatedUsd)}。\n" +
+                            "仍要產生的話，這一次會放行超過上限；之後的任務照常受限制。",
+                        FontSize = 11.5,
+                        LineHeight = 18,
+                        Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x4B, 0x00)),
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                });
             }
 
             root.Children.Add(new TextBlock
             {
-                Text = "選「否」只會給純文字回答，不產生任何檔案／媒體。",
+                Text = "選「不產生」會改成純文字回答。",
                 FontSize = 11.5,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
+                Foreground = muted,
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(2, 6, 0, 0),
+                Margin = new Thickness(0, 14, 0, 0),
             });
 
             // 倒數提示（活的）＋按鈕列
@@ -146,7 +160,7 @@ namespace Cat5201
             {
                 FontSize = 11.5,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x3B, 0x54, 0xFF)),
-                Margin = new Thickness(2, 3, 0, 0),
+                Margin = new Thickness(0, 4, 0, 0),
                 Visibility = autoConfirmSeconds > 0 ? Visibility.Visible : Visibility.Collapsed,
             };
             root.Children.Add(countdownText);
@@ -155,16 +169,19 @@ namespace Cat5201
             {
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right,
-                Margin = new Thickness(0, 14, 0, 0),
+                Margin = new Thickness(0, 16, 0, 0),
             };
 
-            var noBtn = MakePillButton("否", bg: Color.FromRgb(0xF1, 0xF1, 0xF3), fg: Color.FromRgb(0x44, 0x44, 0x44));
+            var noBtn = MakePillButton("不產生", bg: Color.FromRgb(0xF1, 0xF1, 0xF3), fg: Color.FromRgb(0x44, 0x44, 0x44));
             noBtn.IsCancel = true;
             noBtn.Margin = new Thickness(0, 0, 8, 0);
             noBtn.Click += (_, __) => { DialogResult = false; Close(); };
             btnRow.Children.Add(noBtn);
 
-            var yesBtn = MakePillButton("是，執行", bg: Color.FromRgb(0x11, 0x11, 0x11), fg: Colors.White);
+            var yesBtn = MakePillButton(
+                budget == null ? "產生" : "仍要產生",
+                bg: Color.FromRgb(0x11, 0x11, 0x11),
+                fg: Colors.White);
             yesBtn.IsDefault = true;
             yesBtn.Click += (_, __) => { DialogResult = true; Close(); };
             btnRow.Children.Add(yesBtn);
@@ -180,10 +197,11 @@ namespace Cat5201
             };
 
             // 逾時自動同意：倒數顯示在提示行（按鈕保持乾淨）。
-            if (autoConfirmSeconds > 0)
+            // 會超過上限時不自動同意——那是要花超出預算的錢，必須有人真的按下去。
+            if (autoConfirmSeconds > 0 && budget == null)
             {
                 int remaining = autoConfirmSeconds;
-                countdownText.Text = $"{remaining} 秒未選擇將自動執行";
+                countdownText.Text = $"{remaining} 秒後自動產生";
                 var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
                 timer.Tick += (_, __) =>
                 {
@@ -195,10 +213,14 @@ namespace Cat5201
                         Close();
                         return;
                     }
-                    countdownText.Text = $"{remaining} 秒未選擇將自動執行";
+                    countdownText.Text = $"{remaining} 秒後自動產生";
                 };
                 Closed += (_, __) => timer.Stop(); // 任一方式關閉（含手機遠端回答）都停表
                 timer.Start();
+            }
+            else
+            {
+                countdownText.Visibility = Visibility.Collapsed;
             }
         }
 
@@ -213,7 +235,7 @@ namespace Cat5201
                 Background = new SolidColorBrush(bg),
                 BorderThickness = new Thickness(0),
                 Cursor = Cursors.Hand,
-                MinWidth = 84,
+                MinWidth = 88,
                 Height = 34,
             };
             // 圓角膠囊樣板（與 app 的黑色主按鈕同語彙）

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -17,24 +17,51 @@ namespace Cat5201
     {
         // ---- 提示詞 ----
 
-        public static string BuildReportPrompt(string userInput, string sourceMaterial)
+        /// <summary>
+        /// 書面報告的提示詞。除了格式規則，更重要的是「內容骨架」：
+        /// 摘要 → 關鍵發現 → 主體章節 → 結論與建議。少了這層規格，模型交回來的
+        /// 常常只是把主答案換行重排——排版再好看，也還是沒有一份報告該有的樣子。
+        /// </summary>
+        /// <param name="language">本次輸出語言（空＝繁體中文）。由第一層語意判斷解析，不寫死。</param>
+        public static string BuildReportPrompt(string userInput, string sourceMaterial, string? language = null)
         {
+            string lang = string.IsNullOrWhiteSpace(language) ? "繁體中文" : language!.Trim();
+
             return
                 "你是專業的報告撰寫者。請依下列資料，寫出一份結構清楚、可直接交付的【書面報告】。\n\n" +
                 "主題 / 使用者要求：\n" + (userInput ?? "").Trim() + "\n\n" +
                 "可參考的內容與數據（可能含雜訊、ASCII 排版或簡報草稿，請只擷取其中的事實與數據後重新組織）：\n" +
                 Clip(sourceMaterial, 8000) + "\n\n" +
+                "報告結構（依序，缺一不可）：\n" +
+                "A. 開頭「摘要」一節：3～5 句話說完整份報告的結論與影響。這是給只讀一段的人看的，\n" +
+                "   要直接回答「所以呢」，不要重述題目，也不要寫「本報告將探討…」。\n" +
+                "B. 「關鍵發現」一節：3～5 條，每條先寫一句結論，再接支撐它的數據或事實。\n" +
+                "C. 主體章節：依主題分節，每節用「結論式標題」（看標題就知道該節的判斷是什麼），\n" +
+                "   內文是完整段落論述；需要並列數據時才用表格。\n" +
+                "D. 結尾「結論與建議」一節：寫出可執行的建議，並標明每項建議成立的前提。\n\n" +
+                "數據紀律：\n" +
+                "- 每個數字都要帶單位，以及它對應的期間或時點（例如「2025 年全年」「截至 2026 年 3 月」）。\n" +
+                "- 事實、數字、日期、引述只能來自上面提供的內容，不可自行推估或補足。\n" +
+                "- 提供的內容裡沒有的資料，明確寫「未取得」，不要略過，也不要編一個看起來合理的數字。\n" +
+                "- 但整欄都查不到時，**不要放那一欄**：一整排「未取得」只是把空白排得很整齊。\n" +
+                "- 整張表都查不到時，直接說查不到，不要交一張每格都是「未取得」的表。\n\n" +
                 "嚴格輸出規則：\n" +
                 "1. 只輸出 Markdown 報告本身，不要任何前後說明，不要程式碼圍欄(```）。\n" +
                 "2. 不要加最上層的 # 一級標題（標題由系統補）；章節用 ## ，小節用 ### 。\n" +
-                "3. 內文用完整段落（繁體中文）。要並列數據時用標準 Markdown 表格：| 欄 | 欄 | 之後接 |---|---| 分隔列。\n" +
+                $"3. 內文用完整段落（{lang}）。要並列數據時用標準 Markdown 表格：| 欄 | 欄 | 之後接 |---|---| 分隔列。\n" +
                 "4. 嚴禁使用 ASCII 線框 / 方塊字元（┌ ┐ └ ┘ │ ─ █ ═ ║ 等）來畫表格或排版。\n" +
                 "5. 嚴禁出現「投影片」「slide」這類簡報用語——這是書面報告，不是簡報。\n" +
-                "6. 不要用 emoji 當裝飾性項目符號。";
+                "6. 不要用 emoji 當裝飾性項目符號。\n" +
+                "7. 不要自己寫「資料來源」或「參考資料」章節——來源由系統依實際查證紀錄附在報告最後。\n" +
+                "8. 每個表格前面獨立一行寫「表：<這張表在說什麼>」，需要時在括號裡標來源，例如\n" +
+                "   表：各分類的客單價與毛利率（來源：協會年報 2025）。編號由系統自動補上，你不要自己寫「表 1」。";
         }
 
-        public static string BuildTablePrompt(string userInput, string sourceMaterial)
+        /// <param name="language">本次輸出語言（空＝繁體中文）。</param>
+        public static string BuildTablePrompt(string userInput, string sourceMaterial, string? language = null)
         {
+            string lang = string.IsNullOrWhiteSpace(language) ? "繁體中文" : language!.Trim();
+
             return
                 "你是資料整理者。請把下列內容整理成一個乾淨的【Markdown 表格】。\n\n" +
                 "主題 / 使用者要求：\n" + (userInput ?? "").Trim() + "\n\n" +
@@ -44,7 +71,7 @@ namespace Cat5201
                 "1. 只輸出一個 Markdown 表格，不要任何標題、說明、前後文字，不要程式碼圍欄(```）。\n" +
                 "2. 第一列為欄位標題，第二列為 |---|---| 分隔列，其後每列一筆資料。\n" +
                 "3. 每列欄位數一致；缺值填「—」。\n" +
-                "4. 用繁體中文；數字保留原始單位。\n" +
+                $"4. 用{lang}；數字保留原始單位，欄位標題要寫清楚單位與期間（例如「營收（億元，2025）」）。\n" +
                 "5. 嚴禁 ASCII 線框字元（┌ ┐ │ ─ 等），一律用標準 Markdown 管線符號 | 分隔。";
         }
 

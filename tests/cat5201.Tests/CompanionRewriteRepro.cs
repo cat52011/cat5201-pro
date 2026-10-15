@@ -36,22 +36,38 @@ namespace Cat5201.Tests
         }
 
         [Fact]
-        public void StrayPdfFromTheOldBugIsAlsoKeptInSync()
+        public void RewriteFollowsThePairingRecordAndNothingElse()
         {
             string dir = NewDir();
             string pptx = Path.Combine(dir, "法式簡報_20260925_210213.pptx");
             string chipPdf = Path.Combine(dir, "法式簡報_20260925_210218.pdf");
-            string strayPdf = Path.Combine(dir, "法式簡報_20260925_210213.pdf");
+            string otherPdf = Path.Combine(dir, "法式簡報_20260925_210213.pdf");
             File.WriteAllBytes(pptx, new byte[] { 1 });
             File.WriteAllBytes(chipPdf, new byte[] { 2 });
+            File.WriteAllBytes(otherPdf, new byte[] { 3 });
+            GeneratedFileCompanion.Register(pptx, chipPdf);
+
+            // 有配對記錄就只動那一份。之前的版本會把「同標題、五分鐘內」的 PDF 全部覆蓋，
+            // 連續產兩份同名簡報時會互相污染（Codex 指出的資料安全問題）。
+            Assert.Equal(new[] { chipPdf }, GeneratedFileCompanion.ResolveRewriteTargets(pptx).ToArray());
+        }
+
+        [Fact]
+        public void DeletedPairedPdfFallsBackInsteadOfRecreatingAnOrphan()
+        {
+            string dir = NewDir();
+            string pptx = Path.Combine(dir, "法式簡報_20260925_210213.pptx");
+            string strayPdf = Path.Combine(dir, "法式簡報_20260925_210213.pdf");
+            string chipPdf = Path.Combine(dir, "法式簡報_20260925_210218.pdf");
+            File.WriteAllBytes(pptx, new byte[] { 1 });
             File.WriteAllBytes(strayPdf, new byte[] { 3 });
-            GeneratedFileCompanion.Register(pptx, strayPdf);   // 舊 bug 留下的配對
+            File.WriteAllBytes(chipPdf, new byte[] { 2 });
+            GeneratedFileCompanion.Register(pptx, strayPdf);
 
-            var targets = GeneratedFileCompanion.ResolveRewriteTargets(pptx);
+            // 使用者把舊 bug 留下的孤兒檔刪掉之後，不該再生一個出來。
+            File.Delete(strayPdf);
 
-            // 兩份都要更新，使用者點哪一個都是最新的。
-            Assert.Contains(strayPdf, targets);
-            Assert.Contains(chipPdf, targets);
+            Assert.Equal(new[] { chipPdf }, GeneratedFileCompanion.ResolveRewriteTargets(pptx).ToArray());
         }
 
         [Fact]

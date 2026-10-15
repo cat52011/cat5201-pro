@@ -25,7 +25,29 @@ public static class NativeDeckStorage
         new XDocument(new XElement(XName.Get("deck", Namespace), JsonSerializer.Serialize(new Data(outline, cover, images, Fingerprint(part))))).Save(stream);
     }
 
-    public static Data? Read(string path)
+    /// <summary>這份 pptx 跟我們的編輯資料是什麼關係。</summary>
+    public enum State
+    {
+        /// <summary>裡面根本沒有我們的編輯資料（外部來源的簡報）。</summary>
+        Foreign,
+
+        /// <summary>是我們產的，而且沒有被外部程式改過——可以單頁編輯。</summary>
+        Native,
+
+        /// <summary>是我們產的，但有人在 PowerPoint 裡動過版面——內容讀得出來，但不可覆寫。</summary>
+        ManuallyEdited,
+    }
+
+    public sealed record ReadResult(Data? Data, State State);
+
+    /// <summary>
+    /// 讀取時連「為什麼不能編輯」一起回報。
+    ///
+    /// 只回 null 的話，呼叫端分不出「這是別人給的簡報」跟「這是我們產的、只是被手動改過」，
+    /// 於是兩種情況都只能顯示同一句「請開啟原始簡報查看設計」——
+    /// 後者其實內容完全讀得出來，使用者在預覽裡看到一片空白是沒道理的。
+    /// </summary>
+    public static ReadResult ReadDetailed(string path)
     {
         try
         {
@@ -36,21 +58,90 @@ public static class NativeDeckStorage
                 var root = XDocument.Load(stream).Root;
                 if (root?.Name != XName.Get("deck", Namespace)) continue;
                 var data = JsonSerializer.Deserialize<Data>(root.Value);
-                if (data?.Outline?.Slides == null) return null;
-                // PowerPoint edits can make the embedded outline stale. Never overwrite those edits.
-                if (data.ContentHash != Fingerprint(doc.PresentationPart)) return null;
+                if (data?.Outline?.Slides == null) return new ReadResult(null, State.Foreign);
+
                 foreach (var slide in data.Outline.Slides)
                     if (data.Images?.TryGetValue(slide.Order, out var image) == true) slide.ImageBytes = image;
-                return data;
+
+                // PowerPoint edits can make the embedded outline stale. Never overwrite those edits.
+                //
+                // 兩種指紋都接受：新版比對文字＋圖形幾何，舊版只比對文字。
+                // 只認新版的話，換演算法之前產出的簡報會全部被判定成「已手改」而失去單頁編輯——
+                // 那些檔案其實沒被動過，只是當初存的是另一套雜湊。
+                bool intact = data.ContentHash == Fingerprint(doc.PresentationPart) ||
+                              data.ContentHash == LegacyTextFingerprint(doc.PresentationPart);
+
+                return new ReadResult(data, intact ? State.Native : State.ManuallyEdited);
             }
         }
         catch (Exception ex) { AppLog.Warn("Deck", "讀取原生簡報編輯資料失敗", ex); }
-        return null;
+        return new ReadResult(null, State.Foreign);
     }
 
-    // 指紋只看「每一頁的文字」，不看整包 XML：PowerPoint 只要另存就會重寫整份 XML，
-    // 比對整包會讓所有簡報都被當成已手改（原生編輯因此完全失效）。文字變了才是真的被改過。
+    /// <summary>可安全覆寫的編輯資料；被手動改過或非我們產出時回 null。</summary>
+    public static Data? Read(string path)
+    {
+        var result = ReadDetailed(path);
+        return result.State == State.Native ? result.Data : null;
+    }
+
+    /// <summary>
+    /// 「這份簡報還是我們自己產的那一份嗎？」的指紋。
+    ///
+    /// 不能比對整包 XML：PowerPoint 只要另存就會重寫 XML，那樣每份簡報都會被當成已手改。
+    /// 也不能只比對文字：使用者在 PowerPoint 裡搬動圖片、改大小、換顏色而沒改字，
+    /// 我們就會以為沒被動過，重建時把他的調整全部洗掉。
+    ///
+    /// 所以比對「我們自己排出來的那些值」：每頁的形狀數量、每個形狀的名稱、位置、大小、文字，
+    /// 以及圖片數量。這些值在 PowerPoint 單純另存時不會變，使用者真的動了才會變。
+    /// </summary>
     private static string Fingerprint(PresentationPart part)
+    {
+        var sb = new StringBuilder();
+
+        foreach (var id in part.Presentation.SlideIdList!.Elements<DocumentFormat.OpenXml.Presentation.SlideId>())
+        {
+            var slide = ((SlidePart)part.GetPartById(id.RelationshipId!)).Slide;
+            sb.Append('\u0001');
+
+            foreach (var shape in slide.Descendants<DocumentFormat.OpenXml.Presentation.Shape>())
+            {
+                sb.Append(shape.NonVisualShapeProperties?.NonVisualDrawingProperties?.Name?.Value ?? "")
+                  .Append('\u0003');
+                AppendGeometry(sb, shape.ShapeProperties?.Transform2D);
+
+                foreach (var run in shape.Descendants<DocumentFormat.OpenXml.Drawing.Text>())
+                    sb.Append(run.Text).Append('\u0002');
+
+                sb.Append('\u0004');
+            }
+
+            foreach (var picture in slide.Descendants<DocumentFormat.OpenXml.Presentation.Picture>())
+            {
+                sb.Append("pic").Append('\u0003');
+                AppendGeometry(sb, picture.ShapeProperties?.Transform2D);
+                sb.Append('\u0004');
+            }
+        }
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(sb.ToString())));
+    }
+
+    private static void AppendGeometry(StringBuilder sb, DocumentFormat.OpenXml.Drawing.Transform2D? transform)
+    {
+        var offset = transform?.Offset;
+        var extents = transform?.Extents;
+        sb.Append(offset?.X?.Value ?? 0).Append(',')
+          .Append(offset?.Y?.Value ?? 0).Append(',')
+          .Append(extents?.Cx?.Value ?? 0).Append(',')
+          .Append(extents?.Cy?.Value ?? 0).Append('\u0003');
+    }
+
+    /// <summary>
+    /// 舊版指紋（只比對文字）。換成含幾何的版本之前產出的簡報都是用這套存的，
+    /// 讀取時仍要認得，否則那些檔案會無法單頁編輯。新檔一律用新版寫入，不再產生這種雜湊。
+    /// </summary>
+    private static string LegacyTextFingerprint(PresentationPart part)
     {
         var text = new StringBuilder();
         foreach (var id in part.Presentation.SlideIdList!.Elements<DocumentFormat.OpenXml.Presentation.SlideId>())

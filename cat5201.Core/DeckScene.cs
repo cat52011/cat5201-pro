@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -62,9 +62,38 @@ internal static class DeckScene
     internal static int CountRenderedImages(PresentationOutlinePayload outline, byte[]? cover)
         => Build(outline, cover).Sum(p => p.Elements.Count(e => e.Kind == "image"));
 
+    /// <summary>
+    /// 這一次允許「擠一點」：文字縮到最小可讀字級仍塞不下時，照樣排出來，不要丟例外。
+    ///
+    /// 為什麼需要這個開關：AddText 原本的設計是「縮不下去就丟例外，讓分頁去處理」，
+    /// 但分頁那層沒有接住它——例外一路往上拋到 AgentRuntime，被 catch 成一行警告，
+    /// 於是整份簡報憑空消失。2026-10-15 使用者實測三份簡報，兩份就是這樣沒有產出檔案，
+    /// 畫面上只說「主答案不受影響」，完全看不出簡報去哪了。
+    ///
+    /// 一頁字稍微擠，跟整份簡報做不出來，不是同一個等級的問題。
+    /// </summary>
+    [ThreadStatic] private static bool s_relaxedFit;
+
     internal static IReadOnlyList<DeckPage> Build(PresentationOutlinePayload outline, byte[]? cover)
     {
-        var art = DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic);
+        try
+        {
+            return BuildCore(outline, cover);
+        }
+        catch (InvalidOperationException ex)
+        {
+            AppLog.Warn("DeckScene",
+                "有一頁的文字縮到最小字級仍塞不下，改用最小字級重排（寧可擠一點，也不要整份簡報做不出來）", ex);
+
+            s_relaxedFit = true;
+            try { return BuildCore(outline, cover); }
+            finally { s_relaxedFit = false; }
+        }
+    }
+
+    private static IReadOnlyList<DeckPage> BuildCore(PresentationOutlinePayload outline, byte[]? cover)
+    {
+        var art = DeckArtDirection.ForOutline(outline);
         var L = LayoutFor(art);
         float contentW = Width - L.Left - L.Right;
 
@@ -72,6 +101,10 @@ internal static class DeckScene
         var slides = outline.Slides.OrderBy(s => s.Order).ToList();
         if (slides.Count == 0)
             slides.Add(new() { Order = 1, Kind = "cover", Heading = outline.Title });
+
+        // 頁尾的「X / Y」要用實際會印出來的頁數：內容太長會拆成續頁，
+        // 用大綱張數會印出「07 / 05」這種對不上的頁碼。先跑一次切塊算總數。
+        int totalPages = CountPages(slides, cover);
 
         foreach (var slide in slides)
         {
@@ -87,9 +120,7 @@ internal static class DeckScene
                            && lines.Count(b => !string.IsNullOrEmpty(PptxBuilder.FindKeyFigure(b))) >= 2;
             if (metrics || sources) image = null;
 
-            var chunks = Pack(lines, sources, metrics, image != null).ToList();
-            if (isCover) chunks.Insert(0, Array.Empty<string>());
-            if (chunks.Count == 0) chunks.Add(Array.Empty<string>());
+            var chunks = SplitIntoChunks(slide, cover);
 
             for (int chunk = 0; chunk < chunks.Count; chunk++)
             {
@@ -227,7 +258,7 @@ internal static class DeckScene
                         if (!bleedImage)
                             Text(L.Left, fy + 9, bandW - 120, 14,
                                 OneLine(kicker, bandW - 120, 9.5f, 1.2f), 9.5f, muted, track: 1.2f);
-                        Text(L.Left + bandW - 110, fy + 9, 110, 14, $"{pageNumber:00} / {TotalPages(outline):00}",
+                        Text(L.Left + bandW - 110, fy + 9, 110, 14, $"{pageNumber:00} / {totalPages:00}",
                             9.5f, muted, align: "r", track: 1.2f);
                     }
                 }
@@ -272,7 +303,7 @@ internal static class DeckScene
         Rect(L.Left, ruleY, image != null ? textW : contentW, L.RuleWeight, art.InverseInk, 34);
         if (!string.IsNullOrWhiteSpace(outline.Topic))
             Text(L.Left, ruleY + 14, subtitleW, 22,
-                OneLine(outline.Topic, subtitleW, 13.5f), 13.5f, muted, false, false, "l", 0);
+                OneLine(outline.Topic, subtitleW, 14f), 14f, muted, false, false, "l", 0);
 
         if (image != null)
             // 圖滿版壓到頁面右緣與上下緣（雜誌封面的作法），不留浮在半空中的小圖框。
@@ -458,7 +489,32 @@ internal static class DeckScene
 
     // ===== 內容切塊（維持 GPT 版的分頁保底：字不會被吃掉）=====
 
-    private static int TotalPages(PresentationOutlinePayload outline) => Math.Max(1, outline.Slides.Count);
+    /// <summary>
+    /// 實際會印出幾頁。跟 Build 用同一套判斷（哪些頁不配圖、內容怎麼切塊），
+    /// 兩邊分岔的話頁碼就會對不上，所以規則集中在 SplitIntoChunks。
+    /// </summary>
+    private static int CountPages(IReadOnlyList<PresentationSlidePayload> slides, byte[]? cover)
+        => Math.Max(1, slides.Sum(slide => SplitIntoChunks(slide, cover).Count));
+
+    /// <summary>把一張投影片的內容切成「實際頁面」的塊（封面多一塊；內容太長會有續頁）。</summary>
+    private static List<string[]> SplitIntoChunks(PresentationSlidePayload slide, byte[]? cover)
+    {
+        var lines = slide.Bullets.Where(b => !string.IsNullOrWhiteSpace(b)).SelectMany(SplitLong).ToArray();
+        bool isCover = string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase);
+        bool sources = string.Equals(slide.Kind, "sources", StringComparison.OrdinalIgnoreCase);
+
+        var image = isCover ? cover : slide.ImageBytes;
+        if (image != null && PptxBuilder.TryReadPngSize(image) == null) image = null;
+
+        bool metrics = lines.Length > 0 && lines.All(b => b.Length <= 100)
+                       && lines.Count(b => !string.IsNullOrEmpty(PptxBuilder.FindKeyFigure(b))) >= 2;
+        if (metrics || sources) image = null;
+
+        var chunks = Pack(lines, sources, metrics, image != null).ToList();
+        if (isCover) chunks.Insert(0, Array.Empty<string>());
+        if (chunks.Count == 0) chunks.Add(Array.Empty<string>());
+        return chunks;
+    }
 
     /// <summary>這段文字在指定寬度下實際要佔的高度（版面置中用）。</summary>
     private static float TextHeight(string text, float width, float size) => Wrap(text, width, size).Count * size * 1.4f;
@@ -527,7 +583,9 @@ internal static class DeckScene
         string latinFont, string eaFont, string align, float track)
     {
         List<string> lines;
-        float minimum = Math.Min(size, 12);
+        // 內文縮到 12pt 在投影時後排就看不清楚了；縮不下去時寧可分頁（Pack 會處理），
+        // 不要用「反正塞得下」換掉可讀性。小字標籤（頁碼、圖說）本來就小，不受此限。
+        float minimum = Math.Min(size, size >= 13f ? DeckQuality.MinBodyFontSize : 8f);
         do
         {
             lines = Wrap(text, w, size);
@@ -536,7 +594,15 @@ internal static class DeckScene
         } while (size >= minimum);
 
         if (size < minimum)
-            throw new InvalidOperationException("投影片文字超出版面，請精簡標題或增加頁數；已保留原內容，沒有截斷。");
+        {
+            // 預設仍然丟出去，讓上層有機會重排；但重排過一輪之後（s_relaxedFit）
+            // 就必須交得出東西——丟掉整份簡報從來不是比較好的選項。
+            if (!s_relaxedFit)
+                throw new InvalidOperationException("投影片文字超出版面，請精簡標題或增加頁數；已保留原內容，沒有截斷。");
+
+            size = minimum;
+            lines = Wrap(text, w, size);
+        }
 
         // 大標的收尾字：「…下半年展／望」這種孤字是排版事故，收窄行寬重排把它拉回來。
         for (int attempt = 0; attempt < 3 && lines.Count > 1 && size >= 20; attempt++)

@@ -22,5 +22,12 @@
         // §6 第一層輸出判斷的結果（先跑一次 API 決定要簡報/報告/表格之中哪幾個）；
         // null 代表此次未判斷（例如子代理委派），AgentRuntime 會退回關鍵字 + TaskType 行為。
         public OutputIntent? OutputIntent { get; init; }
+
+        /// <summary>
+        /// 還在跑的輸出判斷。給了這個就不用先 await——輸出判斷與「自動選模型」互不相依，
+        /// 一前一後排隊等於每個任務都白白多等一次 API 來回（實測約 1～2 秒）。
+        /// AgentRuntime 會在真正需要用到意圖的那一步才收這個結果。
+        /// </summary>
+        public System.Threading.Tasks.Task<OutputIntent?>? OutputIntentTask { get; init; }
     }
 }

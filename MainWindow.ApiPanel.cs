@@ -48,6 +48,30 @@ namespace Cat5201
             catch (Exception ex) { AppLog.Warn("Onboarding", "首次啟動精靈失敗（略過）", ex); }
         }
 
+        /// <summary>
+        /// 設定視窗右上角的「?」使用說明。
+        /// 自動版只在完全沒金鑰時出現一次，之後就沒有任何方式叫得出來——
+        /// 但那一頁講的是「你的內容會送去哪裡、金鑰怎麼存」，使用者本來就該隨時查得到。
+        /// </summary>
+        private void ShowOnboarding_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dlg = new OnboardingDialog(this);
+                if (dlg.ShowDialog() == true && dlg.EnteredKeys.Count > 0)
+                {
+                    ApiKeyStore.SetUserKeys(dlg.EnteredKeys.ToDictionary(kv => kv.Key, kv => (string?)kv.Value));
+                    _aiRouter.ResetServices();
+                    RefreshApiPanel();
+                    AppLog.Info("Onboarding", $"手動開啟的精靈儲存 {dlg.EnteredKeys.Count} 把金鑰");
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Onboarding", "手動開啟首次啟動說明失敗", ex);
+            }
+        }
+
         // ===== API 金鑰面板 =====
 
         // (env 變數名, 狀態文字框, 密碼框) 對應表，集中一次處理避免重複。
@@ -58,7 +82,6 @@ namespace Cat5201
             ("ANTHROPIC_API_KEY",  ApiStatus_Anthropic,  ApiKeyBox_Anthropic),
             ("GEMINI_API_KEY",     ApiStatus_Gemini,     ApiKeyBox_Gemini),
             ("PERPLEXITY_API_KEY", ApiStatus_Perplexity, ApiKeyBox_Perplexity),
-            ("GAMMA_API_KEY",      ApiStatus_Gamma,      ApiKeyBox_Gamma),
             ("GOOGLE_OAUTH_CLIENT_ID",     ApiStatus_GoogleClientId,     ApiKeyBox_GoogleClientId),
             ("GOOGLE_OAUTH_CLIENT_SECRET", ApiStatus_GoogleClientSecret, ApiKeyBox_GoogleClientSecret),
         };

@@ -21,7 +21,11 @@ namespace Cat5201
     {
         private static readonly Regex StampRegex = new(@"^(?<title>.*)_(?<stamp>\d{8}_\d{6})$", RegexOptions.Compiled);
         private static readonly TimeSpan MaxGap = TimeSpan.FromMinutes(5);
-        private sealed record Pair(string? Pdf, string SourceHash, string? PdfHash);
+        /// <summary>
+        /// 一份產出的配對記錄。DeliverableId 是這份產出的身分證：pptx 與它的對照 PDF 屬於同一組，
+        /// 更新與回復都以「組」為單位。沒有這個 id 時只能靠檔名與時間猜，連續產兩份同名簡報就會互相污染。
+        /// </summary>
+        private sealed record Pair(string? Pdf, string SourceHash, string? PdfHash, string? DeliverableId = null);
 
         // Explicit pairing wins over the legacy filename/time heuristic, including "no PDF".
         public static void Register(string sourcePath, string? pdfPath)
@@ -29,11 +33,39 @@ namespace Cat5201
             try
             {
                 string? pdf = pdfPath != null && File.Exists(pdfPath) ? pdfPath : null;
-                var pair = new Pair(pdf == null ? null : Path.GetFileName(pdf), Hash(sourcePath), pdf == null ? null : Hash(pdf));
+
+                // 同一份產出在多次重寫之間要保留同一個 id。
+                string id = ReadPair(sourcePath)?.DeliverableId ?? Guid.NewGuid().ToString("N");
+
+                var pair = new Pair(
+                    pdf == null ? null : Path.GetFileName(pdf),
+                    Hash(sourcePath),
+                    pdf == null ? null : Hash(pdf),
+                    id);
+
                 File.WriteAllText(sourcePath + ".preview.json", JsonSerializer.Serialize(pair));
             }
             catch (Exception ex) { AppLog.Warn("Preview", "無法記錄對照 PDF", ex); }
         }
+
+        private static Pair? ReadPair(string sourcePath)
+        {
+            try
+            {
+                string pairing = sourcePath + ".preview.json";
+                if (!File.Exists(pairing)) return null;
+                return JsonSerializer.Deserialize<Pair>(File.ReadAllText(pairing));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Preview", "讀取對照 PDF 配對失敗", ex);
+                return null;
+            }
+        }
+
+        /// <summary>這份產出的身分證（沒有配對記錄時回空字串）。</summary>
+        public static string DeliverableIdOf(string sourcePath)
+            => ReadPair(sourcePath)?.DeliverableId ?? "";
 
         private static string Hash(string path)
         {
@@ -59,32 +91,32 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(dir))
                 return new[] { Path.ChangeExtension(pptxPath, ".pdf") };
 
-            void Add(string? path)
+            // ① 配對記錄指定的那份（不驗雜湊——我們正要覆蓋它）。這是唯一可靠的來源：
+            //    它是產出當下寫下來的，跟檔名時間無關。
+            var pair = ReadPair(pptxPath);
+            if (!string.IsNullOrWhiteSpace(pair?.Pdf))
             {
-                if (string.IsNullOrWhiteSpace(path)) return;
-                if (!targets.Contains(path, StringComparer.OrdinalIgnoreCase))
-                    targets.Add(path!);
-            }
+                string paired = Path.Combine(dir, pair!.Pdf!);
 
-            // ① 配對記錄指定的那份（不驗雜湊——我們正要覆蓋它）。
-            try
-            {
-                string pairing = pptxPath + ".preview.json";
-                if (File.Exists(pairing))
+                // 配對的檔案還在才用它。使用者把它刪掉時不要又生一個沒人引用的孤兒檔，
+                // 改用下面的檔名 + 時間推測去找真正還在用的那份。
+                if (File.Exists(paired))
                 {
-                    var pair = JsonSerializer.Deserialize<Pair>(File.ReadAllText(pairing));
-                    if (!string.IsNullOrWhiteSpace(pair?.Pdf))
-                        Add(Path.Combine(dir, pair!.Pdf!));
+                    targets.Add(paired);
+                    return targets;
                 }
             }
-            catch (Exception ex) { AppLog.Warn("Preview", "讀取對照 PDF 配對失敗", ex); }
 
-            // ② 同標題、時間相近的 PDF（產出時 pptx 與 pdf 的時間戳常差幾秒，檔名因此不同）。
+            // ② 沒有配對記錄（舊檔或記錄毀損）：退回檔名 + 時間推測，但只取「時間最接近的一份」。
+            //    先前版本會把「同標題、五分鐘內」的 PDF 全部覆蓋，連續產兩份同名簡報就會互相污染。
             var (title, stamp) = SplitName(Path.GetFileNameWithoutExtension(pptxPath));
             if (!string.IsNullOrWhiteSpace(title))
             {
                 try
                 {
+                    string? best = null;
+                    TimeSpan bestGap = TimeSpan.MaxValue;
+
                     foreach (var pdf in Directory.GetFiles(dir, "*.pdf"))
                     {
                         var (pdfTitle, pdfStamp) = SplitName(Path.GetFileNameWithoutExtension(pdf));
@@ -93,14 +125,17 @@ namespace Cat5201
                         TimeSpan gap = stamp.HasValue && pdfStamp.HasValue
                             ? (stamp.Value - pdfStamp.Value).Duration()
                             : TimeSpan.Zero;
-                        if (gap <= MaxGap) Add(pdf);
+
+                        if (gap <= MaxGap && gap < bestGap) { best = pdf; bestGap = gap; }
                     }
+
+                    if (best != null) targets.Add(best);
                 }
                 catch (Exception ex) { AppLog.Warn("Preview", "掃描對照 PDF 失敗", ex); }
             }
 
             if (targets.Count == 0)
-                Add(Path.ChangeExtension(pptxPath, ".pdf"));
+                targets.Add(Path.ChangeExtension(pptxPath, ".pdf"));
 
             return targets;
         }
@@ -121,12 +156,11 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
                 return null;
 
-            string pairing = filePath + ".preview.json";
-            if (File.Exists(pairing))
+            if (File.Exists(filePath + ".preview.json"))
             {
                 try
                 {
-                    var pair = JsonSerializer.Deserialize<Pair>(File.ReadAllText(pairing));
+                    var pair = ReadPair(filePath);
                     if (pair?.Pdf == null || pair.Pdf != Path.GetFileName(pair.Pdf) || pair.SourceHash != Hash(filePath)) return null;
                     string pdf = Path.Combine(dir, pair.Pdf);
                     return File.Exists(pdf) && pair.PdfHash == Hash(pdf) ? pdf : null;

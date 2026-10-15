@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Text;
 
@@ -15,6 +15,28 @@ namespace Cat5201
         private static readonly object _lock = new();
         private static string? _dir;
         private static bool _cleaned;
+
+        /// <summary>
+        /// 把日誌改寫到別的資料夾（測試用）。
+        ///
+        /// 為什麼需要：測試跟程式共用 %LOCALAPPDATA%\cat5201-pro\logs。跑過一次測試之後，
+        /// 使用者的真實日誌裡會夾雜「餘額設定為 US$100」「+US$25（AI 呼叫・claude-opus-5）」
+        /// 這種假帳，查帳時第一件事變成分辨哪幾行是真的——2026-10-13 查餘額差異時就被這件事拖慢。
+        /// 日誌是診斷工具，被自己的測試污染就失去意義。
+        /// </summary>
+        public static void RedirectForTests(string directory)
+        {
+            lock (_lock)
+            {
+                try
+                {
+                    Directory.CreateDirectory(directory);
+                    _dir = directory;
+                    _cleaned = true;   // 測試目錄不需要清 30 天前舊檔
+                }
+                catch { /* 改不過去就照舊，測試不該因為日誌而失敗 */ }
+            }
+        }
 
         private static string? LogDir
         {

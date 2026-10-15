@@ -8,6 +8,9 @@ namespace Cat5201
 {
     public sealed class MemoryStore
     {
+        /// <summary>記憶檔的格式版本。改變 MemoryItem 欄位意義時要加一號。</summary>
+        private const int CurrentSchema = 1;
+
         private readonly string _memoryRootDir;
         private readonly string _memoryFilePath;
 
@@ -146,6 +149,32 @@ namespace Cat5201
             }
         }
 
+        /// <summary>
+        /// 取出並移除「只屬於某個存檔」的記憶（刪存檔用）。
+        /// 全域記憶一律保留——那是跨專案的個人化，跟著存檔一起刪等於把使用者的設定也毀了。
+        /// 回傳被移除的項目，呼叫端存進最近刪除，復原時再放回來。
+        /// </summary>
+        public IReadOnlyList<MemoryItem> TakeByFileKey(string fileKey)
+        {
+            if (string.IsNullOrWhiteSpace(fileKey))
+                return Array.Empty<MemoryItem>();
+
+            lock (_sync)
+            {
+                var taken = _cache
+                    .Where(x => x.Scope != MemoryScope.Global &&
+                                string.Equals(x.FileKey, fileKey, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                if (taken.Count == 0)
+                    return taken;
+
+                _cache.RemoveAll(taken.Contains);
+                SaveUnsafe();
+                return taken;
+            }
+        }
+
         /// <summary>清除全部使用者標記記憶（user_marked）。</summary>
         public int ClearUserMarked()
         {
@@ -237,8 +266,14 @@ namespace Cat5201
             {
                 var ranked = _cache
                     .Where(x => !string.Equals(x.Category, "user_preference", StringComparison.OrdinalIgnoreCase))
-                    .Where(x => string.IsNullOrWhiteSpace(fileKey) ||
-                                string.Equals(x.FileKey, fileKey, StringComparison.OrdinalIgnoreCase))
+                    // 存檔隔離只適用於「屬於某個存檔」的記憶。
+                    // 全域記憶與使用者明確標記的記憶（user_marked）是跨存檔的——它們在個人化裡
+                    // 就是列在全域清單、不分存檔顯示的，召回時若照 fileKey 濾掉，使用者會看到
+                    // 「明明記住了卻答不出來」：UI 說記得，提示詞裡卻沒有。
+                    .Where(x => string.IsNullOrWhiteSpace(fileKey)
+                                || string.Equals(x.FileKey, fileKey, StringComparison.OrdinalIgnoreCase)
+                                || x.Scope == MemoryScope.Global
+                                || string.Equals(x.Category, "user_marked", StringComparison.OrdinalIgnoreCase))
                     .Select(x => new
                     {
                         Item = x,
@@ -269,7 +304,8 @@ namespace Cat5201
                     }
 
                     var json = File.ReadAllText(_memoryFilePath);
-                    var list = JsonSerializer.Deserialize<List<MemoryItem>>(json);
+                    // 信封讀得懂舊的裸陣列（schema 0），升級不會讓既有記憶消失。
+                    var list = SchemaEnvelope.Read<List<MemoryItem>>(json).Data;
 
                     _cache = list ?? new List<MemoryItem>();
                 }
@@ -284,10 +320,7 @@ namespace Cat5201
 
         private void SaveUnsafe()
         {
-            var json = JsonSerializer.Serialize(_cache, new JsonSerializerOptions
-            {
-                WriteIndented = true
-            });
+            var json = SchemaEnvelope.Write(_cache, CurrentSchema);
 
             File.WriteAllText(_memoryFilePath, json);
         }

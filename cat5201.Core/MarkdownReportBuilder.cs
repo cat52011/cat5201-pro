@@ -36,8 +36,8 @@ namespace Cat5201
             sb.AppendLine("> " + string.Join(" ｜ ", BuildMetadataParts(request)));
             sb.AppendLine();
 
-            sb.AppendLine("## 內容");
-            sb.AppendLine();
+            // 不再包一層「## 內容」：報告正文自己就有摘要 / 關鍵發現 / 結論與建議等章節，
+            // 多一個沒有意義的外層標題只會出現在 Word 的導覽窗格與目錄裡，看起來像沒編輯過。
             string body = (request.FinalAnswer ?? "").Trim();
             sb.AppendLine(string.IsNullOrWhiteSpace(body) ? "（本次未產生內容。）" : body);
             sb.AppendLine();
@@ -66,31 +66,41 @@ namespace Cat5201
             return parts;
         }
 
-        private static void AppendSources(StringBuilder sb, AgentWorkspace? workspace)
+        /// <summary>
+        /// 這次實際查證過的來源（去重、有標題或網址的才算）。
+        /// 報告尾巴的「資料來源」章節與表格的來源註記共用同一份，兩份檔案講的來源才會一致。
+        /// </summary>
+        public static IReadOnlyList<VerifiedFactItem> Sources(AgentWorkspace? workspace, int max = 20)
         {
-            if (workspace == null)
-                return;
+            if (workspace == null || max <= 0)
+                return Array.Empty<VerifiedFactItem>();
 
-            var facts = workspace.GetByType("verified_facts")
+            return workspace.GetByType("verified_facts")
                 .Select(x => x.Payload)
                 .OfType<VerifiedFactPayload>()
                 .SelectMany(p => p.Facts ?? Array.Empty<VerifiedFactItem>())
-                .Where(f => f != null)
-                .ToList();
-
-            if (facts.Count == 0)
-                return;
-
-            // 只列出有來源標題或網址、且為數字事實來源的條目，避免報告尾巴塞滿背景雜訊。
-            var sourced = facts
-                .Where(f =>
-                    !string.IsNullOrWhiteSpace(f.SourceTitle) ||
-                    !string.IsNullOrWhiteSpace(f.SourceUrl))
+                .Where(f => f != null &&
+                            (!string.IsNullOrWhiteSpace(f.SourceTitle) || !string.IsNullOrWhiteSpace(f.SourceUrl)))
                 .GroupBy(f => (f.SourceTitle ?? "").Trim() + "|" + (f.SourceUrl ?? "").Trim())
                 .Select(g => g.First())
-                .Take(20)
+                .Take(max)
+                .ToList();
+        }
+
+        /// <summary>「資料來源：協會年報、米其林指南」這種一行註記；沒有來源就回空字串。</summary>
+        public static string SourceNote(AgentWorkspace? workspace, string? language, int max = 3)
+        {
+            var labels = Sources(workspace, max)
+                .Select(f => string.IsNullOrWhiteSpace(f.SourceTitle) ? f.SourceUrl.Trim() : f.SourceTitle.Trim())
+                .Where(l => !string.IsNullOrWhiteSpace(l))
                 .ToList();
 
+            return labels.Count == 0 ? "" : $"{ReportWords.Source(language)}：{string.Join("、", labels)}";
+        }
+
+        private static void AppendSources(StringBuilder sb, AgentWorkspace? workspace)
+        {
+            var sourced = Sources(workspace);
             if (sourced.Count == 0)
                 return;
 

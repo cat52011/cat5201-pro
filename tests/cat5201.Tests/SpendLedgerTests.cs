@@ -6,7 +6,7 @@ using Xunit;
 namespace Cat5201.Tests
 {
     /// <summary>花錢安全核心：帳本累計、持久化、每日上限判斷。這層錯＝使用者鈔票安全網失效。</summary>
-    [Collection("SpendLedger")]
+    [Collection("spend-ledger")]  // 全域帳本是共用靜態狀態：所有碰到它的測試必須在同一個集合裡循序執行
     public class SpendLedgerTests
     {
         private static string FreshDir()

@@ -42,7 +42,9 @@ namespace Cat5201.Tests
             var art = DeckArtDirection.ById("editorial");
             byte[] docx = DocxReportBuilder.Build(Report, art);
 
-            string xml = ReadPart(docx, "word/document.xml");
+            // 標題的字體與顏色住在 styles.xml（那才是「真正的樣式」的意思），
+            // 內文與引述條仍是直接格式，所以兩個 part 要一起看。
+            string xml = ReadPart(docx, "word/document.xml") + ReadPart(docx, "word/styles.xml");
             Assert.Contains(art.Ink, xml);                 // 內文色
             Assert.Contains(art.Accent, xml);              // 強調色（標題線、引述條、編號）
             Assert.Contains(art.DisplayEaFont, xml);       // 雜誌家族的中文大標字體

@@ -12,7 +12,7 @@ namespace Cat5201.Tests
     /// 釘住：混用模型各按各的價、服務端模型 ID 正規化、AsyncLocal 節點歸屬不串線、用途標籤、沖銷、估算標示。
     /// 會寫全域帳本 → 與 SpendLedgerTests 同一個 collection，避免平行執行互相污染。
     /// </summary>
-    [Collection("SpendLedger")]
+    [Collection("spend-ledger")]  // 全域帳本是共用靜態狀態：所有碰到它的測試必須在同一個集合裡循序執行
     public class UsageMeterTests
     {
         private static void FreshLedger()

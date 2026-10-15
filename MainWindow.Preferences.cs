@@ -50,9 +50,12 @@ namespace Cat5201
             List<string>? DriveUploadTypes = null,           // null＝全類型（向後相容）
             bool DriveConvertToGoogleFormat = false,
             string LastProjectPath = "",                     // P2-2 會話還原：最後開啟的專案
-            string DocumentEngine = "ClaudeSkills",          // 文件產出引擎（預設 Claude 文件技能）
+            string DocumentEngine = "Builtin",               // 文件產出引擎（預設內建快速版，見 MainWindow._documentEngine 的註解）
             Dictionary<string, string>? ProviderTopUp = null, // 各服務儲值金額："金額|起算日"（估算剩餘用）
-            bool ShowApiBalancePanel = false                 // 右下角 API 餘額小面板
+            bool ShowApiBalancePanel = false,                // 右下角 API 餘額小面板
+            bool CompanionPdfEnabled = true,                 // 產出檔案時是否同時附一份同內容 PDF
+            bool ShowDecisionPanel = true,                   // 右上角決策可視化視窗
+            string GeneratedFilesDir = ""                    // 產出檔案存放位置（空＝預設的 _generated）
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -141,6 +144,9 @@ namespace Cat5201
                     Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
                     DailyBudgetTwd: _dailyBudgetTwd,
                     AutoConfirmSeconds: _autoConfirmSeconds,
+                    CompanionPdfEnabled: DeliveryOptions.CompanionPdf,
+                    ShowDecisionPanel: _showDecisionPanel,
+                    GeneratedFilesDir: _generatedFilesDirOverride,
                     GoogleAutoUploadDrive: _googleAutoUploadDrive,
                     DriveUploadTypes: _driveUploadTypes.ToList(),
                     DriveConvertToGoogleFormat: _driveConvertGoogle,
@@ -213,9 +219,13 @@ namespace Cat5201
                 _videoModelTier = VeoModels.ParseTier(prefs.VideoModelTier);
                 _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
                 _showApiBalancePanel = prefs.ShowApiBalancePanel;
+                DeliveryOptions.CompanionPdf = prefs.CompanionPdfEnabled;
+                _showDecisionPanel = prefs.ShowDecisionPanel;
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
                 SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
                 _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
+                // Core 端要在「預留的同一刻」比對上限，所以預算也要同步過去。
+                SpendLedger.DailyBudgetTwd = _dailyBudgetTwd;
                 _autoConfirmSeconds = Math.Clamp(prefs.AutoConfirmSeconds, 0, 300);
                 _googleAutoUploadDrive = prefs.GoogleAutoUploadDrive;
                 _driveUploadTypes = prefs.DriveUploadTypes == null
@@ -224,6 +234,7 @@ namespace Cat5201
                 _driveConvertGoogle = prefs.DriveConvertToGoogleFormat;
                 _lastProjectPathFromPrefs = prefs.LastProjectPath ?? "";
                 _documentEngine = DocumentEngineHelper.Parse(prefs.DocumentEngine);
+                _generatedFilesDirOverride = prefs.GeneratedFilesDir ?? "";
                 LoadProviderTopUpStorage(prefs.ProviderTopUp);
             }
             catch (Exception ex)

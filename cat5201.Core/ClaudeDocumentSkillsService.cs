@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,19 +33,77 @@ namespace Cat5201
         private const string ApiVersion = "2023-06-01";
         private const string CodeExecutionBeta = "code-execution-2025-08-25";
         private const string FallbackBeta = "server-side-fallback-2026-07-01";
+        private const string ContextEditingBeta = "context-management-2025-06-27";
         public const string ToolTypeCurrent = "code_execution_20260521";
         public const string ToolTypeLegacy = "code_execution_20250825";
 
         // 伺服器端工具迴圈每 10 步會 pause_turn 一次；一份精緻簡報常需要數十步（讀技能、寫、轉圖、修）。
         private const int MaxRounds = 16;
+
+        /// <summary>
+        /// 伺服器端清理舊工具結果的門檻（context editing）。
+        ///
+        /// 沙箱迴圈每多跑一步，前面所有的 stdout、追蹤回溯、檔案清單就要再當作輸入送一次，
+        /// 費用隨步數平方成長——2026-10-15 一份京都簡報 12 分鐘 US$10.48，幾乎全是這樣堆出來的。
+        /// 超過門檻就把最舊的工具結果換成佔位字串（Claude 寫過的程式碼本身留著），
+        /// 只保留最近幾步；它要的是「我剛剛跑出什麼」，不是二十步前的那一段 stdout。
+        /// </summary>
+        private const int ContextEditTriggerTokens = 60_000;
+        private const int ContextEditKeepToolUses = 4;
+        private const int ContextEditClearAtLeastTokens = 10_000;
+
+        /// <summary>
+        /// 一份文件（含重試）最多可以花多少錢。超過就停手，改用內建版型。
+        ///
+        /// 原本只有「預留額度 US$3」——那只是記帳用的保留，不會真的攔住任何東西：
+        /// 2026-10-15 有一趟實際跑到 US$10.48 完全沒人喊停。
+        /// </summary>
+        public const double DefaultJobBudgetUsd = 3.0;
         private const int MaxOutputTokensPerRound = 64000;
+
+        /// <summary>
+        /// 送得出去的提示上限（估算 token）。模型的硬上限是 100 萬，這裡抓得保守一些，
+        /// 留空間給技能內容、工具結果與多輪對話——快要滿的請求就算送得出去也跑不完。
+        /// </summary>
+        private const int MaxPromptTokens = 400_000;
 
         /// <summary>
         /// 整趟技能產出的時間上限。沒有這個上限時，單一輪就可能在伺服器端跑十幾分鐘、燒掉幾美元，
         /// 最後還是沒有檔案（2026-09-25 實測：1 輪 45 步、15 分 21 秒、US$4.71、零產出）。
         /// 時間到就停下來改用內建版型——晚交不如早交一份能用的。
         /// </summary>
-        public static readonly TimeSpan DefaultBudget = TimeSpan.FromMinutes(8);
+        /// <summary>
+        /// 一次「產出這份文件」的總時間預算——含重試。
+        ///
+        /// 以前是單次上限：一次卡住就等完 8 分鐘，然後退回內建版型。現在呼叫端會在這個
+        /// 預算內一直重來（卡住的那次由 StallTimeout 提早結束，不會吃掉整個預算），
+        /// 所以把總額拉高一點，換到的是「大部分情況真的拿得到高品質檔案」。
+        /// </summary>
+        public static readonly TimeSpan DefaultBudget = TimeSpan.FromMinutes(14);
+
+        /// <summary>
+        /// 串流「多久沒有任何動靜」就當它斷了。
+        ///
+        /// 2026-10-13 的紀錄：連續四次簡報產出都停在「1 輪 / 0 步」，每一次都把 8 分鐘的
+        /// 總上限等完才退回內建版型——合計三十幾分鐘，使用者看到的只是「簡報很慢」。
+        /// 查下去是 message_start 之後串流就沒有再送任何事件（連輸入 token 都記下來了），
+        /// 也就是連線掛住，不是工作很久。總上限用來擋「真的跑很久」，擋不住「卡死」：
+        /// 卡死要用「上一個事件到現在隔了多久」來判斷。
+        /// </summary>
+        public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(150);
+
+        /// <summary>
+        /// 串流被中止時，用來補記「伺服器已經生成但我們看不到」的輸出量（token/秒）。
+        ///
+        /// Anthropic 的 output_tokens 只在 message_delta 送出，而中止的那一輪根本等不到那一刻——
+        /// 於是一整輪只會記到 message_start 的輸入 token。2026-10-13 實測：三次 8 分鐘的中止
+        /// 各只記到 US$0.03，官網那邊合計少算了約 US$5.4。
+        /// 伺服器那邊照樣在跑、照樣收費，記 0 等於把這筆錢從帳上抹掉。
+        /// 只有在「連一個字都沒串流出來」時才用時間推算；有串流內容時直接量那些字，那是真的。
+        /// 30 token/秒是保守值——2026-10-15 對帳顯示上一版的 60 會高估（Anthropic 多記約 17%）。
+        /// 上限不超過單輪的 max_tokens。
+        /// </summary>
+        private const double AbortedOutputTokensPerSecond = 30;
 
         private static readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
 
@@ -70,6 +128,9 @@ namespace Cat5201
 
         public sealed class Result
         {
+            /// <summary>這一次是「串流卡住」而不是真的做不出來——呼叫端據此決定要不要重來。</summary>
+            public bool Stalled { get; init; }
+
             public bool Success { get; init; }
             public IReadOnlyList<SkillFile> Files { get; init; } = Array.Empty<SkillFile>();
             /// <summary>Claude 最後給使用者的說明文字。</summary>
@@ -77,7 +138,13 @@ namespace Cat5201
             public string ErrorMessage { get; init; } = "";
             public int Rounds { get; init; }
             public int ToolSteps { get; init; }
+
+            /// <summary>這一趟（所有輪次）實際記到的費用，呼叫端用來決定還能不能再重試一次。</summary>
+            public double UsdCost { get; set; }
         }
+
+        /// <summary>跨輪累計的花費（Result 是回傳值，統計要在迴圈裡邊跑邊累加）。</summary>
+        private sealed class Spent { public double Usd; }
 
         /// <summary>
         /// 產出文件。wantedExtensions 例：[".pptx", ".pdf"]；同副檔名有多個時取最後產生的那個（通常是修正後的最終版）。
@@ -90,10 +157,57 @@ namespace Cat5201
             IReadOnlyCollection<string> wantedExtensions,
             Action<int, int>? onProgress,
             CancellationToken ct,
-            TimeSpan? budget = null)
+            TimeSpan? budget = null,
+            IReadOnlyList<ContainerFile>? containerFiles = null,
+            double maxUsd = 0)
+        {
+            var spent = new Spent();
+            Result result;
+            try
+            {
+                result = await RunAsync(systemPrompt, userPrompt, skillIds, wantedExtensions,
+                                        onProgress, ct, budget, containerFiles, maxUsd, spent)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                if (spent.Usd > 0)
+                    AppLog.Info("DocSkills", $"這一趟文件技能共計 US${spent.Usd:0.000}");
+            }
+
+            result.UsdCost = spent.Usd;
+            return result;
+        }
+
+        private async Task<Result> RunAsync(
+            string systemPrompt,
+            string userPrompt,
+            IReadOnlyList<string> skillIds,
+            IReadOnlyCollection<string> wantedExtensions,
+            Action<int, int>? onProgress,
+            CancellationToken ct,
+            TimeSpan? budget,
+            IReadOnlyList<ContainerFile>? containerFiles,
+            double maxUsd,
+            Spent spent)
         {
             if (!IsConfigured)
                 return Fail("找不到 ANTHROPIC_API_KEY。");
+
+            // 送出之前先量一次。超過上限就當場停下來，不要花好幾分鐘把它傳上去、
+            // 再收一句 prompt is too long —— 那幾分鐘的上傳與處理是會計費的，
+            // 而且畫面上跟「模型在思考」完全分不出來（2026-10-13：8.8 分鐘換到一行錯誤）。
+            int promptTokens = ModelCostEstimator.EstimateTokens(systemPrompt) +
+                               ModelCostEstimator.EstimateTokens(userPrompt);
+            if (promptTokens > MaxPromptTokens)
+            {
+                AppLog.Warn("DocSkills",
+                    $"提示過長（約 {promptTokens:N0} token，上限 {MaxPromptTokens:N0}），不送出。" +
+                    "請減少附件或縮短上游內容。");
+                return Fail(
+                    $"這次的內容太長了（約 {promptTokens:N0} token，模型上限 {MaxPromptTokens:N0}）。" +
+                    "常見原因是附件太大：可以拆成幾份、或先讓上一個節點做摘要再接過來。");
+            }
 
             var limit = budget ?? DefaultBudget;
             var started = DateTime.UtcNow;
@@ -107,15 +221,44 @@ namespace Cat5201
                 $"已達 {limit.TotalMinutes:0} 分鐘上限仍未產出檔案（{round} 輪 / {steps} 步，實際 {(DateTime.UtcNow - started).TotalMinutes:0.0} 分），已停止以免繼續累積費用。",
                 round, steps);
 
+            Result StalledResult(int round, int steps)
+            {
+                var r = Fail($"Claude 的回應中斷了（{StallTimeout.TotalSeconds:0} 秒沒有任何動靜，{round} 輪 / {steps} 步）。",
+                             round, steps);
+                return new Result
+                {
+                    Success = false,
+                    ErrorMessage = r.ErrorMessage,
+                    Rounds = r.Rounds,
+                    ToolSteps = r.ToolSteps,
+                    Stalled = true,
+                };
+            }
+
+            // 第一則訊息：先放要帶進容器的檔案（我們自己生的照片），再放文字。
+            // 沙箱裡沒有圖片模型，照片只能這樣進去。
+            var firstContent = new JsonArray();
+            foreach (var file in containerFiles ?? Array.Empty<ContainerFile>())
+            {
+                if (string.IsNullOrWhiteSpace(file.FileId)) continue;
+                firstContent.Add(new JsonObject
+                {
+                    ["type"] = "container_upload",
+                    ["file_id"] = file.FileId,
+                });
+            }
+            firstContent.Add(new JsonObject { ["type"] = "text", ["text"] = userPrompt ?? "" });
+
             var messages = new JsonArray
             {
-                new JsonObject { ["role"] = "user", ["content"] = userPrompt ?? "" }
+                new JsonObject { ["role"] = "user", ["content"] = firstContent }
             };
 
             string? containerId = null;
             string toolType = ToolTypeCurrent;
             bool useFallbacks = true;
             bool useCache = true;
+            bool useContextEditing = true;
             var fileIds = new List<string>();
             var finalText = new StringBuilder();
             int toolSteps = 0;
@@ -129,12 +272,28 @@ namespace Cat5201
                     round++;
                     onProgress?.Invoke(round, toolSteps);
 
-                    var body = BuildRequestBody(_model, systemPrompt, messages, skillIds, containerId, toolType, useFallbacks, useCache);
+                    var body = BuildRequestBody(_model, systemPrompt, messages, skillIds, containerId, toolType, useFallbacks, useCache, useContextEditing);
+
+                    // 送出去的整包有多大。
+                    //
+                    // 2026-10-15：我們的提示只有 1,419 字，伺服器卻回
+                    // prompt is too long: 1,270,713 tokens。膨脹不在 messages 裡，
+                    // 但沒有量過整包就只能猜。第一輪量一次就好，不要每輪洗版。
+                    if (round == 1)
+                    {
+                        string json = body.ToJsonString();
+                        AppLog.Info("DocSkills",
+                            $"請求整包 {json.Length:N0} 字元（system {systemPrompt.Length:N0}、" +
+                            $"messages {messages.ToJsonString().Length:N0}、技能 {string.Join("/", skillIds)}）");
+                    }
 
                     using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages");
                     req.Headers.Add("x-api-key", _apiKey);
                     req.Headers.Add("anthropic-version", ApiVersion);
-                    req.Headers.Add("anthropic-beta", useFallbacks ? $"{CodeExecutionBeta},{FallbackBeta}" : CodeExecutionBeta);
+                    var betas = new List<string> { CodeExecutionBeta };
+                    if (useFallbacks) betas.Add(FallbackBeta);
+                    if (useContextEditing) betas.Add(ContextEditingBeta);
+                    req.Headers.Add("anthropic-beta", string.Join(",", betas));
                     req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
                     req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
 
@@ -159,6 +318,13 @@ namespace Cat5201
                             round--;
                             continue;
                         }
+                        if ((int)resp.StatusCode == 400 && useContextEditing && err.Contains("context", StringComparison.OrdinalIgnoreCase))
+                        {
+                            AppLog.Warn("DocSkills", "context editing 參數不被接受，改為不帶重送：" + Shorten(err, 300));
+                            useContextEditing = false;
+                            round--;
+                            continue;
+                        }
                         if ((int)resp.StatusCode == 400 && toolType == ToolTypeCurrent && err.Contains("code_execution", StringComparison.OrdinalIgnoreCase))
                         {
                             AppLog.Warn("DocSkills", "新版 code_execution 工具 ID 不被接受，改用舊版：" + Shorten(err, 300));
@@ -172,21 +338,47 @@ namespace Cat5201
                     }
 
                     var assembler = new SseMessageAssembler();
+                    var roundStarted = DateTime.UtcNow;
+
+                    // 這一輪自己的逾時：每收到一個事件就重新計時，連續沒動靜才算卡死。
+                    using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    stall.CancelAfter(StallTimeout);
+
                     try
                     {
                         using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
                         using var reader = new StreamReader(stream, Encoding.UTF8);
-                        await assembler.ReadAsync(reader, ct).ConfigureAwait(false);
+                        await assembler.ReadAsync(
+                            reader,
+                            stall.Token,
+                            onActivity: () => { try { stall.CancelAfter(StallTimeout); } catch (ObjectDisposedException) { } })
+                            .ConfigureAwait(false);
                     }
                     catch (OperationCanceledException)
                     {
-                        // 已產生的用量照樣計費。
-                        RecordUsage(assembler.Message, "已取消（部分用量）");
+                        // 已產生的用量照樣計費，而且要補上「看不到的那一段」——
+                        // 伺服器在我們放棄之前一直在生成，那些 output token 不會因為我們斷線就不收錢。
+                        double abortedUsd = EstimateAbortedOutputUsd(
+                            (string?)assembler.Message["model"] ?? _model,
+                            DateTime.UtcNow - roundStarted,
+                            StreamedTextLength(assembler.Message));
+
+                        spent.Usd += RecordUsage(assembler.Message, round, "串流中止（輸出量為估算）", abortedUsd);
+
+                        // 卡死（這一輪沒動靜）與真的跑超過總上限，對使用者是兩件不同的事，
+                        // 而且只有前者應該馬上放棄。使用者自己按取消則照原樣往外丟。
+                        if (stall.IsCancellationRequested && !deadline.IsCancellationRequested)
+                        {
+                            AppLog.Warn("DocSkills",
+                                $"文件技能串流卡住 {StallTimeout.TotalSeconds:0} 秒無回應，提前放棄：{round} 輪 / {toolSteps} 步");
+                            return StalledResult(round, toolSteps);
+                        }
+
                         throw;
                     }
 
                     var message = assembler.Message;
-                    RecordUsage(message);
+                    spent.Usd += RecordUsage(message, round);
 
                     if (!string.IsNullOrWhiteSpace(assembler.StreamError))
                     {
@@ -202,6 +394,17 @@ namespace Cat5201
 
                     string roundText = ExtractFinalText(content);
                     string stopReason = (string?)message["stop_reason"] ?? "";
+
+                    // 還沒做完、而且錢已經花到上限：再送一輪只會更貴，而且多半還是做不出來。
+                    if (stopReason == "pause_turn" && maxUsd > 0 && spent.Usd >= maxUsd)
+                    {
+                        AppLog.Warn("DocSkills",
+                            $"已達費用上限 US${maxUsd:0.00}（實際 US${spent.Usd:0.000}，{round} 輪 / {toolSteps} 步），停止。");
+                        return Fail(
+                            $"已達這份文件的費用上限 US${maxUsd:0.00}（實際已用 US${spent.Usd:0.00}，{round} 輪 / {toolSteps} 步），" +
+                            "已停止以免繼續累積費用。",
+                            round, toolSteps);
+                    }
 
                     if (stopReason == "pause_turn")
                     {
@@ -304,13 +507,19 @@ namespace Cat5201
             string? containerId,
             string toolType,
             bool useFallbacks,
-            bool useCache = true)
+            bool useCache = true,
+            bool useContextEditing = true)
         {
             var skills = new JsonArray();
             foreach (var id in skillIds.Distinct(StringComparer.OrdinalIgnoreCase))
                 skills.Add(new JsonObject { ["type"] = "anthropic", ["skill_id"] = id, ["version"] = "latest" });
 
-            var container = new JsonObject { ["skills"] = skills };
+            // 沒有要掛技能時就不要送 skills（空陣列意義不明）。
+            // 簡報走的就是這條路：一樣由 Claude 在沙箱裡排版，只是不載入 pptx 技能那包
+            // ——2026-10-15 量到它一個人就注入 118 萬 token，而我們的請求只有 1.5 萬。
+            var container = new JsonObject();
+            if (skills.Count > 0)
+                container["skills"] = skills;
             if (!string.IsNullOrWhiteSpace(containerId))
                 container["id"] = containerId;
 
@@ -333,6 +542,23 @@ namespace Cat5201
             // 自動提示快取：pause_turn 續跑每輪都重送整段對話與技能內容，快取讀取只收 1 折（實測不開快取時一張標題頁就吃 55k 輸入 token）。
             if (useCache)
                 body["cache_control"] = new JsonObject { ["type"] = "ephemeral" };
+
+            // 伺服器端清掉舊的工具結果：沙箱迴圈的費用幾乎全來自「每一步都把前面所有 stdout 再送一次」。
+            // clear_tool_inputs 不開＝Claude 自己寫過的程式碼留著，被清掉的只有輸出。
+            if (useContextEditing)
+                body["context_management"] = new JsonObject
+                {
+                    ["edits"] = new JsonArray
+                    {
+                        new JsonObject
+                        {
+                            ["type"] = "clear_tool_uses_20250919",
+                            ["trigger"] = new JsonObject { ["type"] = "input_tokens", ["value"] = ContextEditTriggerTokens },
+                            ["keep"] = new JsonObject { ["type"] = "tool_uses", ["value"] = ContextEditKeepToolUses },
+                            ["clear_at_least"] = new JsonObject { ["type"] = "input_tokens", ["value"] = ContextEditClearAtLeastTokens },
+                        }
+                    }
+                };
 
             return body;
         }
@@ -448,11 +674,46 @@ namespace Cat5201
 
         // ===== 內部 =====
 
-        private void RecordUsage(JsonObject message, string note = "")
+        /// <summary>要帶進沙箱的檔案：已經上傳到 Files API，用 file_id 引用。</summary>
+        public sealed record ContainerFile(string FileId, string FileName);
+
+        /// <summary>
+        /// 這一次的失敗值得重來嗎。
+        ///
+        /// 卡住、跑了步驟卻沒交檔＝值得重來（同一份提示再送一次就成功過）。
+        /// 但「提示太長」「金鑰無效」「被拒絕」這種是送幾次都一樣的——重試只是再浪費一次
+        /// 幾分鐘的等待。2026-10-13 的紀錄：第 1 次被退回 prompt is too long（花了 8.8 分鐘），
+        /// 第 2 次原封不動再送，又燒掉剩下的 5.2 分鐘。
+        /// </summary>
+        public static bool IsRetryable(Result result)
+        {
+            if (result == null || result.Success)
+                return false;
+
+            string err = result.ErrorMessage ?? "";
+            string[] permanent =
+            {
+                "too long", "max_tokens", "invalid_request", "authentication", "費用上限",
+                "permission", "not_found", "拒絕", "找不到 ANTHROPIC_API_KEY",
+            };
+            foreach (var p in permanent)
+                if (err.Contains(p, StringComparison.OrdinalIgnoreCase))
+                    return false;
+
+            return result.Stalled || result.ToolSteps > 0 || result.Rounds <= 1;
+        }
+
+        /// <summary>
+        /// 記這一輪的用量，並回傳金額。
+        ///
+        /// 逐輪寫進日誌是刻意的：快取有沒有命中、伺服器有沒有幫我們清掉舊的工具結果，
+        /// 不寫下來就只能看到最後一個總額，然後對著它猜。
+        /// </summary>
+        private double RecordUsage(JsonObject message, int round, string note = "", double extraUsd = 0)
         {
             var usage = message["usage"] as JsonObject;
             if (usage == null)
-                return;
+                return 0;
 
             int input = ReadInt(usage, "input_tokens");
             int output = ReadInt(usage, "output_tokens");
@@ -465,11 +726,59 @@ namespace Cat5201
                 ModelCostEstimator.FromUsage(modelId, cacheWrite, 0).UsdCost * ModelCostEstimator.CacheWriteMultiplier +
                 ModelCostEstimator.FromUsage(modelId, cacheRead, 0).UsdCost * ModelCostEstimator.CacheReadMultiplier(modelId);
 
-            UsageMeter.RecordLlm(modelId, input, output, note: note, extraUsd: cacheUsd);
+            var record = UsageMeter.RecordLlm(modelId, input, output, note: note, extraUsd: cacheUsd + Math.Max(0, extraUsd));
+
+            int cleared = 0;
+            if (message["context_management"]?["applied_edits"] is JsonArray edits)
+                foreach (var e in edits)
+                    cleared += ReadInt(e as JsonObject, "cleared_input_tokens");
+
+            AppLog.Info("DocSkills",
+                $"第 {round} 輪用量：輸入 {input:N0}（快取讀 {cacheRead:N0}／寫 {cacheWrite:N0}）、輸出 {output:N0}" +
+                (cleared > 0 ? $"、伺服器清掉舊工具結果 {cleared:N0}" : "") +
+                $" → US${(record?.UsdCost ?? 0):0.000}" +
+                (string.IsNullOrEmpty(note) ? "" : $"（{note}）"));
+
+            return record?.UsdCost ?? 0;
         }
 
-        private static int ReadInt(JsonObject obj, string key)
-            => obj[key] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
+        /// <summary>
+        /// 中止的那一輪，伺服器已經生成多少輸出（以美元計）。
+        ///
+        /// 有串流出來的文字就量那些字——那是真的，不是猜的。
+        /// 一個字都沒收到時才退回「時間 × 保守速率」，並標示為估算。
+        /// </summary>
+        private static double EstimateAbortedOutputUsd(string? model, TimeSpan elapsed, int streamedChars)
+        {
+            string modelId = ModelCostEstimator.ResolvePricingModelId(model);
+
+            int tokens = streamedChars > 0
+                ? ModelCostEstimator.EstimateTokens(new string('x', Math.Min(streamedChars, 400_000)))
+                : (int)Math.Max(0, elapsed.TotalSeconds * AbortedOutputTokensPerSecond);
+
+            tokens = Math.Min(tokens, MaxOutputTokensPerRound);
+            return tokens <= 0 ? 0 : ModelCostEstimator.FromUsage(modelId, 0, tokens).UsdCost;
+        }
+
+        /// <summary>這一輪實際串流出來的文字長度（含思考段）——中止時用來估算已經產生的輸出。</summary>
+        private static int StreamedTextLength(JsonObject message)
+        {
+            if (message["content"] is not JsonArray content)
+                return 0;
+
+            int total = 0;
+            foreach (var block in content)
+            {
+                if (block is not JsonObject obj) continue;
+                total += ((string?)obj["text"] ?? "").Length;
+                total += ((string?)obj["thinking"] ?? "").Length;
+            }
+
+            return total;
+        }
+
+        private static int ReadInt(JsonObject? obj, string key)
+            => obj?[key] is JsonValue v && v.TryGetValue<int>(out var i) ? i : 0;
 
         private async Task<string?> TryGetFileNameAsync(string fileId, CancellationToken ct)
         {
@@ -532,7 +841,11 @@ namespace Cat5201
 
             private readonly Dictionary<int, StringBuilder> _partialJson = new();
 
-            public async Task ReadAsync(TextReader reader, CancellationToken ct)
+            /// <param name="onActivity">
+            /// 每讀到一行就呼叫一次。呼叫端用它重設「沒動靜就放棄」的計時器——
+            /// 沒有這個回報，就只能用一個很長的總上限去等，而卡死跟工作很久看起來一模一樣。
+            /// </param>
+            public async Task ReadAsync(TextReader reader, CancellationToken ct, Action? onActivity = null)
             {
                 string? eventName = null;
                 var data = new StringBuilder();
@@ -540,9 +853,14 @@ namespace Cat5201
                 while (true)
                 {
                     ct.ThrowIfCancellationRequested();
-                    string? line = await reader.ReadLineAsync().ConfigureAwait(false);
+
+                    // 帶 token 的多載：不帶的話，串流完全沒有資料時會卡在這裡，
+                    // 上面那行檢查永遠不會再被執行到。
+                    string? line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
                     if (line == null)
                         break;
+
+                    onActivity?.Invoke();
 
                     if (line.Length == 0)
                     {

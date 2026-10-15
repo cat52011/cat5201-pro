@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -9,15 +9,16 @@ namespace Cat5201.Tests
         [Theory]
         [InlineData(PresentationEngine.Claude)]
         [InlineData(PresentationEngine.Gpt)]
-        [InlineData(PresentationEngine.Gamma)]
         public void RoundTrip_Preserves(PresentationEngine engine)
             => Assert.Equal(engine, PresentationEngineHelper.Parse(PresentationEngineHelper.ToStorageValue(engine)));
 
         [Theory]
         [InlineData("gpt", PresentationEngine.Gpt)]
         [InlineData("openai", PresentationEngine.Gpt)]
-        [InlineData("gamma", PresentationEngine.Gamma)]
-        [InlineData("GAMMA", PresentationEngine.Gamma)]
+        // Gamma 已從介面下架：舊的存檔值要安靜地轉回 Claude，不能讓人卡在一個選不到的引擎上。
+        [InlineData("gamma", PresentationEngine.Claude)]
+        [InlineData("GAMMA", PresentationEngine.Claude)]
+        [InlineData("2", PresentationEngine.Claude)]
         public void Parse_KnownAliases(string raw, PresentationEngine expected)
             => Assert.Equal(expected, PresentationEngineHelper.Parse(raw));
 

@@ -25,7 +25,10 @@ namespace Cat5201
 
         public static byte[] Build(string markdownContent) => Build(markdownContent, null);
 
-        public static byte[] Build(string markdownContent, DeckArtDirection? art)
+        public static byte[] Build(string markdownContent, DeckArtDirection? art) => Build(markdownContent, art, null);
+
+        /// <param name="language">本次輸出語言（空＝繁體中文）。表 N / 圖 N 這些用語要跟本文同語言。</param>
+        public static byte[] Build(string markdownContent, DeckArtDirection? art, string? language)
         {
             string markdown = (markdownContent ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
             var lines = markdown.Split('\n').ToList();
@@ -90,7 +93,7 @@ namespace Cat5201
                             col.Item().PaddingBottom(6);
                         }
 
-                        RenderLines(col, lines.Skip(bodyStart).ToArray(), art, displayFont);
+                        RenderLines(col, lines.Skip(bodyStart).ToArray(), art, displayFont, language);
                     });
 
                     // 頁尾：髮絲線 + 頁碼（商業家族加上 X / Y，雜誌只給頁碼）。
@@ -119,11 +122,16 @@ namespace Cat5201
             return t.Length <= max ? t : t[..max] + "…";
         }
 
-        private static void RenderLines(ColumnDescriptor col, string[] lines, DeckArtDirection art, string displayFont)
+        private static void RenderLines(
+            ColumnDescriptor col, string[] lines, DeckArtDirection art, string displayFont, string? language)
         {
             bool editorial = art.Family == "editorial";
             string ink = "#" + art.Ink, muted = "#" + art.Muted, accent = "#" + art.Accent;
             bool inFence = false;
+
+            // 表與圖各自連號，內文才能寫「如表 2 所示」；編號要跟 docx 那份一致。
+            int tableNumber = 0, figureNumber = 0;
+            string? pendingCaption = null;
 
             for (int i = 0; i < lines.Length; i++)
             {
@@ -152,15 +160,30 @@ namespace Cat5201
                         if (System.IO.File.Exists(imgPath))
                         {
                             byte[] imgBytes = System.IO.File.ReadAllBytes(imgPath);
+                            // 圖說一定要標明是 AI 生成的示意圖——讀者當成實景照片就被誤導了。
+                            string alt = imgMatch.Groups[1].Value.Trim();
+                            string note = ReportWords.AiIllustration(language);
+                            string figureCaption = ReportWords.Caption(
+                                language, ReportWords.Figure(language), ++figureNumber,
+                                alt.Length > 0 ? $"{alt}（{note}）" : note);
+
                             col.Item().PaddingVertical(10).Column(image =>
                             {
                                 image.Item().MaxHeight(300).Image(imgBytes).FitArea();
-                                image.Item().PaddingTop(5).Text("圖為 AI 生成的示意畫面")
+                                image.Item().PaddingTop(5).Text(figureCaption)
                                     .FontSize(8.5f).FontColor(muted).LetterSpacing(0.12f);
                             });
                         }
                     }
                     catch (Exception ex) { AppLog.Warn("PdfBuilder", $"配圖嵌入失敗，PDF 將缺這張圖：{imgPath}", ex); }
+                    continue;
+                }
+
+                // 表格說明行（只有下一個非空行真的是表格時才吃掉）
+                string? captionText = ReportWords.TryCaptionText(rawLine);
+                if (captionText != null && NextNonEmptyStartsTable(lines, i + 1))
+                {
+                    pendingCaption = captionText;
                     continue;
                 }
 
@@ -174,6 +197,12 @@ namespace Cat5201
                         rows.Add(SplitRowCells(lines[j]));
                         j++;
                     }
+                    // 表說在表格上方，跟 docx 同一套編號。
+                    col.Item().PaddingTop(10).PaddingBottom(4)
+                        .Text(ReportWords.Caption(language, ReportWords.Table(language), ++tableNumber, pendingCaption))
+                        .FontSize(8.5f).FontColor(muted).LetterSpacing(0.12f);
+                    pendingCaption = null;
+
                     RenderTable(col, rows, art);
                     i = j - 1;
                     continue;
@@ -296,6 +325,18 @@ namespace Cat5201
                     }
                 }
             });
+        }
+
+        /// <summary>從 index 起的第一個非空行是不是一個 Markdown 表格的開頭。</summary>
+        private static bool NextNonEmptyStartsTable(string[] lines, int index)
+        {
+            for (int i = index; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                    continue;
+                return IsTableRow(lines[i]) && i + 1 < lines.Length && IsTableSeparator(lines[i + 1]);
+            }
+            return false;
         }
 
         private static bool IsTableRow(string line)

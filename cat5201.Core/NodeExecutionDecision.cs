@@ -57,6 +57,9 @@ namespace Cat5201
         // Memory v1 視覺化：本次召回的偏好 / 記憶統計。
         public MemoryRecallStats MemoryRecall { get; set; } = MemoryRecallStats.Empty;
 
+        /// <summary>這次實際生效的個人化摘要（採用／被本次請求覆寫）。</summary>
+        public string EffectivePreferences { get; set; } = "";
+
         // §6 第一層輸出判斷的白話摘要（報告 / 表格 / 簡報 / 純文字），給決策窗顯示。
         public string OutputIntentSummary { get; set; } = "";
     }

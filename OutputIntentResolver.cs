@@ -100,6 +100,9 @@ namespace Cat5201
   這與 image 不同：image 是要一張獨立的圖檔，illustrations 是簡報／報告裡面要配圖。
   使用者明說『不要圖』『純文字』時一律 false。
 - slides：使用者有沒有指定投影片張數。有就填數字，沒有填 0。『約五頁』『5 頁左右』也算指定（填 5）。
+- language：使用者這次有沒有明確指定輸出語言（例如「用英文寫」「日本語で」「make it in English」）。
+  有就填語言名稱（繁體中文 / English / 日本語…），沒有明確指定就填空字串。
+  注意：使用者用什麼語言發問，不代表他指定了輸出語言——要他真的講了才算。
 
 你只能輸出 JSON，不要任何多餘文字、不要 markdown：
 
@@ -110,7 +113,8 @@ namespace Cat5201
   ""image"": true/false,
   ""video"": true/false,
   ""illustrations"": true/false,
-  ""slides"": 0
+  ""slides"": 0,
+  ""language"": """"
 }
 
 使用者可能用任何語言（繁中、簡中、英文、日文…），請依語意判斷，不要依賴特定字詞。
@@ -179,6 +183,7 @@ $@"使用者輸入：
                     WantsVideo = GetBool(root, "video"),
                     WantsIllustrations = GetBool(root, "illustrations"),
                     RequestedSlides = GetInt(root, "slides"),
+                    RequestedLanguage = GetString(root, "language"),
                     Source = "api:" + raw.Trim()
                 };
             }
@@ -187,6 +192,11 @@ $@"使用者輸入：
                 return null;
             }
         }
+
+        private static string GetString(JsonElement root, string name)
+            => root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String
+                ? (v.GetString() ?? "").Trim()
+                : "";
 
         private static int GetInt(JsonElement root, string name)
         {

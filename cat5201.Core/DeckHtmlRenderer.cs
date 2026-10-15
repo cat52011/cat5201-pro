@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -16,7 +16,7 @@ public static class DeckHtmlRenderer
     {
         var cover = slideImages?.FirstOrDefault();
         var pages = DeckScene.Build(outline, cover);
-        var art = DeckArtDirection.ForTopic(outline.Title + " " + outline.Topic);
+        var art = DeckArtDirection.ForOutline(outline);
         string imageCost = ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, "high");
 
         var html = new StringBuilder("<!doctype html><html lang='zh-TW'><meta charset='utf-8'><style>")

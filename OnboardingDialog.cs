@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -20,6 +20,20 @@ namespace Cat5201
     /// </summary>
     public sealed class OnboardingDialog : Window
     {
+        /// <summary>第一次打開時的使用教學：左邊是動作，右邊是為什麼。</summary>
+        private static readonly (string Step, string Detail)[] Tutorial =
+        {
+            ("新增節點", "在畫布空白處雙擊，打一句話就送出。問答、報告、簡報、表格、圖片、影片都在同一個輸入框，程式自己判斷要產出什麼。"),
+            ("接成流程", "拖節點左上或右上的小圓點：拖到空白處＝生一個下游節點，拖到另一個節點上＝把它接成下游。右鍵連接線可以切換成藍色虛線（上游跑完自動往下跑）。"),
+            ("匯流", "兩條以上的藍線接到同一個節點，它會等所有上游都跑完才開始——適合「分頭分析再合併」。"),
+            ("看它怎麼想", "右下角的決策窗會攤開每一次執行：判成什麼任務、為什麼挑這個模型、查了哪些來源、花了多少錢。"),
+            ("控制花費", "個人化可以設每日上限；超過會先問你要不要繼續。API 分頁填入官網餘額後，每一筆花費會即時扣。"),
+            ("記憶", "節點右鍵「加入記憶」記住長期事實；個人化的「記憶與偏好」則決定回答的語言與風格。"),
+            // API 分頁原本在金鑰欄底下講這件事，但那段小字已經拿掉——
+            // 金鑰存在哪、怎麼清除，是使用者隨時該查得到的，所以收進這份說明。
+            ("金鑰與隱私", "金鑰以 Windows DPAPI 加密存在本機，只有你的 Windows 帳號解得開，不會上傳。設定 → API 可隨時補齊：輸入框留空＝不變更，按該列「清除」才會移除。"),
+        };
+
         private static readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(12) };
 
         private readonly Dictionary<string, PasswordBox> _boxes = new();
@@ -62,14 +76,14 @@ namespace Cat5201
 
             root.Children.Add(new TextBlock
             {
-                Text = "👋 歡迎使用 cat5201-pro",
+                Text = "歡迎使用 cat5201-pro",
                 FontSize = 19, FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1E)),
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock
             {
-                Text = "本程式採 BYO-key：使用你自己的 API 金鑰，成本透明、資料不經第三方。\n金鑰以 Windows DPAPI 加密存本機（之後隨時可在 設定 → API 補齊）。",
+                Text = "本程式採 BYO-key：使用你自己的 API 金鑰，成本透明。你的內容會直接送往你選擇的模型供應商，不經過開發者的伺服器。\n金鑰以 Windows DPAPI 加密存本機（之後隨時可在 設定 → API 補齊）。",
                 FontSize = 12, LineHeight = 18,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x90)),
                 TextWrapping = TextWrapping.Wrap,
@@ -79,7 +93,7 @@ namespace Cat5201
             // 並在每家旁給「取得金鑰」直達連結，省去使用者自己找申請頁。
             root.Children.Add(new TextBlock
             {
-                Text = "👉 只要填「一把」金鑰就能開始用，沒填的功能會自動略過。",
+                Text = "只要填「一把」金鑰就能開始用，沒填的功能會自動略過。",
                 FontSize = 12.5, FontWeight = FontWeights.SemiBold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x1F, 0x7A, 0x4D)),
                 TextWrapping = TextWrapping.Wrap,
@@ -152,15 +166,45 @@ namespace Cat5201
                 root.Children.Add(row);
             }
 
-            // 快速上手
+            // 使用教學
+            //
+            // 原本只有一句「雙擊畫布新增節點 → 輸入任務 → 送出」，但這個程式真正的賣點
+            // （節點接成流程、決策窗、成本控制）在那句話裡完全看不到。
+            // 第一次打開的人需要知道的不只是「怎麼送出第一個問題」，而是「這個東西能做什麼」。
             root.Children.Add(new TextBlock
             {
-                Text = "快速上手：雙擊畫布新增節點 → 輸入任務（問答／報告／簡報／圖片…）→ 送出。\n每次執行的模型選擇、成本與來源都會攤開在決策窗。",
-                FontSize = 11.5, LineHeight = 17,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x7A, 0x9C)),
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 10, 0, 0),
+                Text = "怎麼用",
+                FontSize = 13, FontWeight = FontWeights.SemiBold,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x2A, 0x2A, 0x30)),
+                Margin = new Thickness(0, 16, 0, 6),
             });
+
+            foreach (var (step, detail) in Tutorial)
+            {
+                var line = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+                line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(96) });
+                line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var left = new TextBlock
+                {
+                    Text = step,
+                    FontSize = 11.5, FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0x4A, 0x52)),
+                    TextWrapping = TextWrapping.Wrap,
+                };
+                Grid.SetColumn(left, 0); line.Children.Add(left);
+
+                var right = new TextBlock
+                {
+                    Text = detail,
+                    FontSize = 11.5, LineHeight = 17,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x7A, 0x7A, 0x82)),
+                    TextWrapping = TextWrapping.Wrap,
+                };
+                Grid.SetColumn(right, 1); line.Children.Add(right);
+
+                root.Children.Add(line);
+            }
 
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 16, 0, 0) };
             var skip = MakePill("略過，稍後再設", Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x66, 0x66, 0x66));

@@ -270,7 +270,7 @@ Quote Source:
             var facts = BuildFinanceVerifiedFacts(query ?? "", cleanedAnswer, now);
             string combinedAnswer = cleanedAnswer;
 
-            var officialFactRequests = BuildOfficialFinanceFactRequests(query ?? "");
+            var officialFactRequests = BuildOfficialFinanceFactRequests(facts, query ?? "");
             if (officialFactRequests.Count > 0)
             {
                 string repairAnswer = await ExecuteFinanceFactRepairAsync(
@@ -375,17 +375,24 @@ Quote Source:
                 string preMarketPrice = ReadFinanceField(block, "Pre Market Price", "Pre-market Price", "Premarket Price");
                 string preMarketTime = ReadFinanceField(block, "Pre Market Time", "Pre-market Time", "Premarket Time");
 
-                AddFinanceFact(facts, subject, "regular_close_price", regularClosePrice, "USD", regularCloseTime, now);
-                AddFinanceFact(facts, subject, "after_hours_price", afterHoursPrice, "USD", afterHoursTime, now);
-                AddFinanceFact(facts, subject, "pre_market_price", preMarketPrice, "USD", preMarketTime, now);
-                AddFinanceFact(facts, subject, "latest_fiscal_quarter", ReadFinanceField(block, "Latest Fiscal Quarter", "Fiscal Quarter", "Quarter"), "", now, now);
-                AddFinanceFact(facts, subject, "revenue", ReadFinanceField(block, "Revenue", "Revenue / Sales", "Net Sales"), "", now, now);
-                AddFinanceFact(facts, subject, "eps", ReadFinanceField(block, "EPS", "Earnings Per Share", "Non-GAAP EPS", "GAAP EPS"), "", now, now);
-                AddFinanceFact(facts, subject, "gross_margin", ReadFinanceField(block, "Gross Margin", "Non-GAAP Gross Margin", "GAAP Gross Margin"), "", now, now);
-                AddFinanceFact(facts, subject, "guidance", ReadFinanceField(block, "Guidance", "Outlook", "Forecast"), "", now, now);
+                // 這個區塊自己報上來的來源。報價與財報各有一條，分別掛到對應的數字上——
+                // 標籤要有證據，不能每一筆都宣稱 official。
+                string officialSource = ReadFinanceField(block, "Official Earnings Source", "Earnings Source", "Official Source");
+                string quoteSource = ReadFinanceField(block, "Quote Source", "Price Source");
+
+                AddFinanceFact(facts, subject, "regular_close_price", regularClosePrice, "USD", regularCloseTime, now, quoteSource);
+                AddFinanceFact(facts, subject, "after_hours_price", afterHoursPrice, "USD", afterHoursTime, now, quoteSource);
+                AddFinanceFact(facts, subject, "pre_market_price", preMarketPrice, "USD", preMarketTime, now, quoteSource);
+                AddFinanceFact(facts, subject, "latest_fiscal_quarter", ReadFinanceField(block, "Latest Fiscal Quarter", "Fiscal Quarter", "Quarter"), "", now, now, officialSource);
+                AddFinanceFact(facts, subject, "revenue", ReadFinanceField(block, "Revenue", "Revenue / Sales", "Net Sales"), "", now, now, officialSource);
+                AddFinanceFact(facts, subject, "eps", ReadFinanceField(block, "EPS", "Earnings Per Share", "Non-GAAP EPS", "GAAP EPS"), "", now, now, officialSource);
+                AddFinanceFact(facts, subject, "gross_margin", ReadFinanceField(block, "Gross Margin", "Non-GAAP Gross Margin", "GAAP Gross Margin"), "", now, now, officialSource);
+                AddFinanceFact(facts, subject, "guidance", ReadFinanceField(block, "Guidance", "Outlook", "Forecast"), "", now, now, officialSource);
+                // 市場驅動因素本來就是敘述，沒有單一出處，照實不給來源。
                 AddFinanceFact(facts, subject, "key_market_drivers", ReadFinanceField(block, "Key Market Drivers", "Market Drivers", "Drivers"), "", now, now);
-                AddFinanceFact(facts, subject, "official_earnings_source", ReadFinanceField(block, "Official Earnings Source", "Earnings Source", "Official Source"), "", now, now);
-                AddFinanceFact(facts, subject, "quote_source", ReadFinanceField(block, "Quote Source", "Price Source"), "", now, now);
+                // 這兩筆本身就是「來源」，證據就是它們自己。
+                AddFinanceFact(facts, subject, "official_earnings_source", officialSource, "", now, now, officialSource);
+                AddFinanceFact(facts, subject, "quote_source", quoteSource, "", now, now, quoteSource);
                 AddQuoteAvailabilityFact(
                     facts,
                     subject,
@@ -493,7 +500,16 @@ Official Earnings Source:
                 ct: ct);
         }
 
+        /// <summary>
+        /// 第一輪沒查到的官方財報欄位——只補這些。
+        ///
+        /// 原本不管第一輪結果如何都把六個欄位全部列出來，等於每一次財經查詢都固定多打
+        /// 一次 Perplexity（補查那一輪本身就是完整的研究呼叫）。
+        /// 2026-10-13 實測「分析台積電最近一季財報」：2 分 30 秒、費用異常高，
+        /// 原因就是這裡——第一輪已經把營收、EPS、毛利全查到了，還是又補查了一次。
+        /// </summary>
         private static IReadOnlyList<string> BuildOfficialFinanceFactRequests(
+            IReadOnlyList<VerifiedFactItem> facts,
             string query)
         {
             var requests = new List<string>();
@@ -516,7 +532,8 @@ Official Earnings Source:
             {
                 foreach (var factType in requiredFactTypes)
                 {
-                    requests.Add($"{ticker}: {factType}");
+                    if (!HasFinanceFact(facts, ticker, factType))
+                        requests.Add($"{ticker}: {factType}");
                 }
             }
 
@@ -644,7 +661,7 @@ Quote Source:
                 !IsMissingFinanceValue(x.Value));
         }
 
-        private static bool SubjectMatchesTicker(string subject, string ticker)
+        internal static bool SubjectMatchesTicker(string subject, string ticker)
         {
             if (string.IsNullOrWhiteSpace(subject) ||
                 string.IsNullOrWhiteSpace(ticker))
@@ -692,7 +709,7 @@ Quote Source:
             return merged;
         }
 
-        private static bool ShouldReplaceFinanceFact(
+        internal static bool ShouldReplaceFinanceFact(
             VerifiedFactItem current,
             VerifiedFactItem repaired)
         {
@@ -740,7 +757,7 @@ Quote Source:
             return repairedOfficial && !currentOfficial;
         }
 
-        private static bool IsOfficialFinanceMetric(string factType)
+        internal static bool IsOfficialFinanceMetric(string factType)
         {
             return string.Equals(factType, "latest_fiscal_quarter", StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(factType, "revenue", StringComparison.OrdinalIgnoreCase) ||
@@ -750,7 +767,7 @@ Quote Source:
                    string.Equals(factType, "official_earnings_source", StringComparison.OrdinalIgnoreCase);
         }
 
-        private static string NormalizeSubjectForMerge(string subject)
+        internal static string NormalizeSubjectForMerge(string subject)
         {
             if (string.IsNullOrWhiteSpace(subject))
                 return "";
@@ -944,7 +961,8 @@ Quote Source:
             string value,
             string unit,
             string asOf,
-            string fallbackAsOf)
+            string fallbackAsOf,
+            string evidence = "")
         {
             if (facts == null ||
                 string.IsNullOrWhiteSpace(subject) ||
@@ -961,12 +979,14 @@ Quote Source:
                 Value = value.Trim(),
                 Unit = unit ?? "",
                 AsOf = string.IsNullOrWhiteSpace(asOf) ? fallbackAsOf : asOf.Trim(),
-                SourceTitle = "Perplexity Sonar finance research",
-                SourceUrl = "",
-                Confidence = "high",
+                SourceTitle = string.IsNullOrWhiteSpace(evidence)
+                    ? "Perplexity Sonar finance research"
+                    : evidence.Trim(),
+                SourceUrl = ExtractUrl(evidence),
+                Confidence = ResolveConfidence(evidence),
                 OwnerAgentId = FactOwnership.ResearchAgent,
                 OwnerCapabilityId = FactOwnership.SearchCapability,
-                AuthorityLevel = ResolveFinanceAuthority(factType),
+                AuthorityLevel = ResolveFinanceAuthority(factType, evidence),
                 UsageRole = FactOwnership.ResolveFinanceUsageRole(factType)
             });
         }
@@ -1015,7 +1035,39 @@ Quote Source:
                 : "available";
         }
 
-        private static string ResolveFinanceAuthority(string factType)
+        /// <summary>
+        /// 這類數字「最高」可以掛到哪一級，以及實際掛到哪一級。
+        /// factType 只決定上限；沒有可點開的來源網址時一律降到 search_context——
+        /// 說「官方來源」卻拿不出那份官方文件，等於在替沒查證的數字背書。
+        /// </summary>
+        internal static string ResolveFinanceAuthority(string factType, string evidence)
+            => string.IsNullOrWhiteSpace(ExtractUrl(evidence))
+                ? FactOwnership.AuthoritySearchContext
+                : ResolveFinanceAuthority(factType);
+
+        /// <summary>
+        /// 證據強度 → 信心標籤。
+        /// high＝有可點開的網址；medium＝有來源敘述但沒有網址；low＝完全沒有來源。
+        /// </summary>
+        internal static string ResolveConfidence(string evidence)
+        {
+            if (!string.IsNullOrWhiteSpace(ExtractUrl(evidence)))
+                return "high";
+
+            return string.IsNullOrWhiteSpace(evidence) ? "low" : "medium";
+        }
+
+        /// <summary>從來源欄位原文裡抓出第一個網址；沒有就回空字串。</summary>
+        internal static string ExtractUrl(string? evidence)
+        {
+            if (string.IsNullOrWhiteSpace(evidence))
+                return "";
+
+            var m = System.Text.RegularExpressions.Regex.Match(evidence, "https?://[^\\s)\\]<>\"']+");
+            return m.Success ? m.Value.TrimEnd('.', ',', ';') : "";
+        }
+
+        internal static string ResolveFinanceAuthority(string factType)
         {
             if (string.IsNullOrWhiteSpace(factType))
                 return FactOwnership.AuthoritySearchContext;

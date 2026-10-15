@@ -3,8 +3,10 @@ bin/
 obj/
 *.user
 *.suo
-docs/
+# docs/ 刻意不排除：設計理由、已知限制、路線圖與測試清單要跟著版本庫走，
+# 否則從 repo 拿到專案的人（包含未來的自己）只看得到程式，看不到為什麼這樣做。
 docs_bak
+# reports/ 是產出的簡報與圖片（119MB），仍然排除；有保存價值的文字報告請移到 docs/。
 reports/
 # pro 版的輸出/存檔/附件(SavesDir 指向此資料夾),不進版控
 file/
@@ -13,4 +15,7 @@ file/
 .claude/settings.local.json
 # 打包輸出(publish.ps1 產物,220MB+ 不進版控)
 publish/
+
+# 本機答辯、面試與投資問答準備稿，不進版控
+/interview-prep-local/
  

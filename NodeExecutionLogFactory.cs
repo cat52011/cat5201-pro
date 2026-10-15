@@ -79,6 +79,7 @@ namespace Cat5201
                 ActualAgentId = decision.ActualAgentId ?? "",
 
                 MemoryRecall = decision.MemoryRecall ?? MemoryRecallStats.Empty,
+                EffectivePreferences = decision.EffectivePreferences ?? "",
                 OutputIntentSummary = decision.OutputIntentSummary ?? "",
             };
         }

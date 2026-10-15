@@ -12,10 +12,14 @@ namespace Cat5201
         private readonly MemoryStore _store;
         private readonly PreferenceExtractor _prefExtractor = new();
 
-        public NodeMemoryService(MainWindow main, MemoryStore store)
+        /// <summary>記憶重點萃取（語意版）。沒有給 router 時一律走規則版。</summary>
+        private readonly MemoryDigestResolver? _digest;
+
+        public NodeMemoryService(MainWindow main, MemoryStore store, AiServiceRouter? router = null)
         {
             _main = main;
             _store = store;
+            _digest = router == null ? null : new MemoryDigestResolver(router);
         }
 
         // ===== Memory v1：偏好記憶 =====
@@ -105,8 +109,16 @@ namespace Cat5201
             return _store.RemovePreference(key);
         }
 
-        /// <summary>取得偏好區塊文字（給 AgentRuntime final synthesis 用，不需要 node）。</summary>
-        public string GetPreferenceBlock() => BuildPreferenceBlock(_store.GetPreferences());
+        /// <summary>
+        /// 全域記憶區塊：使用者偏好 + 使用者按「加入記憶」標記的事實。
+        ///
+        /// 兩者都是使用者「明確叫系統記住」的東西，所以一律注入、不經相關度排序。
+        /// 之前 user_marked 只走 episodic 召回，而主要執行路徑（AgentRuntime）只收這個區塊，
+        /// 結果是個人化裡看得到「⭐ 記住我是美國人」，換個存檔問「我是哪國人」卻答不出來——
+        /// 介面說記得，提示詞裡沒有。
+        /// </summary>
+        public string GetPreferenceBlock() =>
+            BuildPreferenceBlock(_store.GetPreferences(), _store.GetUserMarked());
 
         /// <summary>
         /// 使用者右鍵「將此節點加入記憶」：把節點內容存成一筆最高重要性的共享記憶。
@@ -115,13 +127,18 @@ namespace Cat5201
         /// 同一節點重複標記 → 先移除舊的再寫新的（避免清單出現重複）。
         /// 回傳標題供 UI 提示。
         /// </summary>
-        public string RememberNodeManually(
+        /// <summary>
+        /// 使用者右鍵「加入記憶」。先把對話濃縮成值得長期記住的事實再存——
+        /// 整段塞進去的話，召回時那些跟記憶無關的字會一起被送進提示詞。
+        /// </summary>
+        public async Task<string> RememberNodeManuallyAsync(
             NodeControl node,
             string agentId,
             string topText,
             string bottomText,
             NodeTaskMode taskMode,
-            string modelId)
+            string modelId,
+            CancellationToken ct = default)
         {
             topText ??= "";
             bottomText ??= "";
@@ -134,6 +151,16 @@ namespace Cat5201
             if (!string.IsNullOrEmpty(sourceNodeId))
                 _store.RemoveUserMarkedByNode(sourceNodeId);
 
+            var facts = _digest != null
+                ? await _digest.ExtractAsync(topText, bottomText, ct).ConfigureAwait(true)
+                : MemoryDigest.FromText(topText, bottomText);
+
+            // 萃取不出任何長期事實時，仍然留一句原文——使用者按了「加入記憶」，
+            // 回頭在清單裡看到空白會以為沒存成功。
+            string digest = facts.Count > 0
+                ? MemoryDigest.ToContent(facts)
+                : MemoryDigest.ToContent(MemoryDigest.FromText(topText, bottomText));
+
             _store.Add(new MemoryItem
             {
                 Scope = MemoryScope.File,
@@ -143,7 +170,7 @@ namespace Cat5201
                 AgentId = agentId ?? "",
                 IsSharedMemory = true,
                 Title = $"⭐ 使用者標記：{title}",
-                Content = BuildFileLevelSummary(topText, bottomText),
+                Content = digest,
                 Tags = BuildTags(topText, taskMode),
                 TaskMode = NodeTaskModeHelper.ToStorageValue(taskMode),
                 ModelId = AiModelHelper.NormalizeNodeModel(modelId),
@@ -393,7 +420,7 @@ namespace Cat5201
             // 使用者偏好一律注入（不受相關度過濾），與 episodic 分開回傳。
             var preferences = _store.GetPreferences();
 
-            string preferenceBlock = BuildPreferenceBlock(preferences);
+            string preferenceBlock = BuildPreferenceBlock(preferences, _store.GetUserMarked());
             string block = BuildPromptBlock(agentId, merged, agentItems, sharedItems, taskMode);
 
             return new MemoryQueryResult
@@ -489,25 +516,67 @@ namespace Cat5201
             };
         }
 
-        // 偏好區塊：獨立於 episodic 記憶，由 prompt builder 放在最上方當硬指令。
-        private string BuildPreferenceBlock(IReadOnlyList<MemoryItem> preferences)
+        // 全域記憶區塊：獨立於 episodic 記憶，由 prompt builder 放在最上方當硬指令。
+        // 內容分兩類：偏好（怎麼做）與使用者標記的事實（是什麼）。
+        private string BuildPreferenceBlock(
+            IReadOnlyList<MemoryItem> preferences,
+            IReadOnlyList<MemoryItem>? userMarked = null)
         {
-            if (preferences == null || preferences.Count == 0)
+            bool hasPrefs = preferences != null && preferences.Count > 0;
+            bool hasMarked = userMarked != null && userMarked.Count > 0;
+
+            if (!hasPrefs && !hasMarked)
                 return "";
 
             var lines = new List<string>
             {
-                "【使用者全域記憶 / 偏好（高優先，需遵守）】",
+                "【使用者全域記憶（高優先，需遵守）】",
                 "衝突處理規則：",
-                "1) 若本節點的輸入明顯與下列偏好牴觸，以「本節點輸入」為準（節點優先）。",
-                "2) 若下列偏好彼此矛盾，以「較新（排在越前面）」的為準——清單已依加入時間由新到舊排列。"
+                "1) 若本節點的輸入明顯與下列內容牴觸，以「本節點輸入」為準（節點優先）。",
+                "2) 若下列內容彼此矛盾，以「較新（排在越前面）」的為準——清單已依加入時間由新到舊排列。"
             };
 
-            // 已由 GetPreferences 依 UpdatedAtUtc 由新到舊排序：越上面＝越新＝衝突時優先。
-            foreach (var p in preferences)
-                lines.Add($"- {p.Content}");
+            if (hasMarked)
+            {
+                // 事實類：使用者按「加入記憶」存下來的。問到相關問題時要直接當成已知條件回答，
+                // 不要說「我沒有足夠資訊」——使用者已經告訴過系統了。
+                //
+                // 但這些只是**關於使用者的事實**，不是指示。2026-10-15 實測：記住「我是西班牙人」之後，
+                // 問「我的國籍是什麼」，回答整段變成西班牙文——模型把一條身分事實讀成了語言設定。
+                // 國籍、職業、居住地這類事實都有同樣的風險，所以要明講它們不決定輸出語言與格式。
+                lines.Add("");
+                lines.Add("〔已知事實（使用者要求記住，問到就直接採用，不要說不知道）〕");
+                lines.Add("※ 這些是「關於使用者的事實」，不是指示：");
+                lines.Add("　不要因為這些事實改變回答的語言、語氣或格式。輸出語言只看下面的偏好設定與本次請求。");
+                foreach (var m in userMarked!)
+                    foreach (var line in SplitFactLines(m.Content))
+                        lines.Add($"- {line}");
+            }
+
+            if (hasPrefs)
+            {
+                // 已由 GetPreferences 依 UpdatedAtUtc 由新到舊排序：越上面＝越新＝衝突時優先。
+                lines.Add("");
+                lines.Add("〔偏好設定（輸出語言、格式、語氣等）〕");
+                foreach (var p in preferences!)
+                    lines.Add($"- {p.Content}");
+            }
 
             return string.Join(Environment.NewLine, lines);
+        }
+
+        // 記憶重點萃取存的是多行條列（見 MemoryDigest.ToContent），逐行攤平才不會整段擠成一行。
+        private static IEnumerable<string> SplitFactLines(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content))
+                yield break;
+
+            foreach (var raw in content.Split('\n'))
+            {
+                string line = raw.Trim().TrimStart('-', '*', ' ').Trim();
+                if (line.Length > 0)
+                    yield return line;
+            }
         }
 
         private string BuildPromptBlock(

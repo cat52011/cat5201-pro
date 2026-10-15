@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -80,7 +80,7 @@ namespace Cat5201
         // §4：多階段任務自動展開策略（個人化設定可切換；預設一鍵展開）。
         private DownstreamAutoMode _downstreamAutoMode = DownstreamAutoMode.OneClick;
 
-        // 簡報生成器（個人化設定可切換；預設 Claude，Gamma 九月才開放）。
+        // 簡報生成器（個人化設定可切換；預設 Claude）。
         private PresentationEngine _presentationEngine = PresentationEngine.Claude;
 
         // 影片導演風格（個人化）。空 = 用原廠電影感預設（VideoStyle.DefaultCinematicPrompt）；
@@ -120,7 +120,19 @@ namespace Cat5201
 
         private class Connection
         {
+            /// <summary>看得到的那條線（流動時是藍色虛線）。不接受滑鼠，見 HitPath。</summary>
             public PathShape Path = null!;
+
+            /// <summary>
+            /// 專門用來被點的那條線：同樣的曲線、同樣的粗細，但永遠是實心的透明筆畫。
+            ///
+            /// 為什麼要分成兩條：流動線是虛線，而 WPF 的命中測試只認「真的畫出來的那幾段」，
+            /// 虛線的空隙完全點不到。右鍵切換流動模式是這條線唯一的操作方式，
+            /// 使用者卻有一半的機率點了沒反應，而且看不出為什麼。
+            /// （Transparent 的筆畫接受命中測試，null 的不接受——這正是這條線存在的理由。）
+            /// </summary>
+            public PathShape HitPath = null!;
+
             public NodeControl StartNode = null!;
             public string StartThumb = "ThumbTL";
             public NodeControl EndNode = null!;
@@ -202,8 +214,253 @@ namespace Cat5201
             }
         }
         private string AttachmentsRootDir => System.IO.Path.Combine(SavesDir, "_attachments");
-        private string GeneratedFilesDir => System.IO.Path.Combine(SavesDir, "_generated");
+        /// <summary>
+        /// 使用者自己指定的產出資料夾（空＝用預設的 SavesDir\_generated）。
+        ///
+        /// 產出的檔案本來就不隨聊天刪除消失——它們放在所有存檔共用的 _generated，
+        /// 「最近刪除」只搬畫布、附件與該存檔自己的記憶。但使用者看不出這件事，
+        /// 而且會想把成品放到自己的資料夾（雲端同步、交作業的位置）。
+        /// </summary>
+        private string _generatedFilesDirOverride = "";
+
+        /// <summary>
+        /// 產出檔案的**根**目錄（所有存檔共用）。
+        ///
+        /// 跟 GeneratedFilesDir（這個存檔自己的子資料夾）分開，是因為「可以開啟 / 預覽的範圍」
+        /// 必須是整個根目錄：別的存檔產的檔案、以及被刪存檔集中到的 other，都要打得開。
+        /// 2026-10-15 把檔案分資料夾之後，安全檢查還拿子資料夾當根，於是除了當前存檔以外
+        /// 的所有附件預覽全部被擋掉。
+        /// </summary>
+        private string GeneratedFilesRoot
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(_generatedFilesDirOverride))
+                {
+                    try
+                    {
+                        System.IO.Directory.CreateDirectory(_generatedFilesDirOverride);
+                        return _generatedFilesDirOverride;
+                    }
+                    catch (Exception ex)
+                    {
+                        // 指定的位置不能用（磁碟拔掉、沒權限）→ 退回預設並留紀錄，
+                        // 不要讓產出直接失敗：使用者等了幾分鐘的檔案比設定重要。
+                        AppLog.Warn("Output", $"產出資料夾「{_generatedFilesDirOverride}」無法使用，這次改用預設位置", ex);
+                    }
+                }
+
+                return System.IO.Path.Combine(SavesDir, "_generated");
+            }
+        }
+
+        /// <summary>
+        /// 找得到這個產出檔案嗎——記錄的位置不在了就在根目錄底下用檔名找一次。
+        ///
+        /// 檔案會被搬動（整理成各存檔子資料夾、存檔刪除後集中到 other、使用者自己改了存放位置），
+        /// 但節點裡記的是當初那條絕對路徑。只認那條路徑的話，搬一次附件就全部打不開了。
+        /// </summary>
+        public string? ResolveGeneratedFile(string? recordedPath)
+        {
+            if (string.IsNullOrWhiteSpace(recordedPath))
+                return null;
+
+            if (System.IO.File.Exists(recordedPath))
+                return recordedPath;
+
+            try
+            {
+                string root = GeneratedFilesRoot;
+                if (!System.IO.Directory.Exists(root))
+                    return null;
+
+                string name = System.IO.Path.GetFileName(recordedPath);
+                var hit = System.IO.Directory
+                    .EnumerateFiles(root, name, System.IO.SearchOption.AllDirectories)
+                    .FirstOrDefault();
+
+                if (hit != null)
+                    AppLog.Info("Output", $"附件已移動，改用新位置：{name}");
+
+                return hit;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Output", $"尋找已移動的附件失敗：{System.IO.Path.GetFileName(recordedPath)}", ex);
+                return null;
+            }
+        }
+
+        private string GeneratedFilesDir
+        {
+            get
+            {
+                string root = GeneratedFilesRoot;
+
+                // 分到各存檔自己的子資料夾：<根>\<存檔名>。
+                //
+                // 所有存檔共用一個資料夾時，幾十份簡報報告混在一起，
+                // 光看檔名分不出哪一份是哪個專案的。分開之後「這個聊天產了什麼」一眼就看得到，
+                // 而且仍然不隨聊天刪除消失——刪除只是把它們集中到 other。
+                string saveName = SafeFolderName(CurrentSaveDisplayName());
+                return saveName.Length == 0 ? root : System.IO.Path.Combine(root, saveName);
+            }
+        }
+
+        /// <summary>目前存檔的顯示名稱（沒有開啟任何存檔時為空）。</summary>
+        private string CurrentSaveDisplayName()
+        {
+            try
+            {
+                return string.IsNullOrWhiteSpace(_currentFilePath) ? "" : DisplayNameFromPath(_currentFilePath);
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>存檔名拿來當資料夾名（規則在 Core，搬檔與建檔共用同一份）。</summary>
+        private static string SafeFolderName(string? name) => GeneratedFileOrganizer.SafeFolderName(name);
+
+        /// <summary>
+        /// 一次性整理：把散在 _generated 底下的舊檔案搬進各自的存檔資料夾。
+        ///
+        /// 哪個檔案屬於哪個聊天，問存檔自己——每個節點都記著它產出的檔案路徑。
+        /// 認領不到的（存檔已刪、或更早的版本留下來的）集中到 other，不丟掉：
+        /// 那些是使用者花錢跑出來的成品。
+        /// </summary>
+        private void OrganizeGeneratedFilesOnce()
+        {
+            try
+            {
+                string root = System.IO.Path.Combine(SavesDir, "_generated");
+                if (!System.IO.Directory.Exists(root))
+                    return;
+
+                // 先看有沒有東西要搬，沒有就不要白跑（每次啟動都會呼叫）。
+                if (System.IO.Directory.GetFiles(root).Length == 0)
+                    return;
+
+                var owner = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (string save in System.IO.Directory.GetFiles(SavesDir, "*.json"))
+                {
+                    string display = DisplayNameFromPath(save);
+                    try
+                    {
+                        // 只要 Nodes[].OutputFilePaths 這一個欄位，直接讀 JSON 比反序列化整個專案便宜很多。
+                        using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(save));
+                        if (!doc.RootElement.TryGetProperty("Nodes", out var nodes)) continue;
+
+                        foreach (var node in nodes.EnumerateArray())
+                        {
+                            if (!node.TryGetProperty("OutputFilePaths", out var files)) continue;
+                            foreach (var f in files.EnumerateArray())
+                                if (f.GetString() is string fp && fp.Length > 0)
+                                    owner[System.IO.Path.GetFileName(fp)] = display;
+                        }
+                    }
+                    catch { /* 單一存檔讀不開不影響其他的 */ }
+                }
+
+                int moved = GeneratedFileOrganizer.Organize(root, owner);
+                if (moved > 0)
+                {
+                    AppLog.Info("Output", $"產出檔案整理完成：{moved} 個檔案已歸到各自的存檔資料夾");
+
+                    // 搬完一定要把存檔裡記的路徑改掉，否則所有附件 chip 都會指到空的位置
+                    //（2026-10-15 我就是漏了這一步，使用者的附件預覽全部不見）。
+                    RepairGeneratedFilePaths(root);
+                }
+            }
+            catch (Exception ex) { AppLog.Warn("Output", "整理產出檔案失敗", ex); }
+        }
+
+        /// <summary>搬動之後，把每個存檔裡記的產出路徑指回新位置。</summary>
+        private void RepairGeneratedFilePaths(string root)
+        {
+            var index = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (string file in System.IO.Directory.EnumerateFiles(root, "*", System.IO.SearchOption.AllDirectories))
+                index.TryAdd(System.IO.Path.GetFileName(file), file);
+
+            foreach (string save in System.IO.Directory.GetFiles(SavesDir, "*.json"))
+            {
+                try
+                {
+                    string raw = System.IO.File.ReadAllText(save);
+                    var node = System.Text.Json.Nodes.JsonNode.Parse(raw);
+                    if (node?["Nodes"] is not System.Text.Json.Nodes.JsonArray nodes) continue;
+
+                    bool changed = false;
+                    foreach (var n in nodes)
+                    {
+                        if (n?["OutputFilePaths"] is not System.Text.Json.Nodes.JsonArray paths) continue;
+
+                        for (int i = 0; i < paths.Count; i++)
+                        {
+                            string? p = paths[i]?.GetValue<string>();
+                            if (string.IsNullOrWhiteSpace(p) || System.IO.File.Exists(p)) continue;
+
+                            if (index.TryGetValue(System.IO.Path.GetFileName(p), out string? target))
+                            {
+                                paths[i] = target;
+                                changed = true;
+                            }
+                        }
+                    }
+
+                    if (changed)
+                        AtomicFile.WriteAllText(save, node!.ToJsonString(
+                            new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("Output", $"修正 {System.IO.Path.GetFileName(save)} 的附件路徑失敗", ex);
+                }
+            }
+        }
+
         public string GetGeneratedFilesDir() => GeneratedFilesDir;
+
+        /// <summary>目前設定的產出資料夾（給個人化面板顯示）。</summary>
+        public string GetGeneratedFilesDirSetting() => _generatedFilesDirOverride;
+
+        private void SetGeneratedFilesDir(string? path)
+        {
+            _generatedFilesDirOverride = (path ?? "").Trim();
+            RefreshOutputDirLabel();
+            SavePreferences();
+            AppLog.Info("Output", $"產出資料夾設為：{GeneratedFilesDir}");
+        }
+
+        private void RefreshOutputDirLabel()
+        {
+            if (OutputDirText != null)
+                OutputDirText.Text = GeneratedFilesDir;
+        }
+
+        private void ChangeOutputDir_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "選擇產出檔案要存到哪裡",
+                InitialDirectory = GeneratedFilesDir,
+            };
+
+            if (dlg.ShowDialog(this) == true)
+                SetGeneratedFilesDir(dlg.FolderName);
+        }
+
+        private void ResetOutputDir_Click(object sender, RoutedEventArgs e) => SetGeneratedFilesDir("");
+
+        private void OpenOutputDir_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                string dir = GeneratedFilesDir;
+                System.IO.Directory.CreateDirectory(dir);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(dir) { UseShellExecute = true });
+            }
+            catch (Exception ex) { AppLog.Warn("Output", "開啟產出資料夾失敗", ex); }
+        }
 
         // pro 記憶根目錄＝pro 自己的 SavesDir。歷史上 NodeService 誤把 MemoryStore 指向畢業版旁的
         // D:\desk\college\final\file，造成 pro 與畢業版記憶混用（Codex P0-2）。已改回 pro 專屬，
@@ -311,6 +568,10 @@ namespace Cat5201
         // 持久化 I/O 單一入口(存/讀/刪/改名/.bak/附件資料夾)。
         private ProjectStore? _projectStoreInstance;
         private ProjectStore Store => _projectStoreInstance ??= new ProjectStore(SavesDir);
+
+        // 最近刪除：刪掉的存檔連同附件與該存檔的記憶整包留 7 天，可完整復原。
+        private RecycleBin? _trashInstance;
+        private RecycleBin Trash => _trashInstance ??= new RecycleBin(SavesDir);
 
         private static string DisplayNameFromPath(string path)
             => System.IO.Path.GetFileNameWithoutExtension(path);
@@ -933,6 +1194,19 @@ namespace Cat5201
             SaveState();
         }
 
+        /// <summary>把 Auto / 進階解析兩個開關的畫面狀態同步成目前（全域）設定。</summary>
+        private void SyncAutoModeSwitches()
+        {
+            if (AutoModelSwitch != null)
+                AutoModelSwitch.IsChecked = _isAutoModelSelectionEnabled;
+
+            if (AdvancedAutoResolverSwitch != null)
+                AdvancedAutoResolverSwitch.IsChecked = _isAdvancedAutoResolverEnabled;
+
+            UpdateAdvancedAutoResolverVisibility();
+            UpdateDecisionPanelForCurrentMode();
+        }
+
         public bool IsAutoModelSelectionEnabled()
         {
             return _isAutoModelSelectionEnabled;
@@ -961,7 +1235,12 @@ namespace Cat5201
             RefreshAllNodeModelSelectionUIs();
 
             if (save)
+            {
                 SaveState();
+                // 也要落地成全域偏好：只寫進存檔的話，SaveState 在還沒建檔時直接 return，
+                // 重開程式後又從偏好讀回舊值——使用者會看到自己剛切的模式自己彈回去。
+                SavePreferences();
+            }
         }
 
         public void SetAdvancedAutoResolverEnabled(bool enabled, bool save = true)
@@ -979,7 +1258,12 @@ namespace Cat5201
             RefreshAllNodeModelSelectionUIs();
 
             if (save)
+            {
                 SaveState();
+                // 也要落地成全域偏好：只寫進存檔的話，SaveState 在還沒建檔時直接 return，
+                // 重開程式後又從偏好讀回舊值——使用者會看到自己剛切的模式自己彈回去。
+                SavePreferences();
+            }
         }
 
         private void UpdateAdvancedAutoResolverVisibility()
@@ -1353,6 +1637,9 @@ namespace Cat5201
             SyncDocumentEngineRadios();
             EnsureApiStatusRows();
             ApplyApiBalancePanelVisibility();   // 右下角餘額面板（依個人化開關）
+            OrganizeGeneratedFilesOnce();       // 舊的散檔歸到各自的存檔資料夾
+            ApplyDecisionPanelVisibility();     // 右上角決策視窗（依個人化開關）
+            InitializeTrash();                  // 最近刪除：清掉過期的，決定入口要不要顯示
 
             // 個人化若已開啟手機鏡像，啟動時自動把唯讀 server 拉起來（fire-and-forget，不擋 UI）。
             _ = AutoStartMobileMirrorIfEnabledAsync();
@@ -1490,17 +1777,10 @@ namespace Cat5201
             _editingNode = null;
             _editingReason = EditReason.None;
 
-            _isAutoModelSelectionEnabled = false;
-            _isAdvancedAutoResolverEnabled = false;
-
-            if (AutoModelSwitch != null)
-                AutoModelSwitch.IsChecked = false;
-
-            if (AdvancedAutoResolverSwitch != null)
-                AdvancedAutoResolverSwitch.IsChecked = false;
-
-            UpdateAdvancedAutoResolverVisibility();
-            UpdateDecisionPanelForCurrentMode();
+            // Auto / 進階解析是使用者的個人化設定，不隨「開新存檔」重設——
+            // 他上次明明開著，建一個新檔就被偷偷關掉，看起來就像程式自己把模式改掉了。
+            // 這裡只重新同步 UI 反映目前（全域）的設定。
+            SyncAutoModeSwitches();
         }
 
         private void FileList_MouseDoubleClick(object sender, MouseButtonEventArgs e)
@@ -1566,17 +1846,28 @@ namespace Cat5201
         {
             var name = DisplayNameFromPath(path);
 
+            // 只問一句。原本那兩行說明（會搬到「最近刪除」、全域記憶不受影響）是寫給
+            // 「怕按下去就沒了」的人看的，但它每一次刪檔都出現，久了就是雜訊——
+            // 真正想知道保留規則的人會去「最近刪除」那一頁看。
             bool ok = MenuConfirmDialog.ShowDeleteConfirm(
                 owner: this,
                 title: "刪除確認",
-                message: $"確定要刪除檔案？\n{name}",
+                message: $"要刪除「{name}」嗎？",
                 resourceHost: this);
 
             if (!ok) return;
 
             try
             {
-                Store.Delete(path); // 主檔+.bak+附件資料夾一次清（磁碟事務在 ProjectStore）
+                // 產出檔案不跟著刪——那是使用者花錢跑出來的成品。
+                // 但它的資料夾沒有主人了，所以集中到 _generated\other。
+                GeneratedFileOrganizer.MoveToOther(
+                    System.IO.Path.Combine(SavesDir, "_generated"), DisplayNameFromPath(path));
+
+                // 存檔自己的記憶跟著走；全域記憶留著。復原時會原樣放回記憶庫。
+                var memories = _nodeService?.Memories.TakeByFileKey(DisplayNameFromPath(path));
+                Trash.MoveToTrash(path, Store.GetAttachmentFolder(path), memories?.ToList());
+                RefreshTrashEntryPoint();
 
                 if (!string.IsNullOrEmpty(_currentFilePath) &&
                     string.Equals(_currentFilePath, path, StringComparison.OrdinalIgnoreCase))
@@ -1590,17 +1881,8 @@ namespace Cat5201
                     _attachmentsByNode.Clear();
                     _nodeModelsById.Clear();
                     _nodeTaskModesById.Clear();
-                    _isAutoModelSelectionEnabled = false;
-                    _isAdvancedAutoResolverEnabled = false;
-
-                    if (AutoModelSwitch != null)
-                        AutoModelSwitch.IsChecked = false;
-
-                    if (AdvancedAutoResolverSwitch != null)
-                        AdvancedAutoResolverSwitch.IsChecked = false;
-
-                    UpdateAdvancedAutoResolverVisibility();
-                    UpdateDecisionPanelForCurrentMode();
+                    // 同上：刪掉目前存檔不代表使用者要換回手動模式。
+                    SyncAutoModeSwitches();
                 }
 
                 RefreshFileList();
@@ -1896,13 +2178,97 @@ namespace Cat5201
             return node;
         }
 
+        /// <summary>
+        /// 畫布上這個座標落在哪個節點上（排除指定的那一個）。重疊時取 Z 序最高的那一個，
+        /// 跟使用者眼睛看到的「最上面那張卡」一致。
+        /// </summary>
+        public NodeControl? FindNodeAtCanvasPoint(Point canvasPoint, NodeControl? exclude = null)
+        {
+            NodeControl? best = null;
+            int bestZ = int.MinValue;
+
+            foreach (var node in MainCanvas.Children.OfType<NodeControl>())
+            {
+                if (ReferenceEquals(node, exclude))
+                    continue;
+
+                double left = Canvas.GetLeft(node);
+                double top = Canvas.GetTop(node);
+                if (double.IsNaN(left) || double.IsNaN(top))
+                    continue;
+
+                double w = node.ActualWidth > 0 ? node.ActualWidth : node.Width;
+                double h = node.ActualHeight > 0 ? node.ActualHeight : node.Height;
+                if (!new Rect(left, top, w, h).Contains(canvasPoint))
+                    continue;
+
+                int z = Canvas.GetZIndex(node);
+                if (z >= bestZ)
+                {
+                    bestZ = z;
+                    best = node;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// 這條新連線接得起來嗎（不碰任何資料，只回答能不能）。
+        /// 拖曳途中用它決定要不要把虛線變成藍色，放開時再問一次。
+        /// </summary>
+        public bool CanConnectNodes(NodeControl? source, NodeControl? target)
+            => source != null && target != null &&
+               ConnectionRules.Evaluate(CurrentEdges(), source.Id, target.Id) == ConnectionRules.Verdict.Ok;
+
+        /// <summary>目前畫布上的所有連線，化成單純的 (上游, 下游) 配對給 ConnectionRules 用。</summary>
+        private IEnumerable<(Guid From, Guid To)> CurrentEdges()
+            => _connections
+                .Where(c => c.StartNode != null && c.EndNode != null)
+                .Select(c => (c.StartNode.Id, c.EndNode.Id));
+
+        /// <summary>
+        /// 把來源節點接到一個**已經存在**的節點上——匯流（兩條以上的上游匯進同一個節點）
+        /// 就是這樣做出來的。
+        ///
+        /// 在這之前，從連接點拖出去一律會生出一個**新**節點，而「變更上游」是把既有的那條線
+        /// 搬到別處、不是多加一條。也就是說排程器早就看得懂「等所有上游都跑完再開始」，
+        /// 畫面上卻永遠做不出那個形狀。使用者 2026-10-13 回報「我沒有設定如 C 的連接方式，
+        /// 目前也沒有連接方式」講的就是這件事。
+        ///
+        /// 新線跟「拖到空白處生新節點」一樣預設是**一般連線（灰線）**：
+        /// 同一個手勢在兩個地方給出不同種類的線，使用者沒有辦法預期自己做出了什麼。
+        /// 要讓它自動往下跑，右鍵那條線改成流動連線。
+        /// </summary>
+        public bool TryConnectToExistingNode(NodeControl source, string sourceThumb, NodeControl target, Point dropPoint)
+        {
+            if (!CanConnectNodes(source, target))
+                return false;
+
+            // 接左孔還是右孔：看放開的位置在目標節點中線的哪一邊，線才不會橫跨整張卡。
+            double left = Canvas.GetLeft(target);
+            double width = target.ActualWidth > 0 ? target.ActualWidth : target.Width;
+            string endThumb = dropPoint.X < left + width / 2 ? "ThumbTL" : "ThumbTR";
+
+            CreateCurve(source, sourceThumb, target, endThumb, flowMode: false);
+            return true;
+        }
+
         public void CreateCurve(NodeControl startNode, string startThumbName, NodeControl endNode, string endThumbName, bool flowMode = false)
         {
             var path = new PathShape
             {
                 Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#ADADAD")!,
                 StrokeThickness = 18,
-                // #4：連接線需可被右鍵切換流動模式，故開啟命中測試。
+                // 看得到的那條線不收滑鼠事件：流動時它是虛線，空隙點不到。
+                IsHitTestVisible = false
+            };
+
+            // 收滑鼠的是這條：一樣的曲線、一樣粗，實心透明，所以整條都點得到。
+            var hitPath = new PathShape
+            {
+                Stroke = System.Windows.Media.Brushes.Transparent,
+                StrokeThickness = 18,
                 IsHitTestVisible = true,
                 Cursor = System.Windows.Input.Cursors.Hand
             };
@@ -1910,6 +2276,7 @@ namespace Cat5201
             var conn = new Connection
             {
                 Path = path,
+                HitPath = hitPath,
                 StartNode = startNode,
                 StartThumb = startThumbName,
                 EndNode = endNode,
@@ -1918,15 +2285,23 @@ namespace Cat5201
             };
 
             // 右鍵連接線：切換流動模式（含動畫）。Handled 避免冒泡到畫布平移。
-            path.MouseRightButtonUp += (_, e) =>
+            hitPath.MouseRightButtonUp += (_, e) =>
             {
                 e.Handled = true;
                 _ = ToggleConnectionFlowModeAsync(conn);
             };
 
+            // 流動模式只能用「右鍵點線」切換，沒有任何地方寫著這件事——
+            // 畫面上就只是一條灰線，使用者不會去右鍵一條線。至少讓滑鼠停著時說得出來。
+            UpdateConnectionTooltip(conn);
+
             UpdateConnectionGeometry(conn);
-            Canvas.SetZIndex(path, GetNextZIndex());
+
+            int z = GetNextZIndex();
+            Canvas.SetZIndex(path, z);
+            Canvas.SetZIndex(hitPath, z);       // 疊在看得到的那條線上，但仍在節點之下
             MainCanvas.Children.Add(path);
+            MainCanvas.Children.Add(hitPath);
             _connections.Add(conn);
             ApplyConnectionVisual(conn);
 
@@ -1934,6 +2309,16 @@ namespace Cat5201
             HookNode(endNode);
 
             SaveState();
+        }
+
+        /// <summary>連接線的滑鼠提示：現在是哪種線、右鍵會變成什麼。</summary>
+        private static void UpdateConnectionTooltip(Connection conn)
+        {
+            if (conn?.HitPath == null) return;
+
+            conn.HitPath.ToolTip = conn.FlowMode
+                ? "流動連線（藍色虛線）\n上游跑完會自動帶著結果往下游跑；匯流節點會等所有上游都完成。\n右鍵：改回一般連線"
+                : "一般連線（灰線）\n只把上游內容當背景，不會自動往下跑。\n右鍵：改成流動連線";
         }
 
         // #4：依流動模式套用連接線外觀——流動時藍色虛線 + 上游→下游的行進動畫；否則回灰色實線。
@@ -1974,6 +2359,7 @@ namespace Cat5201
 
             conn.FlowMode = !conn.FlowMode;
             ApplyConnectionVisual(conn);
+            UpdateConnectionTooltip(conn);
             SaveState();
 
             if (conn.FlowMode &&
@@ -2087,395 +2473,21 @@ namespace Cat5201
         public PresentationEngine GetPresentationEngine() => _presentationEngine;
 
         // 文件產出引擎（個人化）：預設 Claude 文件技能（與 Claude App 同級），可切回內建快速版。
-        private DocumentEngine _documentEngine = DocumentEngine.ClaudeSkills;
+        // 預設＝內建快速版。
+        //
+        // 2026-10-13 實測，最佳品質模式（Claude 文件技能）做簡報：三次全部失敗，單次 8～14 分鐘，
+        // 而且每次失敗都還是會收錢。使用者的結論是「這甚至不如原本的簡報，不管品質、時間還是成本」。
+        // 一個預設開啟、但大多數時候更慢更貴又做不出東西的路徑，不該是預設。
+        // 它仍然留在「個人化 → 簡報與報告品質」裡，等它穩定了再把預設換回去。
+        private DocumentEngine _documentEngine = DocumentEngine.Builtin;
         public DocumentEngine GetDocumentEngine() => _documentEngine;
 
-        // §7.2：重生簡報中的單一張投影片 → 重建 .pptx、換掉舊檔與 chip、更新節點的投影片清單。
-        // §7.2：簡報預覽視窗（WebView2）按「重生這張」時，前端 postMessage 進來這裡。
-        private async void OnPreviewWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
-        {
-            string msg;
-            try { msg = e.TryGetWebMessageAsString() ?? ""; }
-            catch { return; }
 
-            if (string.IsNullOrWhiteSpace(msg))
-                return;
 
-            int order;
-            string action;
-            string heading = "";
-            var bullets = new List<string>();
-            string instruction = "";
 
-            try
-            {
-                using var doc = JsonDocument.Parse(msg);
-                var root = doc.RootElement;
-                action = root.TryGetProperty("action", out var a) ? (a.GetString() ?? "") : "";
-                if (!root.TryGetProperty("order", out var o) || !o.TryGetInt32(out order))
-                    return;
 
-                if (root.TryGetProperty("heading", out var h))
-                    heading = h.GetString() ?? "";
 
-                if (root.TryGetProperty("instruction", out var ins))
-                    instruction = (ins.GetString() ?? "").Trim();
 
-                if (root.TryGetProperty("bullets", out var bs) && bs.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var b in bs.EnumerateArray())
-                    {
-                        string text = b.GetString() ?? "";
-                        if (!string.IsNullOrWhiteSpace(text))
-                            bullets.Add(text.Trim());
-                    }
-                }
-            }
-            catch { return; }
-
-            if (string.Equals(action, "regen", StringComparison.OrdinalIgnoreCase))
-                await RegenerateSlideFromPreviewAsync(order, instruction);
-            else if (string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase))
-                await ApplySlideEditFromPreviewAsync(order, heading, bullets);
-            else if (string.Equals(action, "image", StringComparison.OrdinalIgnoreCase))
-                await ChangeSlideImageFromPreviewAsync(order, instruction, remove: false);
-            else if (string.Equals(action, "imageRemove", StringComparison.OrdinalIgnoreCase))
-                await ChangeSlideImageFromPreviewAsync(order, "", remove: true);
-        }
-
-        /// <summary>
-        /// 預覽裡就地編輯某一頁的文字 → 更新大綱、重建 .pptx，並讓對照 PDF 跟著更新（PDF 永遠跟著 pptx）。
-        /// 覆蓋前留一版，可用「回到上一版」退回。
-        /// </summary>
-        private async Task ApplySlideEditFromPreviewAsync(int order, string heading, List<string> bullets)
-        {
-            string path = _previewPath ?? "";
-            var node = _previewOwnerNode;
-
-            if (_previewSlideRegenBusy || node == null ||
-                string.IsNullOrWhiteSpace(path) || !File.Exists(path) ||
-                !path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            _previewSlideRegenBusy = true;
-            try
-            {
-                var native = NativeDeckStorage.Read(path);
-                if (native == null) return; // Never flatten an external designer's slide structure.
-                var outline = native.Outline;
-
-                var slides = outline.Slides.Select(s => s.Order == order
-                    ? new PresentationSlidePayload
-                    {
-                        Order = s.Order,
-                        Kind = s.Kind,
-                        Heading = string.IsNullOrWhiteSpace(heading) ? s.Heading : heading,
-                        Bullets = bullets,
-                        ImageBytes = s.ImageBytes
-                    }
-                    : s).ToList();
-
-                var updated = new PresentationOutlinePayload
-                {
-                    Title = outline.Title,
-                    Topic = outline.Topic,
-                    Slides = slides,
-                    SlideCount = slides.Count,
-                    RequestedSlideCount = outline.RequestedSlideCount,
-                    PipelineId = outline.PipelineId,
-                    ModelId = outline.ModelId,
-                    AgentId = outline.AgentId,
-                    SourceSummary = outline.SourceSummary
-                };
-
-                WriteDeckFiles(path, updated, native.Cover);
-
-                node.UpdatePresentationOutline(updated);
-                SaveState();
-                AppLog.Info("Preview", $"就地編輯第 {order} 頁並存回");
-
-                if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                    OpenPreview(path, node);
-            }
-            catch (Exception ex)
-            {
-                MenuConfirmDialog.ShowMessage(this, "儲存修改", "存回簡報失敗：" + ex.Message, this);
-            }
-            finally
-            {
-                _previewSlideRegenBusy = false;
-            }
-
-            await Task.CompletedTask;
-        }
-
-        /// <summary>
-        /// 預覽裡替某一頁重新生成／新增／移除配圖。圖片是真的要花錢的呼叫，所以先過每日預算檢查。
-        /// 封面頁的圖存在 native.Cover，內容頁的圖存在該頁的 ImageBytes。
-        /// </summary>
-        private async Task ChangeSlideImageFromPreviewAsync(int page, string instruction, bool remove)
-        {
-            string path = _previewPath ?? "";
-            var node = _previewOwnerNode;
-
-            if (_previewSlideRegenBusy || node == null || _nodeService == null ||
-                string.IsNullOrWhiteSpace(path) || !File.Exists(path) ||
-                !path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            _previewSlideRegenBusy = true;
-            try
-            {
-                var native = NativeDeckStorage.Read(path);
-                if (native == null)
-                {
-                    MenuConfirmDialog.ShowMessage(this, "保留簡報設計", "這份簡報未包含可安全編輯的原始大綱，無法在這裡換圖。請用 PowerPoint 修改。", this);
-                    return;
-                }
-
-                var sourceOrder = NativeDeckStorage.SourceOrderForPage(native, page);
-                if (!sourceOrder.HasValue) return;
-
-                var outline = native.Outline;
-                var slide = outline.Slides.FirstOrDefault(s => s.Order == sourceOrder.Value);
-                if (slide == null) return;
-
-                bool isCover = string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase);
-                byte[]? cover = native.Cover;
-
-                if (remove)
-                {
-                    if (isCover) cover = null; else slide.ImageBytes = null;
-                }
-                else
-                {
-                    if (!CheckDailyBudgetAllows(out string budgetMessage))
-                    {
-                        MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
-                        return;
-                    }
-
-                    using var cts = new CancellationTokenSource();
-                    var (png, error) = await _nodeService.RegenerateSlideImageAsync(
-                        node, outline, sourceOrder.Value, instruction, cts.Token);
-
-                    if (png == null || png.Length == 0)
-                    {
-                        MenuConfirmDialog.ShowMessage(this, "這一頁的配圖",
-                            string.IsNullOrWhiteSpace(error) ? "配圖沒有產生出來。" : error, this);
-                        if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                            OpenPreview(path, node);
-                        return;
-                    }
-
-                    if (isCover) cover = png; else slide.ImageBytes = png;
-                }
-
-                WriteDeckFiles(path, outline, cover);
-                node.UpdatePresentationOutline(outline);
-                SaveState();
-
-                if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                    OpenPreview(path, node);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                MenuConfirmDialog.ShowMessage(this, "這一頁的配圖", "換圖失敗：" + ex.Message, this);
-            }
-            finally
-            {
-                _previewSlideRegenBusy = false;
-            }
-        }
-
-        /// <summary>覆蓋 .pptx 並讓同一次產出的對照 PDF 跟著重建；兩者都先留上一版。</summary>
-        private void WriteDeckFiles(string pptxPath, PresentationOutlinePayload outline, byte[]? coverPng)
-        {
-            // Build both before replacing either; layout failure must not destroy a working deck.
-            byte[] pptx = PptxBuilder.Build(outline, coverPng);
-            byte[] pdf = DeckPdfBuilder.Build(outline, coverPng);
-
-            // 這份簡報的所有對照 PDF 都要更新：產出時 pptx / pdf 的檔名時間戳可能差幾秒，
-            // 只更新其中一份的話，使用者點到的那個 chip 會永遠停在舊版。
-            var pdfTargets = GeneratedFileCompanion.ResolveRewriteTargets(pptxPath);
-
-            byte[] oldPptx = File.ReadAllBytes(pptxPath);
-            var oldPdfs = pdfTargets.ToDictionary(
-                p => p,
-                p => File.Exists(p) ? File.ReadAllBytes(p) : null,
-                StringComparer.OrdinalIgnoreCase);
-
-            GeneratedFileHistory.SaveVersion(pptxPath);
-            foreach (var target in pdfTargets)
-                GeneratedFileHistory.SaveVersion(target);
-
-            try
-            {
-                File.WriteAllBytes(pptxPath, pptx);
-                foreach (var target in pdfTargets)
-                    File.WriteAllBytes(target, pdf);
-
-                GeneratedFileCompanion.Register(pptxPath, pdfTargets[0]);
-            }
-            catch
-            {
-                File.WriteAllBytes(pptxPath, oldPptx);
-                foreach (var kv in oldPdfs)
-                    if (kv.Value != null) File.WriteAllBytes(kv.Key, kv.Value);
-                throw;
-            }
-        }
-
-        /// <summary>這張投影片實際會印成幾頁（內容太長會被拆成續頁）。</summary>
-        private static int CountPagesForSlide(NativeDeckStorage.Data? native, int sourceOrder)
-        {
-            if (native == null) return 0;
-
-            int count = 0;
-            for (int page = 1; page <= 200; page++)
-            {
-                var owner = NativeDeckStorage.SourceOrderForPage(native, page);
-                if (owner == null) break;
-                if (owner.Value == sourceOrder) count++;
-            }
-            return count;
-        }
-
-        // 在預覽視窗就地重生第 order 張：重建大綱 → 重生那張 → 覆蓋同一個 .pptx → 重新渲染預覽。
-        private async Task RegenerateSlideFromPreviewAsync(int order, string instruction)
-        {
-            string path = _previewPath ?? "";
-            var node = _previewOwnerNode;
-
-            if (_previewSlideRegenBusy || node == null || _nodeService == null ||
-                string.IsNullOrWhiteSpace(path) || !File.Exists(path) ||
-                !path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
-            _previewSlideRegenBusy = true;
-            try
-            {
-                var native = NativeDeckStorage.Read(path);
-                if (native == null)
-                {
-                    MenuConfirmDialog.ShowMessage(this, "保留簡報設計", "這份簡報未包含可安全編輯的原始大綱。請用 PowerPoint 修改，或整份重新生成；不會用內建版型覆蓋原設計。", this);
-                    return;
-                }
-                if (!CheckDailyBudgetAllows(out string budgetMessage))
-                {
-                    MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
-                    return;
-                }
-                var sourceOrder = NativeDeckStorage.SourceOrderForPage(native, order);
-                if (!sourceOrder.HasValue) return;
-                order = sourceOrder.Value;
-                var outline = native.Outline;
-
-                string userInput = !string.IsNullOrWhiteSpace(node.GetPresentationUserInput())
-                    ? node.GetPresentationUserInput()
-                    : outline.Title;
-
-                using var cts = new CancellationTokenSource();
-
-                // 「這句話是不是在要圖」交給模型判斷——關鍵字表只認得繁體中文的講法，
-                // 使用者用簡體、英文、日文講同一件事就會被漏掉。API 不通時才退回關鍵字。
-                bool wantsImage = !string.IsNullOrWhiteSpace(instruction)
-                                  && await _nodeService.WantsIllustrationsAsync(instruction, cts.Token);
-
-                if (!string.IsNullOrWhiteSpace(instruction))
-                {
-                    userInput = userInput.TrimEnd() + "\n\n【這一頁的修改要求】\n" + instruction.Trim();
-
-                    // 配圖是另一個步驟做的；不講清楚的話，文字模型會為了「加圖」去刪字騰出版面。
-                    if (wantsImage)
-                        userInput += "\n（配圖由另一個步驟處理，你只負責這一頁的文字，不要為了配圖刪減內容。）";
-                }
-
-                var updated = await _nodeService.RegeneratePresentationSlideAsync(node, outline, order, userInput, cts.Token);
-
-                if (updated == null)
-                {
-                    // 重生失敗：重新渲染原檔（恢復按鈕可用狀態）。
-                    if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                        OpenPreview(path, node);
-                    return;
-                }
-
-                // 重建前先保留既有封面圖，避免重生一張內容頁後封面圖被洗掉。
-                byte[]? coverPng = native.Cover;
-                string extraNote = "";
-
-                // 修改要求裡如果提到要圖，就真的去生一張——這句話送給「改寫文字」的模型是不會生出圖的，
-                // 使用者卻會以為自己已經要求過了（2026-09-25 實測：輸入「增加符合此頁內容的附圖」什麼也沒發生）。
-                if (wantsImage)
-                {
-                    var slide = updated.Slides.FirstOrDefault(s => s.Order == order);
-                    var (png, imageError) = await _nodeService.RegenerateSlideImageAsync(
-                        node, updated, order, instruction, cts.Token);
-
-                    if (png is { Length: > 0 } && slide != null)
-                    {
-                        if (string.Equals(slide.Kind, "cover", StringComparison.OrdinalIgnoreCase)) coverPng = png;
-                        else slide.ImageBytes = png;
-                    }
-                    else
-                    {
-                        extraNote = "這一頁的配圖沒有生成：" +
-                                    (string.IsNullOrWhiteSpace(imageError) ? "圖片步驟沒有產出。" : imageError);
-                    }
-                }
-
-                int pagesBefore = CountPagesForSlide(native, order);
-
-                // 覆蓋同一個檔（路徑不變 → chip / 預覽都還指向同一份）；先留上一版，PDF 跟著重建。
-                WriteDeckFiles(path, updated, coverPng);
-
-                node.UpdatePresentationOutline(updated);
-                SaveState();
-
-                // 重新渲染預覽（若使用者還停在這份）。
-                if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
-                    OpenPreview(path, node);
-
-                // 重寫後內容變短就不再需要續頁，那一頁會消失。不講的話看起來就像「它把我的頁刪掉了」。
-                int pagesAfter = CountPagesForSlide(NativeDeckStorage.Read(path), order);
-                if (pagesAfter < pagesBefore)
-                {
-                    extraNote = $"這張投影片原本因為內容太長被拆成 {pagesBefore} 頁，重寫後變短，已合併成 {pagesAfter} 頁。" +
-                                (string.IsNullOrWhiteSpace(extraNote) ? "" : "\n\n" + extraNote);
-                }
-
-                if (!string.IsNullOrWhiteSpace(extraNote))
-                    MenuConfirmDialog.ShowMessage(this, "這一頁已更新", extraNote, this);
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                MenuConfirmDialog.ShowMessage(this, "重生投影片", "重生投影片失敗：" + ex.Message, this);
-            }
-            finally
-            {
-                _previewSlideRegenBusy = false;
-            }
-        }
-
-        /// <summary>
-        /// 缺少 PDF 時以原生場景預覽；外部簡報不抽文字重建版面。
-        /// </summary>
-        private string BuildDeckPreviewHtml(string path)
-        {
-            var native = NativeDeckStorage.Read(path);
-            if (native != null)
-                return DeckHtmlRenderer.Build(native.Outline, new[] { native.Cover }, allowEdit: true);
-            return "<!doctype html><html lang='zh-TW'><meta charset='utf-8'><body style='font-family:Microsoft JhengHei;padding:48px'><h2>請開啟原始簡報查看設計</h2><p>這份檔案沒有對照 PDF，無法在此忠實呈現版面。請使用「外部開啟」查看 PPTX。</p></body></html>";
-        }
 
         // 由節點目前的 prompt + task mode 重推導任務型別，建出「可實際執行」的下游工作流計畫。
         // 回 null 代表此任務不是多階段任務（例如一般對話），不需展開。
@@ -2608,8 +2620,7 @@ namespace Cat5201
 
         public void SetPresentationEngine(PresentationEngine engine, bool save = true)
         {
-            // Gamma 已開放。沒設 GAMMA_API_KEY 時執行期自動跳過（NotConfigured → fallback 內建 PptxBuilder），
-            // 所以這裡不再攔——使用者的選擇如實保存。
+            // Gamma 選項已從介面下架（2026-10-15）；舊的存檔值會在 Parse 時轉成 Claude。
             _presentationEngine = engine;
             SyncPresentationEngineRadios();
             if (save)
@@ -2668,8 +2679,6 @@ namespace Cat5201
                     PresentationEngineClaude.IsChecked = _presentationEngine == PresentationEngine.Claude;
                 if (PresentationEngineGpt != null)
                     PresentationEngineGpt.IsChecked = _presentationEngine == PresentationEngine.Gpt;
-                if (PresentationEngineGamma != null)
-                    PresentationEngineGamma.IsChecked = _presentationEngine == PresentationEngine.Gamma;
             }
             finally
             {
@@ -2684,8 +2693,6 @@ namespace Cat5201
 
             if (ReferenceEquals(sender, PresentationEngineGpt))
                 SetPresentationEngine(PresentationEngine.Gpt);
-            else if (ReferenceEquals(sender, PresentationEngineGamma))
-                SetPresentationEngine(PresentationEngine.Gamma);
             else
                 SetPresentationEngine(PresentationEngine.Claude);
         }
@@ -2809,7 +2816,23 @@ namespace Cat5201
             }), DispatcherPriority.Loaded);
         }
 
+        /// <summary>
+        /// async void 的進入點：例外沒人接的話會變成未處理例外，所以在這一層收掉。
+        /// 真正的工作在 TryMaterializeDownstreamNodePlanFromTextAsync。
+        /// </summary>
         private async void TryMaterializeDownstreamNodePlanFromText(string artifactText)
+        {
+            try
+            {
+                await TryMaterializeDownstreamNodePlanFromTextAsync(artifactText);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Workflow", "自動展開下游節點失敗", ex);
+            }
+        }
+
+        private async Task TryMaterializeDownstreamNodePlanFromTextAsync(string artifactText)
         {
             if (string.IsNullOrWhiteSpace(artifactText))
                 return;
@@ -3191,6 +3214,8 @@ namespace Cat5201
             figure.Segments.Add(segment);
             geometry.Figures.Add(figure);
             c.Path.Data = geometry;
+            if (c.HitPath != null)
+                c.HitPath.Data = geometry;
         }
 
         public bool HasOutgoingConnections(NodeControl node)
@@ -3204,7 +3229,7 @@ namespace Cat5201
         // ===== 右鍵：將此節點加入記憶 =====
         // 存成一筆使用者明確標記的共享記憶（user_marked，重要性 0.97、SourceNodeId 留空 → 不受跨鏈隔離、全畫布可召回）。
         // 同時會出現在「個人化 → 當前記憶」清單（NodeMemoryService 把 user_marked 併入該清單）。
-        public void AddNodeToMemory(NodeControl node)
+        public async void AddNodeToMemory(NodeControl node)
         {
             if (node == null || _nodeService == null)
                 return;
@@ -3223,7 +3248,19 @@ namespace Cat5201
             string modelId = GetNodeSelectedModel(node);
             NodeTaskMode taskMode = GetNodeTaskMode(node);
 
-            string title = _nodeService.RememberNodeManually(node, agentId, topText, bottomText, taskMode, modelId);
+            // async void：例外沒人接的話會變成未處理例外。這裡會呼叫模型做重點萃取，
+            // 離線或額度用完都可能丟出來，必須在這一層收掉並告訴使用者。
+            string title;
+            try
+            {
+                title = await _nodeService.RememberNodeManuallyAsync(node, agentId, topText, bottomText, taskMode, modelId);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Memory", "加入記憶失敗", ex);
+                MenuConfirmDialog.ShowMessage(this, "加入記憶", "加入記憶失敗：" + ex.Message, this);
+                return;
+            }
 
             // 加入後立即刷新並展開「當前記憶」面板，讓使用者馬上看到（需求：標記的節點要出現在個人化當前記憶中）。
             RefreshMemoryPanel();
@@ -3296,8 +3333,11 @@ namespace Cat5201
             _rewireConn = conn;
             _rewireChild = child;
 
+            // 兩條都要藏：只藏看得到的那條，透明的命中線還留在原地攔滑鼠。
             if (conn.Path != null)
                 conn.Path.Visibility = Visibility.Collapsed;
+            if (conn.HitPath != null)
+                conn.HitPath.Visibility = Visibility.Collapsed;
 
             _rewireGhost = new PathShape
             {
@@ -3384,6 +3424,8 @@ namespace Cat5201
 
             if (_rewireConn?.Path != null)
                 _rewireConn.Path.Visibility = Visibility.Visible;
+            if (_rewireConn?.HitPath != null)
+                _rewireConn.HitPath.Visibility = Visibility.Visible;
 
             Mouse.OverrideCursor = null;
 
@@ -3634,14 +3676,15 @@ namespace Cat5201
         {
             try
             {
+                fullPath = ResolveGeneratedFile(fullPath) ?? "";
                 if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "開啟失敗", "找不到生成的檔案（可能已被移動或刪除）。", this);
+                    MenuConfirmDialog.ShowMessage(this, "開啟失敗", "找不到生成的檔案（可能已被刪除）。", this);
                     return;
                 }
 
-                // 安全檢查：只允許開啟 _generated 資料夾內的檔案。
-                string rootFull = System.IO.Path.GetFullPath(GeneratedFilesDir);
+                // 安全檢查：整個產出根目錄都算合法——別的存檔的檔案、以及 other 裡的，都要打得開。
+                string rootFull = System.IO.Path.GetFullPath(GeneratedFilesRoot);
                 string targetFull = System.IO.Path.GetFullPath(fullPath);
                 if (!targetFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                 {
@@ -3663,413 +3706,27 @@ namespace Cat5201
 
         // ===== Artifact 即時預覽（大型 overlay；點檔案 chip / 圖片開啟）=====
 
-        private string? _previewPath;
-        private NodeControl? _previewOwnerNode;
-        private bool _previewWebMsgHooked;
-        private bool _previewSlideRegenBusy;
-        private bool _previewMediaPlaying;
 
-        /// <summary>在 app 內預覽生成的檔案；無法內嵌渲染的格式給 fallback + 用系統程式開啟。</summary>
-        public void OpenPreview(string? fullPath) => OpenPreview(fullPath, null);
 
-        public async void OpenPreview(string? fullPath, NodeControl? owner)
-        {
-            if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
-            {
-                MenuConfirmDialog.ShowMessage(this, "預覽失敗", "找不到生成的檔案（可能已被移動或刪除）。", this);
-                return;
-            }
 
-            _previewOwnerNode = owner;
 
-            // 安全檢查：只允許預覽 _generated 資料夾內的檔案（與 OpenGeneratedFile 一致）。
-            string rootFull = System.IO.Path.GetFullPath(GeneratedFilesDir);
-            string targetFull = System.IO.Path.GetFullPath(fullPath);
-            if (!targetFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
-            {
-                MenuConfirmDialog.ShowMessage(this, "預覽失敗", "檔案不在允許預覽的範圍內。", this);
-                return;
-            }
 
-            _previewPath = targetFull;
-            PreviewFileName.Text = System.IO.Path.GetFileName(targetFull);
 
-            HideAllPreviewRenderers();
-            PreviewOverlay.Visibility = Visibility.Visible;
 
-            // 產出檔＋知道是哪個節點做的 → 可以就地重新生成（並補修改指示）。
-            bool canRegen = _previewOwnerNode != null &&
-                            System.IO.Path.GetExtension(targetFull).ToLowerInvariant()
-                                is ".pptx" or ".docx" or ".xlsx" or ".pdf" or ".png" or ".mp4";
-            if (PreviewRegenBar != null)
-            {
-                PreviewRegenBar.Visibility = canRegen ? Visibility.Visible : Visibility.Collapsed;
-                if (canRegen && PreviewRegenButton != null)
-                    PreviewRegenButton.IsEnabled = !_previewOwnerNode!.IsGenerating;
 
-                // 只有簡報能指定頁碼重生（其他檔案類型整份重做）。
-                if (PreviewPageBox != null)
-                    PreviewPageBox.Visibility = canRegen && targetFull.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)
-                        ? Visibility.Visible
-                        : Visibility.Collapsed;
 
-                RefreshPreviewUndoState();
-            }
 
-            string ext = System.IO.Path.GetExtension(targetFull).TrimStart('.').ToLowerInvariant();
 
-            try
-            {
-                switch (ext)
-                {
-                    case "png": case "jpg": case "jpeg": case "gif": case "bmp": case "webp":
-                        ShowImagePreview(targetFull);
-                        break;
 
-                    case "mp4": case "mov": case "webm": case "m4v":
-                        ShowMediaPreview(targetFull);
-                        break;
 
-                    case "html": case "htm": case "pdf":
-                        await ShowWebPreviewAsync(targetFull);
-                        break;
 
-                    case "docx":
-                        await ShowHtmlContentAsync(
-                            ArtifactHtmlRenderer.BuildDocxHtml(ArtifactTextExtractor.ExtractDocx(targetFull)),
-                            targetFull);
-                        break;
 
-                    case "pptx":
-                        string? deckPdf = GeneratedFileCompanion.FindCompanionPdf(targetFull);
-                        if (NativeDeckStorage.Read(targetFull) != null)
-                            await ShowHtmlContentAsync(BuildDeckPreviewHtml(targetFull), targetFull);
-                        else if (deckPdf != null)
-                            await ShowWebPreviewAsync(deckPdf, targetFull);
-                        else
-                            await ShowHtmlContentAsync(BuildDeckPreviewHtml(targetFull), targetFull);
-                        if (PreviewPageBox != null)
-                            PreviewPageBox.Visibility = canRegen && NativeDeckStorage.Read(targetFull) != null
-                                ? Visibility.Visible : Visibility.Collapsed;
-                        break;
 
-                    case "xlsx":
-                        await ShowHtmlContentAsync(
-                            ArtifactHtmlRenderer.BuildXlsxHtml(ArtifactTextExtractor.ExtractXlsxRows(targetFull)),
-                            targetFull);
-                        break;
 
-                    case "txt": case "md": case "csv": case "json":
-                        ShowTextPreview(File.ReadAllText(targetFull));
-                        break;
 
-                    default:
-                        ShowFallback($"「.{ext}」格式無法在這裡預覽，可用系統程式開啟。");
-                        break;
-                }
-            }
-            catch (Exception ex)
-            {
-                ShowFallback($"預覽失敗：{ex.Message}");
-            }
-        }
 
-        private void ShowImagePreview(string path)
-        {
-            try
-            {
-                var bmp = new BitmapImage();
-                bmp.BeginInit();
-                bmp.CacheOption = BitmapCacheOption.OnLoad;
-                bmp.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
-                bmp.UriSource = new Uri(path);
-                bmp.EndInit();
-                bmp.Freeze();
 
-                PreviewImage.Source = bmp;
-                PreviewImageScroll.Visibility = Visibility.Visible;
-            }
-            catch (Exception ex)
-            {
-                ShowFallback($"圖片載入失敗：{ex.Message}");
-            }
-        }
 
-        private void ShowMediaPreview(string path)
-        {
-            PreviewMedia.Visibility = Visibility.Visible;
-            PreviewMedia.Source = new Uri(path);
-            PreviewMedia.Play();
-            _previewMediaPlaying = true;
-        }
-
-        private async Task ShowWebPreviewAsync(string path, string? sourcePath = null)
-        {
-            PreviewLoading.Visibility = Visibility.Visible;
-            PreviewWeb.Visibility = Visibility.Visible;
-
-            try
-            {
-                await PreviewWeb.EnsureCoreWebView2Async();
-
-                // 等待初始化期間若已關閉或切換到別的檔案，放棄這次導覽。
-                if (PreviewOverlay.Visibility != Visibility.Visible ||
-                    !string.Equals(_previewPath, sourcePath ?? path, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-
-                // WebView2 的 PDF 檢視器會依網址快取：單頁重生後檔案已經換了，導覽到同一個
-                // file:// 網址還是會顯示舊的那一份。用檔案的修改時間當版本參數，內容變了網址才變。
-                string url = new Uri(path).AbsoluteUri;
-                try
-                {
-                    long stamp = File.GetLastWriteTimeUtc(path).Ticks;
-                    url += (url.Contains('?') ? "&" : "?") + "v=" + stamp;
-                }
-                catch { /* 取不到時間就照原網址走 */ }
-
-                PreviewWeb.CoreWebView2.Navigate(url);
-            }
-            catch (Exception ex)
-            {
-                PreviewWeb.Visibility = Visibility.Collapsed;
-                ShowFallback($"無法載入預覽器（WebView2）：{ex.Message}");
-            }
-            finally
-            {
-                PreviewLoading.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        // 把渲染好的 HTML 字串丟進 WebView2 顯示（DOCX → markdown 排版、PPTX → 投影片卡片）。
-        private async Task ShowHtmlContentAsync(string html, string sourcePath)
-        {
-            PreviewLoading.Visibility = Visibility.Visible;
-            PreviewWeb.Visibility = Visibility.Visible;
-
-            try
-            {
-                await PreviewWeb.EnsureCoreWebView2Async();
-
-                if (!_previewWebMsgHooked)
-                {
-                    PreviewWeb.CoreWebView2.WebMessageReceived += OnPreviewWebMessage;
-                    _previewWebMsgHooked = true;
-                }
-
-                if (PreviewOverlay.Visibility != Visibility.Visible ||
-                    !string.Equals(_previewPath, sourcePath, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-
-                // NavigateToString 有約 2MB 字串上限：含封面圖（base64）的簡報會超過，導致
-                // 「Value does not fall within the expected range」。改寫成暫存 HTML 檔再用 file:// 導覽，無大小限制。
-                string tempHtml = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201_preview.html");
-                File.WriteAllText(tempHtml, html, new System.Text.UTF8Encoding(false));
-                string uri = new Uri(tempHtml).AbsoluteUri + "?t=" + DateTime.Now.Ticks;
-                PreviewWeb.CoreWebView2.Navigate(uri);
-            }
-            catch (Exception ex)
-            {
-                PreviewWeb.Visibility = Visibility.Collapsed;
-                ShowFallback($"無法載入預覽器（WebView2）：{ex.Message}");
-            }
-            finally
-            {
-                PreviewLoading.Visibility = Visibility.Collapsed;
-            }
-        }
-
-        private void ShowTextPreview(string? text)
-        {
-            PreviewText.Text = string.IsNullOrWhiteSpace(text) ? "（沒有可顯示的文字內容）" : text;
-            PreviewTextScroll.Visibility = Visibility.Visible;
-        }
-
-        private void ShowFallback(string message)
-        {
-            PreviewFallbackText.Text = message;
-            PreviewFallback.Visibility = Visibility.Visible;
-        }
-
-        private void HideAllPreviewRenderers()
-        {
-            PreviewImageScroll.Visibility = Visibility.Collapsed;
-            PreviewImage.Source = null;
-
-            PreviewTextScroll.Visibility = Visibility.Collapsed;
-            PreviewFallback.Visibility = Visibility.Collapsed;
-            PreviewLoading.Visibility = Visibility.Collapsed;
-
-            PreviewMedia.Visibility = Visibility.Collapsed;
-            try { PreviewMedia.Stop(); PreviewMedia.Close(); } catch { }
-            PreviewMedia.Source = null;
-            _previewMediaPlaying = false;
-
-            PreviewWeb.Visibility = Visibility.Collapsed;
-            try { PreviewWeb.CoreWebView2?.Navigate("about:blank"); } catch { }
-        }
-
-        private void ClosePreview()
-        {
-            HideAllPreviewRenderers();
-            PreviewOverlay.Visibility = Visibility.Collapsed;
-            _previewPath = null;
-            _previewOwnerNode = null;
-        }
-
-        private void ClosePreview_Click(object sender, RoutedEventArgs e) => ClosePreview();
-
-        private void PreviewRegenInput_TextChanged(object sender, TextChangedEventArgs e)
-        {
-            if (PreviewRegenHint != null && PreviewRegenInput != null)
-                PreviewRegenHint.Visibility = string.IsNullOrEmpty(PreviewRegenInput.Text)
-                    ? Visibility.Visible
-                    : Visibility.Collapsed;
-        }
-
-        /// <summary>「回到上一版」按鈕的可用狀態：這個檔案（或它的對照 PDF）有備份才亮。</summary>
-        private void RefreshPreviewUndoState()
-        {
-            if (PreviewUndoButton == null)
-                return;
-
-            PreviewUndoButton.IsEnabled =
-                !string.IsNullOrWhiteSpace(_previewPath) && GeneratedFileHistory.HasPrevious(_previewPath);
-        }
-
-        // 新版不如舊版時退回：原檔與對照 PDF 一起退，預覽立刻重新整理。
-        private async void PreviewUndo_Click(object sender, RoutedEventArgs e)
-        {
-            string path = _previewPath ?? "";
-            if (string.IsNullOrWhiteSpace(path) || !GeneratedFileHistory.HasPrevious(path))
-                return;
-
-            bool ok = GeneratedFileHistory.RestorePrevious(path);
-            if (ok)
-            {
-                string? companion = GeneratedFileCompanion.FindCompanionPdf(path);
-                if (companion != null)
-                    GeneratedFileHistory.RestorePrevious(companion);
-
-                // 節點保存的大綱要跟著回到舊版，否則下次單頁重生會以新版為底本。
-                if (_previewOwnerNode != null && path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-                {
-                    var restored = NativeDeckStorage.Read(path)?.Outline;
-                    if (restored != null)
-                        _previewOwnerNode.UpdatePresentationOutline(restored);
-                    SaveState();
-                }
-
-                AppLog.Info("Preview", "已退回上一版：" + System.IO.Path.GetFileName(path));
-                OpenPreview(path, _previewOwnerNode);
-            }
-            else
-            {
-                MenuConfirmDialog.ShowMessage(this, "回到上一版", "沒有可以退回的版本。", this);
-            }
-
-            RefreshPreviewUndoState();
-        }
-
-        // 預覽視窗「重新生成」：用原需求 + 這裡輸入的修改指示，重跑產生這個檔案的節點。
-        // 有填頁碼且是簡報 → 只重做那一頁（覆蓋同一個檔，先留上一版）。
-        private async void PreviewRegenerate_Click(object sender, RoutedEventArgs e)
-        {
-            var node = _previewOwnerNode;
-            if (node == null)
-                return;
-
-            if (node.IsGenerating)
-            {
-                MenuConfirmDialog.ShowMessage(this, "重新生成", "這個節點正在執行中，請等它跑完再重新生成。", this);
-                return;
-            }
-
-            if (!CheckDailyBudgetAllows(out string budgetMessage))
-            {
-                MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
-                return;
-            }
-
-            string instruction = PreviewRegenInput?.Text?.Trim() ?? "";
-            string pageText = PreviewRegenPage?.Text?.Trim() ?? "";
-
-            // 單頁重生：留在預覽裡就地更新，不必重跑整個節點。
-            if (!string.IsNullOrWhiteSpace(pageText) &&
-                int.TryParse(pageText, out int pageNumber) &&
-                pageNumber > 0 &&
-                (_previewPath ?? "").EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
-            {
-                await RegenerateSlideFromPreviewAsync(pageNumber, instruction);
-                if (PreviewRegenPage != null) PreviewRegenPage.Text = "";
-                if (PreviewRegenInput != null) PreviewRegenInput.Text = "";
-                RefreshPreviewUndoState();
-                return;
-            }
-
-            // 沒填頁碼＝整份重跑。簡報可以單頁重生，別讓使用者以為按下去只會改一頁。
-            if ((_previewPath ?? "").EndsWith(".pptx", StringComparison.OrdinalIgnoreCase) &&
-                !MenuConfirmDialog.ShowConfirm(this, "重新生成整份簡報",
-                    "沒有指定頁碼，這會重跑整個節點、整份簡報重做（費用與時間都是整份的）。\n\n只想改某一頁的話：取消後在預覽裡展開那一頁的「編輯第 N 頁」，用「只重新生成這一頁」。",
-                    this, "整份重做", "取消"))
-            {
-                return;
-            }
-
-            ClosePreview();
-            if (PreviewRegenInput != null)
-                PreviewRegenInput.Text = "";
-
-            AppLog.Info("Preview", string.IsNullOrWhiteSpace(instruction)
-                ? "預覽重新生成（無額外指示）"
-                : "預覽重新生成，附修改指示");
-
-            await node.RegenerateWithInstructionAsync(instruction);
-        }
-
-        private void PreviewOverlay_BackgroundClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => ClosePreview();
-
-        // 點卡片本身不關閉（阻止冒泡到背景）。
-        private void PreviewCard_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-            => e.Handled = true;
-
-        private void PreviewOpenExternal_Click(object sender, RoutedEventArgs e)
-        {
-            if (!string.IsNullOrWhiteSpace(_previewPath))
-                OpenGeneratedFile(_previewPath);
-        }
-
-        private void PreviewMedia_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
-        {
-            if (_previewMediaPlaying)
-                PreviewMedia.Pause();
-            else
-                PreviewMedia.Play();
-            _previewMediaPlaying = !_previewMediaPlaying;
-        }
-
-        // 唯讀 TextBox 會吃掉滾輪事件，這裡在 tunnel 階段先攔下來捲外層 ScrollViewer。
-        private void PreviewTextScroll_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
-        {
-            if (sender is ScrollViewer sv)
-            {
-                sv.ScrollToVerticalOffset(sv.VerticalOffset - e.Delta);
-                e.Handled = true;
-            }
-        }
-
-        private void PreviewMedia_MediaOpened(object sender, RoutedEventArgs e) { }
-
-        private void PreviewMedia_MediaEnded(object sender, RoutedEventArgs e)
-        {
-            PreviewMedia.Position = TimeSpan.Zero;
-            PreviewMedia.Pause();
-            _previewMediaPlaying = false;
-        }
 
         public void RemoveAttachment(NodeControl node, string relativePath)
         {
@@ -4855,6 +4512,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             {
                 if (c.Path != null)
                     MainCanvas.Children.Remove(c.Path);
+                if (c.HitPath != null)
+                    MainCanvas.Children.Remove(c.HitPath);
             }
             _connections.RemoveAll(c => connsToDelete.Contains(c));
 
@@ -5825,6 +5484,10 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     BlockOpusSwitch.IsChecked = AiAutoCostPolicy.BlockOpus;
                 if (BlockDeepResearchSwitch != null)
                     BlockDeepResearchSwitch.IsChecked = AiAutoCostPolicy.BlockDeepResearch;
+                if (CompanionPdfSwitch != null)
+                    CompanionPdfSwitch.IsChecked = DeliveryOptions.CompanionPdf;
+                if (DecisionPanelSwitch != null)
+                    DecisionPanelSwitch.IsChecked = _showDecisionPanel;
                 if (TimeoutInput != null)
                     TimeoutInput.Text = _manualTimeoutSeconds > 0
                         ? _manualTimeoutSeconds.ToString()
@@ -5854,6 +5517,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 if (SpendTodayText != null)
                     SpendTodayText.Text = $"今日已花：{SpendLedger.TodayDisplay()}";
                 RefreshSkillsList();   // §19：開設定面板時同步技能清單
+                RefreshOutputDirLabel();
             }
             finally
             {
@@ -5874,6 +5538,18 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             if (_syncingCostControls)
                 return;
             AiAutoCostPolicy.BlockOpus = BlockOpusSwitch?.IsChecked == true;
+            SaveState();
+        }
+
+        /// <summary>
+        /// 產出檔案時要不要同時附一份同內容 PDF。關掉主要是為了速度——
+        /// PDF 是整個產出流程最慢的一步，單頁編輯時尤其有感。
+        /// </summary>
+        private void CompanionPdfSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            DeliveryOptions.CompanionPdf = CompanionPdfSwitch?.IsChecked == true;
             SaveState();
         }
 
@@ -6433,6 +6109,19 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 .ToList();
         }
 
+        // #4：此節點所有「流動模式」入邊的上游節點（匯流判斷用）。
+        public IReadOnlyList<NodeControl> GetFlowUpstreamNodes(NodeControl node)
+        {
+            if (node == null)
+                return Array.Empty<NodeControl>();
+
+            return _connections
+                .Where(c => ReferenceEquals(c.EndNode, node) && c.FlowMode && c.StartNode != null)
+                .Select(c => c.StartNode)
+                .Distinct()
+                .ToList();
+        }
+
         // #4：此節點是否有流動模式出邊（給右鍵選單決定是否啟用「執行此節點與下游」）。
         public bool NodeHasFlowDownstream(NodeControl node) => GetFlowDownstreamNodes(node).Count > 0;
 
@@ -6454,8 +6143,14 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             MarkFlowSubtreeWaiting(startNode, includeRoot: false);
             try
             {
-                var visited = new HashSet<Guid>();
-                await RunFlowSubtreeAsync(startNode, runStartNode, visited, cts);
+                var runState = new FlowRunState();
+                CollectFlowReachable(startNode, runState.InThisRun);
+                await RunFlowSubtreeAsync(startNode, runStartNode, runState, cts);
+
+                // 收尾掃描：匯流節點靠「最後一個上游跑完時順便叫它」才會啟動，
+                // 那個交棒只要在任何一個分支上斷掉（失敗、取消、競態），它就永遠停在空白。
+                // 掃一遍「上游其實都好了、自己卻沒開始過」的節點並補跑，直到沒有人可以補為止。
+                await SweepReadyJoinNodesAsync(runState, cts);
             }
             finally
             {
@@ -6465,6 +6160,57 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 // 仍停在等待中的（上游失敗、被取消、或空節點被略過）→ 復位為閒置。
                 ClearFlowSubtreeWaiting(startNode);
             }
+        }
+
+        /// <summary>
+        /// 補跑那些「上游都完成了、自己卻沒被叫到」的節點。
+        ///
+        /// 菱形（A→B→D、A→C→D）的 D 是靠「B 或 C 跑完之後順便看一眼」才會啟動的。
+        /// 那個交棒只要斷在任何一個分支上，D 就永遠是空白，而且畫面上沒有任何訊息。
+        /// 與其相信每條分支都會乖乖交棒，不如在最後補一次掃描——
+        /// 它只會啟動「規則上本來就該跑」的節點，不會多跑任何東西。
+        /// </summary>
+        private async Task SweepReadyJoinNodesAsync(FlowRunState state, CancellationTokenSource cts)
+        {
+            // 每一輪最多補一圈；補完可能又讓更下游的節點符合條件，所以重複到沒有進展。
+            for (int pass = 0; pass < 8 && !cts.IsCancellationRequested; pass++)
+            {
+                var ready = MainCanvas.Children.OfType<NodeControl>()
+                    .Where(n => state.InThisRun.Contains(n.Id))
+                    .Where(n => !state.Started.Contains(n.Id))
+                    .Where(n =>
+                    {
+                        var ups = GetFlowUpstreamNodes(n);
+                        return ups.Count > 0 && ups.All(u => state.Completed.Contains(u.Id));
+                    })
+                    .ToList();
+
+                if (ready.Count == 0)
+                    return;
+
+                foreach (var node in ready)
+                {
+                    if (cts.IsCancellationRequested) return;
+                    AppLog.Info("Flow", $"收尾補跑：「{ShortLabel(node)}」的上游都完成了，但沒有人叫它");
+                    await RunFlowSubtreeAsync(node, runThis: true, state, cts);
+                }
+            }
+        }
+
+        /// <summary>節點的短名稱，給紀錄用。</summary>
+        private static string ShortLabel(NodeControl node)
+        {
+            string text = (node?.GetTopText() ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+            return text.Length <= 18 ? (text.Length == 0 ? "（空節點）" : text) : text.Substring(0, 18) + "…";
+        }
+
+        // 這一輪會走到哪些節點：沿流動邊從起點展開（含起點）。
+        private void CollectFlowReachable(NodeControl root, HashSet<Guid> into)
+        {
+            if (root == null || !into.Add(root.Id))
+                return;
+            foreach (var child in GetFlowDownstreamNodes(root))
+                CollectFlowReachable(child, into);
         }
 
         // 沿流動邊（藍色虛線）走整棵子樹，把節點標記為「等待中」。includeRoot=false 時不標 root 本身。
@@ -6500,10 +6246,32 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             Walk(root);
         }
 
+        /// <summary>
+        /// 一次流動工作流執行的進度。所有分支的接續都回到 UI 執行緒上跑，
+        /// 所以這幾個集合不需要鎖——但它們確實會被多條分支交錯存取。
+        /// </summary>
+        private sealed class FlowRunState
+        {
+            /// <summary>已經開始（或已結束）的節點，防止兩條分支同時啟動同一個。</summary>
+            public HashSet<Guid> Started { get; } = new();
+
+            /// <summary>已成功完成的節點。匯流節點要等它的上游全部落在這裡面。</summary>
+            public HashSet<Guid> Completed { get; } = new();
+
+            /// <summary>失敗的節點。它的下游不會再有人來叫，直接放棄那條路。</summary>
+            public HashSet<Guid> Failed { get; } = new();
+
+            /// <summary>
+            /// 這一輪會走到的所有節點（沿流動邊從起點展開）。
+            /// 用途：判斷某個上游的「舊的成功結果」還算不算數——會重跑的那些不算。
+            /// </summary>
+            public HashSet<Guid> InThisRun { get; } = new();
+        }
+
         private async Task RunFlowSubtreeAsync(
             NodeControl node,
             bool runThis,
-            HashSet<Guid> visited,
+            FlowRunState state,
             CancellationTokenSource cts)
         {
             if (node == null || !MainCanvas.Children.Contains(node))
@@ -6512,12 +6280,47 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             if (cts.IsCancellationRequested)
                 return;
 
-            // 防環：同一節點只跑一次。
-            if (!visited.Add(node.Id))
-                return;
-
             if (runThis)
             {
+                // 匯流：所有「流動模式」上游都完成，才輪到這個節點。規則本身在 FlowSchedule，
+                // 這裡只負責把「誰連到誰」交給它。
+                //
+                // 少了這道檢查，A→B→D 與 A→C→D 這種菱形裡，B、C 並行，先跑完的那條
+                // 會直接啟動 D；另一條稍後走到 D 時已被當成「跑過了」而略過——
+                // D 於是少吃了一條分支的結果，而且全程沒有任何錯誤訊息。
+                var upstream = GetFlowUpstreamNodes(node);
+
+                // 這一輪不會重跑、而且手上已經有成功結果的上游，算它已經滿足。
+                // 少了這一段，「先手動跑 B、再手動跑 C」永遠湊不齊 D 的上游。
+                var satisfied = upstream
+                    .Where(u => !state.InThisRun.Contains(u.Id) &&
+                                string.Equals(u.GetRunStatusKey(), "success", StringComparison.Ordinal))
+                    .Select(u => u.Id)
+                    .ToHashSet();
+
+                var gate = FlowSchedule.Evaluate(
+                    node.Id,
+                    upstream.Select(u => u.Id),
+                    state.Started, state.Completed, state.Failed, satisfied);
+
+                // WaitForUpstream 不是「永遠不跑」：晚完成的那條分支稍後會再走到這裡。
+                if (gate != FlowSchedule.Gate.Run)
+                {
+                    // 但如果最後沒有人回來叫它，畫面上就只是一個永遠空白的節點，
+                    // 沒有任何訊息說它在等什麼（使用者 2026-10-15 回報的就是這個畫面）。
+                    // 至少把「在等誰」留在紀錄裡，收尾掃描也靠這個判斷要不要補跑。
+                    if (gate == FlowSchedule.Gate.WaitForUpstream)
+                    {
+                        var missing = upstream
+                            .Where(u => !state.Completed.Contains(u.Id) && !satisfied.Contains(u.Id))
+                            .Select(u => ShortLabel(u))
+                            .ToList();
+                        AppLog.Info("Flow", $"「{ShortLabel(node)}」在等上游：{string.Join("、", missing)}");
+                    }
+                    return;
+                }
+
+                state.Started.Add(node.Id);
                 FocusDecisionNode(node);
 
                 if (ShouldStopBeforeUnsupportedDownstreamNode(node))
@@ -6537,7 +6340,20 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
                 // 父失敗 → 不往下跑這條分支（避免把錯誤內容往下游灌）。
                 if (!success)
+                {
+                    state.Failed.Add(node.Id);
                     return;
+                }
+
+                state.Completed.Add(node.Id);
+            }
+            else
+            {
+                // 起點：它剛剛才跑完（或由使用者指定從這裡往下），視為已完成，
+                // 否則它的下游會因為「上游未完成」而永遠不啟動。
+                if (!state.Started.Add(node.Id))
+                    return;
+                state.Completed.Add(node.Id);
             }
 
             // 等父節點跑完 → 所有一級流動下游「同時並行」扇出（不再一個跑完才換下一個）。
@@ -6552,7 +6368,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 if (cts.IsCancellationRequested)
                     break;
 
-                branchTasks.Add(RunFlowSubtreeAsync(child, runThis: true, visited, cts));
+                branchTasks.Add(RunFlowSubtreeAsync(child, runThis: true, state, cts));
             }
 
             await Task.WhenAll(branchTasks);

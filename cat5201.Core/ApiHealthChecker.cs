@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -30,11 +30,12 @@ namespace Cat5201
             public string BillingUrl { get; init; } = "";
             public string Note { get; init; } = "";
 
-            /// <summary>
-            /// 這個服務向使用者收費的幣別。Google Cloud 依帳單國別出帳（澳洲帳號是 AUD），
-            /// 畫面上就該顯示 A$，不然使用者得自己在腦袋裡換算一次。
-            /// </summary>
-            public string Currency { get; init; } = "USD";
+            // 這裡刻意沒有 Currency。
+            //
+            // 幣別是「使用者選的」，不是服務的固有屬性——出廠預設只是還沒選過時的起點，
+            // 放在這個隨處拿得到的物件上，任何一個畫面都可能順手讀它而繞過使用者的選擇。
+            // 2026-10-13 就出過事：設定頁照選擇顯示 A$，右下角小面板讀這裡所以永遠顯示 US$，
+            // 同一筆錢兩個講法。現在唯一的入口是 ProviderBalance.CurrencyOf()。
         }
 
         /// <summary>幣別代號 → 顯示符號。</summary>
@@ -89,28 +90,48 @@ namespace Cat5201
             new ProviderInfo
             {
                 Id = "google", DisplayName = "Google（Gemini・Veo 影片）", EnvName = "GEMINI_API_KEY",
-                BillingUrl = "https://aistudio.google.com/app/apikey",
-                Note = "Gemini 模型、Veo 影片",
-                Currency = "AUD"
+                // 「帳單頁」就該開帳單頁。apikey 那一頁是金鑰管理，看不到餘額。
+                BillingUrl = "https://aistudio.google.com/app/billing",
+                Note = "Gemini 模型、Veo 影片"
             },
             new ProviderInfo
             {
                 Id = "perplexity", DisplayName = "Perplexity（搜尋研究）", EnvName = "PERPLEXITY_API_KEY",
-                BillingUrl = "https://www.perplexity.ai/settings/api",
+                // 同上：settings/api 是金鑰頁，餘額在 console 的帳單頁。
+                BillingUrl = "https://console.perplexity.ai/settings/billing",
                 Note = "即時搜尋、研究"
             },
         };
 
-        /// <summary>模型 ID → 服務代號（帳本分服務加總、狀態對應用）。</summary>
+        /// <summary>
+        /// 模型 ID → 服務代號（帳本分服務加總、餘額扣款、狀態對應用）。
+        ///
+        /// 對不到就回空字串，而 SpendLedger 與 ProviderBalance 收到空字串都是直接忽略——
+        /// 也就是說，這裡漏掉一個前綴，那個模型花的每一塊錢都會從帳本上消失，而且畫面上
+        /// 完全看不出來。所以 ① 前綴要列全（含不走 chat 的那些：圖片、影片、語音、嵌入），
+        /// ② 真的對不到時由 UsageMeter 留一筆警告，見 UsageMeter.Commit。
+        /// </summary>
         public static string ProviderIdForModel(string? modelId)
         {
             string m = (modelId ?? "").Trim().ToLowerInvariant();
             if (m.Length == 0) return "";
-            if (m.StartsWith("claude")) return "anthropic";
-            if (m.StartsWith("gpt") || m.StartsWith("o1") || m.StartsWith("o3") || m.StartsWith("o4") || m.StartsWith("dall-e")) return "openai";
-            if (m.StartsWith("gemini") || m.StartsWith("veo") || m.StartsWith("models/veo")) return "google";
+
+            // Perplexity Agent 代跑第三方模型，錢付給 Perplexity——要排在 openai 前綴之前判斷。
+            if (m.StartsWith("openai/") || m.StartsWith("anthropic/") || m.StartsWith("google/")) return "perplexity";
             if (m.StartsWith("pplx") || m.StartsWith("sonar") || m.StartsWith("perplexity")) return "perplexity";
-            if (m.StartsWith("openai/")) return "perplexity";  // Perplexity Agent 代跑第三方模型，錢付給 Perplexity
+
+            if (m.StartsWith("claude")) return "anthropic";
+
+            if (m.StartsWith("gpt") || m.StartsWith("chatgpt") ||
+                m.StartsWith("o1") || m.StartsWith("o3") || m.StartsWith("o4") ||
+                m.StartsWith("dall-e") || m.StartsWith("sora") || m.StartsWith("codex") ||
+                m.StartsWith("text-embedding") || m.StartsWith("whisper") ||
+                m.StartsWith("tts-") || m.StartsWith("omni-moderation")) return "openai";
+
+            if (m.StartsWith("gemini") || m.StartsWith("gemma") ||
+                m.StartsWith("veo") || m.StartsWith("models/veo") ||
+                m.StartsWith("imagen")) return "google";
+
             return "";
         }
 

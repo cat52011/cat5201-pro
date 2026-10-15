@@ -37,51 +37,70 @@ namespace Cat5201
         // 在 UI 執行緒上同步彈窗（AgentRuntime.ExecuteAsync 本就跑在 UI 執行緒），故回傳已完成的 Task。
         public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent)
         {
-            // 逐項（圖示 / 名稱 / 成本徽章）——成本一律取自 ModelCostEstimator 同一價目表。
+            // 逐項（名稱 / 說明）——成本一律取自 ModelCostEstimator 同一價目表。
             var items = new List<(string Icon, string Name, string Detail)>();
 
-            void AddTarget(string icon, string name, string detail)
+            // 這次估計要花多少（美元）。只用來判斷會不會超過今日上限並顯示給使用者，
+            // 真正入帳的仍是 UsageMeter 記到的實際花費。
+            double estimatedUsd = 0;
+
+            void AddTarget(string name, string detail, double usd = 0)
             {
-                if (!items.Exists(x => x.Name == name))
-                    items.Add((icon, name, detail));
+                if (items.Exists(x => x.Name == name)) return;
+                items.Add(("", name, detail));
+                estimatedUsd += usd;
             }
+
+            double imageUsd = ModelCostEstimator.ImageCostUsd("1024x1024", "high");
+            // 影片以最短可用長度估；真正的秒數要等導演企劃完才知道，寧可低估也不要在這裡嚇人。
+            double videoUsd = VeoModels.UsdPerSecondForModel(GetEffectiveVeoModel()) * 8;
+            // 文件：最佳品質模式會讓 Claude 在沙盒裡實際寫程式排版，來回數分鐘。
+            double documentUsd = _documentEngine == DocumentEngine.ClaudeSkills ? 3.0 : 0.05;
 
             switch (taskType)
             {
                 case OrchestrationTaskType.VideoGeneration:
-                    AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
+                    AddTarget("影片", "依秒計費，需較長時間", videoUsd);
                     break;
                 case OrchestrationTaskType.ImageGeneration:
-                    AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
+                    AddTarget("圖片", ModelCostEstimator.ImageUnitCostText(), imageUsd);
                     break;
                 case OrchestrationTaskType.ImageEdit:
-                    AddTarget("🖌️", "圖片編輯", "gpt-image");
+                    AddTarget("圖片編輯", ModelCostEstimator.ImageUnitCostText(), imageUsd);
                     break;
                 case OrchestrationTaskType.Presentation:
-                    AddTarget("📊", "簡報", DocumentDetail("PPTX＋PDF 對照"));
+                    AddTarget("簡報", DocumentDetail(DeckFormats()), documentUsd);
                     break;
                 case OrchestrationTaskType.GenerateFile:
-                    AddTarget("📁", "檔案", "");
+                    AddTarget("檔案", "");
                     break;
             }
 
             if (outputIntent != null)
             {
-                if (outputIntent.WantsPresentation) AddTarget("📊", "簡報", DocumentDetail("PPTX＋PDF 對照"));
-                if (outputIntent.WantsReport) AddTarget("📄", "書面報告", DocumentDetail("Word／PDF"));
-                if (outputIntent.WantsTable) AddTarget("📑", "表格", DocumentDetail("Excel"));
-                if (outputIntent.WantsImage) AddTarget("🖼️", "圖片", $"gpt-image · {ModelCostEstimator.ImageUnitCostText()}");
-                if (outputIntent.WantsVideo) AddTarget("🎬", "影片", "Veo · 依秒計費，需較長時間");
+                if (outputIntent.WantsPresentation) AddTarget("簡報", DocumentDetail(DeckFormats()), documentUsd);
+                if (outputIntent.WantsReport) AddTarget("書面報告", DocumentDetail(WithPdf("Word")), documentUsd);
+                if (outputIntent.WantsTable) AddTarget("表格", DocumentDetail(WithPdf("Excel")), documentUsd);
+                if (outputIntent.WantsImage) AddTarget("圖片", ModelCostEstimator.ImageUnitCostText(), imageUsd);
+                if (outputIntent.WantsVideo) AddTarget("影片", "依秒計費，需較長時間", videoUsd);
             }
 
             if (items.Count == 0)
-                AddTarget("📁", "檔案／媒體", "");
+                AddTarget("檔案／媒體", "");
 
-            // 手機端橫幅文字（名稱＋徽章合併成一行）。
+            // 手機端橫幅文字（名稱＋說明合併成一行）。
             string what = string.Join("、", items.ConvertAll(x =>
                 string.IsNullOrWhiteSpace(x.Detail) ? x.Name : $"{x.Name}（{x.Detail}）"));
 
-            var dlg = new GenerationConfirmDialog(this, items, autoConfirmSeconds: _autoConfirmSeconds);
+            // 超上限時先問清楚，不要直接拒絕：使用者正要產出一份要交出去的東西，
+            // 丟一句「超過上限」等於叫他去改設定再重跑一次。
+            var budgetWarning = SpendReservations.WouldExceedBudget(estimatedUsd)
+                ? new GenerationConfirmDialog.BudgetWarning(
+                    SpendLedger.CommittedDisplay(), _dailyBudgetTwd, estimatedUsd)
+                : null;
+
+            var dlg = new GenerationConfirmDialog(
+                this, items, autoConfirmSeconds: _autoConfirmSeconds, budget: budgetWarning);
             dlg.Loaded += (_, __) =>
             {
                 // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
@@ -100,14 +119,26 @@ namespace Cat5201
             _pendingGenConfirmDeadlineUtc = null;
             BuildAndPublishMirrorSnapshot();
 
+            // 使用者明知會超過上限仍按下去：這一次放行，範圍由 AgentRuntime 開的 scope 框住。
+            if (ok && budgetWarning != null)
+                SpendReservations.GrantOverBudget();
+
             return Task.FromResult(ok);
         }
 
+        /// <summary>簡報會產出哪些檔案（對照 PDF 由個人化決定）。</summary>
+        private static string DeckFormats() => WithPdf("PowerPoint");
+
+        /// <summary>個人化開著對照 PDF 時才把 PDF 寫進說明——關掉了還說要產 PDF 就是騙人。</summary>
+        private static string WithPdf(string format)
+            => DeliveryOptions.CompanionPdf ? $"{format}＋PDF" : format;
+
         // 文件類產出的確認框說明：最佳品質模式要讓使用者事先知道會花幾分鐘、費用較高。
+        // 不寫「文件技能」——那是實作名稱，使用者在個人化裡看到的選項叫「最佳品質」。
         private string DocumentDetail(string formats)
             => _documentEngine == DocumentEngine.ClaudeSkills
-                ? $"{formats} · Claude 文件技能，約需數分鐘、依用量計費"
-                : formats;
+                ? $"{formats}・最佳品質模式，約需數分鐘"
+                : $"{formats}・快速版";
 
         // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
         // MVP 安全預設＝NT$100/天（只在沒有偏好檔時生效；使用者存過的值一律優先）。
@@ -124,7 +155,7 @@ namespace Cat5201
             if (SpendLedger.IsOverDailyBudget(_dailyBudgetTwd))
             {
                 message =
-                    $"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.TodayDisplay()}）。\n" +
+                    $"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.CommittedDisplay()}）。\n" +
                     "今天不再執行新任務。可到 設定 → 個人化 → 花費 調高或清除上限。";
                 return false;
             }
@@ -140,6 +171,7 @@ namespace Cat5201
 
             string raw = (DailyBudgetInput.Text ?? "").Trim();
             _dailyBudgetTwd = int.TryParse(raw, out int twd) && twd > 0 ? twd : 0;
+            SpendLedger.DailyBudgetTwd = _dailyBudgetTwd;
             SavePreferences();
         }
 

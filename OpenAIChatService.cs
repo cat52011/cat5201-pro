@@ -126,8 +126,8 @@ namespace Cat5201
             }
 
             string text = ExtractTextFromResponsesJson(body);
-            var (inTok, outTok) = ParseUsage(body);
-            ReportUsage(inTok, outTok, instructions, text, onUsage);
+            var (inTok, outTok, cachedTok) = ParseUsage(body);
+            ReportUsage(inTok, outTok, instructions, text, onUsage, cachedInput: cachedTok);
             return text;
         }
 
@@ -268,11 +268,11 @@ namespace Cat5201
             catch (OperationCanceledException)
             {
                 // 取消時已產生的 token 照樣計費：用已知用量（或已收到的文字估算）記一筆再往外丟。
-                ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), null, "已取消（部分用量）");
+                ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), null, "已取消（部分用量）", usage.CachedInput);
                 throw;
             }
 
-            ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), onUsage);
+            ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), onUsage, cachedInput: usage.CachedInput);
 
             return finalText.ToString();
         }
@@ -281,6 +281,9 @@ namespace Cat5201
         {
             public int Input;
             public int Output;
+
+            /// <summary>Input 之中命中提示快取的部分（官方只收一折）。</summary>
+            public int CachedInput;
         }
 
         private static void ProcessSseEvent(
@@ -308,6 +311,7 @@ namespace Cat5201
                         usage.Input = iv;
                     if (usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov))
                         usage.Output = ov;
+                    usage.CachedInput = ReadCachedTokens(usageEl);
                 }
 
                 // 官方串流事件中，文字增量可由 response.output_text.delta 取得
@@ -361,29 +365,45 @@ namespace Cat5201
         }
 
         // 非串流回應的 usage：root.usage.{input_tokens,output_tokens}；解析失敗回 (0,0)，由 UsageMeter 改用估算。
-        private static (int Input, int Output) ParseUsage(string json)
+        // input_tokens 之中命中提示快取的部分（usage.input_tokens_details.cached_tokens）。
+        // 官方只收一折，不扣掉就會把「同一段系統提示送幾十次」的工作階段高估好幾倍
+        // （2026-10-13 實測：本機記 US$1.48，官網實際約 US$0.43）。
+        private static int ReadCachedTokens(JsonElement usageEl)
+        {
+            if (usageEl.TryGetProperty("input_tokens_details", out var details) &&
+                details.ValueKind == JsonValueKind.Object &&
+                details.TryGetProperty("cached_tokens", out var cached) &&
+                cached.TryGetInt32(out var cv))
+            {
+                return Math.Max(0, cv);
+            }
+
+            return 0;
+        }
+
+        private static (int Input, int Output, int Cached) ParseUsage(string json)
         {
             try
             {
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("usage", out var usageEl) || usageEl.ValueKind != JsonValueKind.Object)
-                    return (0, 0);
+                    return (0, 0, 0);
 
                 int input = usageEl.TryGetProperty("input_tokens", out var inEl) && inEl.TryGetInt32(out var iv) ? iv : 0;
                 int output = usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov) ? ov : 0;
-                return (input, output);
+                return (input, output, ReadCachedTokens(usageEl));
             }
             catch
             {
-                return (0, 0);
+                return (0, 0, 0);
             }
         }
 
         // 成本可稽查：每次呼叫完成當下記一筆帳（模型、用途、token、費用），再回報給呼叫端。
         private void ReportUsage(int input, int output, string? instructions, string text,
-            Action<int, int>? onUsage, string note = "")
+            Action<int, int>? onUsage, string note = "", int cachedInput = 0)
         {
-            UsageMeter.RecordLlm(_model, input, output, instructions, text, note);
+            UsageMeter.RecordLlm(_model, input, output, instructions, text, note, cachedInputTokens: cachedInput);
             if (onUsage != null && (input > 0 || output > 0))
                 onUsage(input, output);
         }

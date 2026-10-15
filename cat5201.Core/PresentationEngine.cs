@@ -1,4 +1,4 @@
-namespace Cat5201
+﻿namespace Cat5201
 {
     /// <summary>
     /// 簡報生成器（個人化設定可切換）：決定「撰寫簡報內容」交給哪個 AI。
@@ -12,7 +12,10 @@ namespace Cat5201
         /// <summary>GPT：改用 OpenAI 模型撰寫簡報內容。</summary>
         Gpt = 1,
 
-        /// <summary>Gamma：Claude 產內容 + Gamma 排版出高品質 .pptx。需 GAMMA_API_KEY，九月開放，目前停用。</summary>
+        /// <summary>
+        /// Gamma：Claude 產內容 + Gamma 排版。2026-10-15 從介面下架（沒人用、還要多一把金鑰），
+        /// 列舉值保留只為了讓既有程式碼與舊存檔不爆；Parse 已不會再回傳它。
+        /// </summary>
         Gamma = 2
     }
 
@@ -23,7 +26,7 @@ namespace Cat5201
             return (value ?? "").Trim().ToLowerInvariant() switch
             {
                 "gpt" or "openai" or "1" => PresentationEngine.Gpt,
-                "gamma" or "2" => PresentationEngine.Gamma,
+                "gamma" or "2" => PresentationEngine.Claude,   // 已下架：舊存檔自動轉回 Claude
                 _ => PresentationEngine.Claude
             };
         }

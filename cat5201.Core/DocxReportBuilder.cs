@@ -19,16 +19,19 @@ namespace Cat5201
     /// </summary>
     public static class DocxReportBuilder
     {
-        // 這份報告的視覺語言（跟簡報同一套：雜誌家族 / 商業家族）。
-        private static DeckArtDirection _art = DeckArtDirection.ById("modern");
+        // 視覺語言（跟簡報同一套：雜誌家族 / 商業家族）一律用參數傳遞，不放 static 欄位——
+        // 多個節點同時產文件時，共用的 static 會被後來者蓋掉，產出的風格就會隨機錯亂。
 
         public static byte[] Build(string markdownContent) => Build(markdownContent, null);
 
-        public static byte[] Build(string markdownContent, DeckArtDirection? art)
+        public static byte[] Build(string markdownContent, DeckArtDirection? art) => Build(markdownContent, art, null);
+
+        /// <param name="language">本次輸出語言（空＝繁體中文）。目錄標題要跟報告本文同一種語言。</param>
+        public static byte[] Build(string markdownContent, DeckArtDirection? art, string? language)
         {
             string markdown = (markdownContent ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
             string title = markdown.Split('\n').FirstOrDefault(l => l.StartsWith("# ", StringComparison.Ordinal))?[2..].Trim() ?? "";
-            _art = art ?? DeckArtDirection.ForTopic(title);
+            var design = art ?? DeckArtDirection.ForTopic(title);
 
             using var stream = new MemoryStream();
 
@@ -37,12 +40,13 @@ namespace Cat5201
                 var mainPart = doc.AddMainDocumentPart();
                 var body = new Body();
 
-                AppendParagraphs(mainPart, body, markdown);
+                AddStyles(mainPart, design);
+                AppendParagraphs(mainPart, body, markdown, design, language);
 
                 // 版面：頁邊留白 + 頁首（報告名）+ 頁尾（頁碼），跟 PDF 版對齊。
                 var section = new SectionProperties(
                     new PageMargin { Top = 1418, Bottom = 1418, Left = 1418, Right = 1418, Header = 709, Footer = 709 });
-                AttachHeaderFooter(mainPart, section, title);
+                AttachHeaderFooter(mainPart, section, title, design);
                 body.AppendChild(section);
 
                 mainPart.Document = new Document(body);
@@ -53,7 +57,7 @@ namespace Cat5201
         }
 
         /// <summary>頁首：報告名 + 底線；頁尾：頁碼。Word 的頁首頁尾是獨立 part，要自己掛上去。</summary>
-        private static void AttachHeaderFooter(MainDocumentPart mainPart, SectionProperties section, string title)
+        private static void AttachHeaderFooter(MainDocumentPart mainPart, SectionProperties section, string title, DeckArtDirection art)
         {
             if (!string.IsNullOrWhiteSpace(title))
             {
@@ -61,13 +65,13 @@ namespace Cat5201
                 var headerPara = new Paragraph(new ParagraphProperties(
                     new ParagraphBorders(new BottomBorder
                     {
-                        Val = BorderValues.Single, Size = 4, Space = 6, Color = _art.Muted
+                        Val = BorderValues.Single, Size = 4, Space = 6, Color = art.Muted
                     }),
                     new SpacingBetweenLines { After = "120" }));
                 headerPara.AppendChild(new Run(
                     new RunProperties(
-                        Fonts(_art.BodyLatinFont, _art.BodyEaFont),
-                        new Color { Val = _art.Muted },
+                        Fonts(art.BodyLatinFont, art.BodyEaFont),
+                        new Color { Val = art.Muted },
                         new FontSize { Val = "16" },
                         new Spacing { Val = 10 }),
                     new Text(title.Length <= 48 ? title : title[..48] + "…") { Space = SpaceProcessingModeValues.Preserve }));
@@ -85,8 +89,8 @@ namespace Cat5201
             var footerPara = new Paragraph(new ParagraphProperties(
                 new Justification { Val = JustificationValues.Right }));
             var pageRun = new Run(new RunProperties(
-                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
-                new Color { Val = _art.Muted },
+                Fonts(art.BodyLatinFont, art.BodyEaFont),
+                new Color { Val = art.Muted },
                 new FontSize { Val = "17" }));
             footerPara.AppendChild(new SimpleField { Instruction = "PAGE" });
             footerPara.AppendChild(pageRun);
@@ -103,10 +107,108 @@ namespace Cat5201
         private static RunFonts Fonts(string latin, string eastAsian)
             => new() { Ascii = latin, HighAnsi = latin, EastAsia = eastAsian };
 
-        private static void AppendParagraphs(MainDocumentPart mainPart, Body body, string markdown)
+        /// <summary>
+        /// 真正的段落樣式。把字調大調粗只是「看起來像標題」——Word 並不知道那是標題，
+        /// 於是導覽窗格是空的、插不了目錄、章節折疊沒反應、螢幕閱讀器也讀不出層級。
+        /// 有了 outlineLvl 的 Heading 1-3，這些才會全部生效。
+        /// </summary>
+        private static void AddStyles(MainDocumentPart mainPart, DeckArtDirection art)
+        {
+            var part = mainPart.AddNewPart<StyleDefinitionsPart>();
+
+            part.Styles = new Styles(
+                new DocDefaults(
+                    new RunPropertiesDefault(new RunPropertiesBaseStyle(
+                        Fonts(art.BodyLatinFont, art.BodyEaFont),
+                        new Color { Val = art.Ink },
+                        new FontSize { Val = "21" })),
+                    new ParagraphPropertiesDefault(new ParagraphPropertiesBaseStyle(
+                        new SpacingBetweenLines { Before = "0", After = "120" }))),
+                NormalStyle(art),
+                HeadingStyle(1, art),
+                HeadingStyle(2, art),
+                HeadingStyle(3, art));
+
+            part.Styles.Save();
+        }
+
+        private static Style NormalStyle(DeckArtDirection art) => new(
+            new StyleName { Val = "Normal" },
+            new PrimaryStyle(),
+            new StyleParagraphProperties(new SpacingBetweenLines { Before = "0", After = "120" }),
+            new StyleRunProperties(
+                Fonts(art.BodyLatinFont, art.BodyEaFont),
+                new Color { Val = art.Ink },
+                new FontSize { Val = "21" }))
+        {
+            Type = StyleValues.Paragraph,
+            StyleId = "Normal",
+            Default = true
+        };
+
+        /// <summary>
+        /// 標題樣式。雜誌家族用明體大標且不加粗（襯線字加粗會糊成一團），商業家族用粗黑；
+        /// 第一層標題下面補一條強調色細線，就是簡報裡那個語彙。
+        /// keepNext / keepLines 讓標題不會單獨留在頁尾、內文卻跑到次頁。
+        /// </summary>
+        private static Style HeadingStyle(int level, DeckArtDirection art)
+        {
+            bool editorial = art.Family == "editorial";
+            int halfPtSize = level == 1 ? 40 : level == 2 ? 30 : 24;
+
+            var paraProps = new StyleParagraphProperties(
+                new KeepNext(),
+                new KeepLines(),
+                new OutlineLevel { Val = level - 1 },
+                new SpacingBetweenLines
+                {
+                    Before = level == 3 ? "240" : "360",
+                    After = level == 2 ? "140" : "120"
+                });
+
+            if (level == 1)
+            {
+                paraProps.AppendChild(new ParagraphBorders(new BottomBorder
+                {
+                    Val = BorderValues.Single, Size = 12, Space = 6, Color = art.Accent
+                }));
+            }
+
+            var runProps = new StyleRunProperties(
+                Fonts(editorial ? art.DisplayLatinFont : art.BodyLatinFont,
+                      editorial ? art.DisplayEaFont : art.BodyEaFont),
+                new Color { Val = art.Ink },
+                new FontSize { Val = halfPtSize.ToString() });
+
+            if (!editorial) runProps.AppendChild(new Bold());
+
+            return new Style(
+                new StyleName { Val = $"heading {level}" },
+                new BasedOn { Val = "Normal" },
+                new NextParagraphStyle { Val = "Normal" },
+                new UIPriority { Val = 9 },
+                new PrimaryStyle(),
+                paraProps,
+                runProps)
+            {
+                Type = StyleValues.Paragraph,
+                StyleId = "Heading" + level
+            };
+        }
+
+        private static void AppendParagraphs(
+            MainDocumentPart mainPart, Body body, string markdown, DeckArtDirection art, string? language)
         {
             var lines = markdown.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
             bool inFence = false;
+
+            // 章節夠多才放目錄。三兩節的報告加目錄只是多一頁。
+            int chapters = lines.Count(l => l.StartsWith("## ", StringComparison.Ordinal));
+            bool tocPending = chapters >= 4;
+
+            // 表與圖各自連號，內文才能寫「如表 2 所示」。
+            int tableNumber = 0, figureNumber = 0;
+            string? pendingCaption = null;
 
             for (int i = 0; i < lines.Length; i++)
             {
@@ -125,12 +227,32 @@ namespace Cat5201
                 }
 
                 // Markdown 圖片：![alt](本機絕對路徑) → 嵌入 Word 圖片（報告智慧配圖用）。
-                var imgMatch = Regex.Match(rawLine.Trim(), @"^!\[[^\]]*\]\(([^)]+)\)$");
+                var imgMatch = Regex.Match(rawLine.Trim(), @"^!\[([^\]]*)\]\(([^)]+)\)$");
                 if (imgMatch.Success)
                 {
-                    var imgPara = MakeImageParagraph(mainPart, imgMatch.Groups[1].Value.Trim());
+                    var imgPara = MakeImageParagraph(mainPart, imgMatch.Groups[2].Value.Trim());
                     if (imgPara != null)
+                    {
                         body.AppendChild(imgPara);
+
+                        // 圖說在圖下方。一定要標明是 AI 生成的示意圖——
+                        // 讀者把它當成實景照片或實測結果的話，這份報告就在誤導人。
+                        string alt = imgMatch.Groups[1].Value.Trim();
+                        string note = ReportWords.AiIllustration(language);
+                        string caption = ReportWords.Caption(
+                            language, ReportWords.Figure(language), ++figureNumber,
+                            alt.Length > 0 ? $"{alt}（{note}）" : note);
+                        body.AppendChild(MakeCaptionParagraph(caption, art, keepWithNext: false));
+                    }
+                    continue;
+                }
+
+                // 「表：各分類毛利率（來源：…）」這種說明行，只有下一個非空行真的是表格時才吃掉，
+                // 免得把內文裡剛好這樣開頭的句子吞掉。
+                string? captionText = ReportWords.TryCaptionText(rawLine);
+                if (captionText != null && NextNonEmptyStartsTable(lines, i + 1))
+                {
+                    pendingCaption = captionText;
                     continue;
                 }
 
@@ -145,7 +267,13 @@ namespace Cat5201
                         j++;
                     }
 
-                    body.AppendChild(MakeTable(tableLines));
+                    // 表說在表格上方（一般排版慣例），並黏住表格不被分頁拆開。
+                    body.AppendChild(MakeCaptionParagraph(
+                        ReportWords.Caption(language, ReportWords.Table(language), ++tableNumber, pendingCaption),
+                        art, keepWithNext: true));
+                    pendingCaption = null;
+
+                    body.AppendChild(MakeTable(tableLines, art));
                     // 表格後補一個小間距段落，避免和後續內容黏在一起。
                     body.AppendChild(new Paragraph(new ParagraphProperties(
                         new SpacingBetweenLines { Before = "0", After = "120" })));
@@ -155,68 +283,106 @@ namespace Cat5201
                 }
 
                 if (rawLine.StartsWith("# "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(2).Trim(), 40, "360", "120", level: 1));
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(2).Trim(), level: 1));
                 else if (rawLine.StartsWith("## "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(3).Trim(), 30, "360", "140", level: 2));
+                {
+                    // 目錄放在第一個章節之前（標題與中繼資料之後）。
+                    if (tocPending)
+                    {
+                        foreach (var element in MakeTableOfContents(art, language))
+                            body.AppendChild(element);
+                        tocPending = false;
+                    }
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(3).Trim(), level: 2));
+                }
                 else if (rawLine.StartsWith("### "))
-                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(4).Trim(), 24, "240", "120", level: 3));
+                    body.AppendChild(MakeHeadingParagraph(rawLine.Substring(4).Trim(), level: 3));
                 else if (rawLine.StartsWith("> "))
-                    body.AppendChild(MakeMetaParagraph(rawLine.Substring(2).Trim()));
+                    body.AppendChild(MakeMetaParagraph(rawLine.Substring(2).Trim(), art));
                 else if (Regex.IsMatch(rawLine, @"^[-*]\s+"))
-                    body.AppendChild(MakeListParagraph(Regex.Replace(rawLine, @"^[-*]\s+", "")));
+                    body.AppendChild(MakeListParagraph(Regex.Replace(rawLine, @"^[-*]\s+", ""), art));
                 else if (Regex.IsMatch(rawLine, @"^\d+\.\s+"))
-                    body.AppendChild(MakeNumberedParagraph(rawLine));
+                    body.AppendChild(MakeNumberedParagraph(rawLine, art));
                 else if (rawLine.Trim().Length > 0 && rawLine.Trim().Replace("-", "").Length == 0)
                 { /* horizontal rule — skip */ }
                 else if (string.IsNullOrWhiteSpace(rawLine))
                     body.AppendChild(new Paragraph(new ParagraphProperties(
                         new SpacingBetweenLines { Before = "0", After = "120" })));
                 else
-                    body.AppendChild(MakeBodyParagraph(rawLine));
+                    body.AppendChild(MakeBodyParagraph(rawLine, art));
             }
         }
 
         /// <summary>
-        /// 章節標題。雜誌家族用明體大標且不加粗（襯線字加粗會糊成一團），商業家族用半粗黑；
-        /// 第一層標題下面補一條強調色細線，就是簡報裡那個語彙。
+        /// 章節標題。外觀全部由 Heading 1-3 樣式決定（見 <see cref="HeadingStyle"/>），
+        /// 這裡只掛樣式——這樣 Word 才認得它是標題，導覽窗格、目錄、折疊才會動。
         /// </summary>
-        private static Paragraph MakeHeadingParagraph(
-            string text, int halfPtSize, string spaceBefore, string spaceAfter, int level)
+        private static Paragraph MakeHeadingParagraph(string text, int level)
+            => new(
+                new ParagraphProperties(new ParagraphStyleId { Val = "Heading" + level }),
+                new Run(new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+
+        /// <summary>
+        /// 目錄欄位。Dirty=true 讓 Word 開檔時自己更新頁碼，不必叫使用者按 F9，
+        /// 也不會跳出「這份文件含有欄位…」的更新對話框。
+        /// 欄位裡先放一行提示文字，萬一沒更新也不會開一個空白。
+        /// </summary>
+        private static IEnumerable<OpenXmlElement> MakeTableOfContents(DeckArtDirection art, string? language)
         {
-            bool editorial = _art.Family == "editorial";
-            var props = new ParagraphProperties(
-                new SpacingBetweenLines { Before = spaceBefore, After = spaceAfter });
+            var (label, hint) = ReportWords.Contents(language);
 
-            if (level == 1)
-            {
-                props.AppendChild(new ParagraphBorders(new BottomBorder
+            yield return new Paragraph(
+                new ParagraphProperties(new SpacingBetweenLines { Before = "240", After = "120" }),
+                new Run(
+                    new RunProperties(
+                        Fonts(art.BodyLatinFont, art.BodyEaFont),
+                        new Color { Val = art.Muted },
+                        new FontSize { Val = "18" },
+                        new Spacing { Val = 60 }),
+                    new Text(label) { Space = SpaceProcessingModeValues.Preserve }));
+
+            yield return new Paragraph(
+                new ParagraphProperties(new SpacingBetweenLines { Before = "0", After = "280" }),
+                new SimpleField(
+                    new Run(
+                        new RunProperties(
+                            Fonts(art.BodyLatinFont, art.BodyEaFont),
+                            new Color { Val = art.Muted },
+                            new FontSize { Val = "20" }),
+                        new Text(hint) { Space = SpaceProcessingModeValues.Preserve }))
                 {
-                    Val = BorderValues.Single, Size = 12, Space = 6, Color = _art.Accent
-                }));
-            }
-
-            var para = new Paragraph(props);
-
-            var runProps = new RunProperties(
-                Fonts(editorial ? _art.DisplayLatinFont : _art.BodyLatinFont,
-                      editorial ? _art.DisplayEaFont : _art.BodyEaFont),
-                new Color { Val = _art.Ink },
-                new FontSize { Val = new StringValue(halfPtSize.ToString()) });
-
-            if (!editorial) runProps.AppendChild(new Bold());
-
-            var run = new Run(runProps, new Text(text) { Space = SpaceProcessingModeValues.Preserve });
-            para.AppendChild(run);
-            return para;
+                    Instruction = "TOC \\o \"1-3\" \\h \\z \\u",
+                    Dirty = true
+                });
         }
 
-        private static Paragraph MakeMetaParagraph(string text)
+        /// <summary>
+        /// 說明文字段落（表 N｜… / 圖 N｜…）。小字、灰色、字距略開，
+        /// 表格說明用 keepNext 黏住下方表格——說明和表格被分頁拆開就沒有意義了。
+        /// </summary>
+        private static Paragraph MakeCaptionParagraph(string text, DeckArtDirection art, bool keepWithNext)
+        {
+            var props = new ParagraphProperties(
+                new SpacingBetweenLines { Before = keepWithNext ? "200" : "60", After = keepWithNext ? "80" : "200" });
+            if (keepWithNext) props.AppendChild(new KeepNext());
+
+            return new Paragraph(props,
+                new Run(
+                    new RunProperties(
+                        Fonts(art.BodyLatinFont, art.BodyEaFont),
+                        new Color { Val = art.Muted },
+                        new FontSize { Val = "17" },
+                        new Spacing { Val = 20 }),
+                    new Text(text) { Space = SpaceProcessingModeValues.Preserve }));
+        }
+
+        private static Paragraph MakeMetaParagraph(string text, DeckArtDirection art)
         {
             var para = new Paragraph();
             para.AppendChild(new ParagraphProperties(
                 new ParagraphBorders(new LeftBorder
                 {
-                    Val = BorderValues.Single, Size = 18, Space = 8, Color = _art.Accent
+                    Val = BorderValues.Single, Size = 18, Space = 8, Color = art.Accent
                 }),
                 new Indentation { Left = "240" },
                 new SpacingBetweenLines { Before = "160", After = "200" }));
@@ -224,15 +390,15 @@ namespace Cat5201
             var run = new Run();
             // 中文斜體是模擬出來的，很醜；用字級與顏色做層級即可。
             run.AppendChild(new RunProperties(
-                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
-                new Color { Val = _art.Ink },
+                Fonts(art.BodyLatinFont, art.BodyEaFont),
+                new Color { Val = art.Ink },
                 new FontSize { Val = "24" }));
             run.AppendChild(new Text(text) { Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(run);
             return para;
         }
 
-        private static Paragraph MakeListParagraph(string text)
+        private static Paragraph MakeListParagraph(string text, DeckArtDirection art)
         {
             var para = new Paragraph();
             para.AppendChild(new ParagraphProperties(
@@ -240,19 +406,19 @@ namespace Cat5201
                 new SpacingBetweenLines { Before = "0", After = "80" }));
 
             var bulletRun = new Run(new RunProperties(
-                Fonts(_art.BodyLatinFont, _art.BodyEaFont),
-                new Color { Val = _art.Accent }));
+                Fonts(art.BodyLatinFont, art.BodyEaFont),
+                new Color { Val = art.Accent }));
             bulletRun.AppendChild(new Text("— ") { Space = SpaceProcessingModeValues.Preserve });
             para.AppendChild(bulletRun);
 
-            foreach (var run in ParseInlineRuns(text))
+            foreach (var run in ParseInlineRuns(text, art))
                 para.AppendChild(run);
 
             return para;
         }
 
         /// <summary>編號清單：數字用強調色，跟 PDF 版同一個語彙。</summary>
-        private static Paragraph MakeNumberedParagraph(string text)
+        private static Paragraph MakeNumberedParagraph(string text, DeckArtDirection art)
         {
             var m = Regex.Match(text, @"^\s*(\d+)\.\s+(.*)$");
             string number = m.Success ? m.Groups[1].Value.PadLeft(2, '0') : "";
@@ -264,24 +430,24 @@ namespace Cat5201
 
             para.AppendChild(new Run(
                 new RunProperties(
-                    Fonts(_art.DisplayLatinFont, _art.BodyEaFont),
-                    new Color { Val = _art.Accent },
+                    Fonts(art.DisplayLatinFont, art.BodyEaFont),
+                    new Color { Val = art.Accent },
                     new FontSize { Val = "21" }),
                 new Text(number + "   ") { Space = SpaceProcessingModeValues.Preserve }));
 
-            foreach (var run in ParseInlineRuns(bodyText))
+            foreach (var run in ParseInlineRuns(bodyText, art))
                 para.AppendChild(run);
 
             return para;
         }
 
-        private static Paragraph MakeBodyParagraph(string text)
+        private static Paragraph MakeBodyParagraph(string text, DeckArtDirection art)
         {
             var para = new Paragraph();
             para.AppendChild(new ParagraphProperties(
                 new SpacingBetweenLines { Before = "0", After = "120" }));
 
-            foreach (var run in ParseInlineRuns(text))
+            foreach (var run in ParseInlineRuns(text, art))
                 para.AppendChild(run);
 
             return para;
@@ -383,6 +549,18 @@ namespace Cat5201
 
         // ---- Markdown 表格 → Word 表格 ----
 
+        /// <summary>從 index 起的第一個非空行是不是一個 Markdown 表格的開頭。</summary>
+        private static bool NextNonEmptyStartsTable(string[] lines, int index)
+        {
+            for (int i = index; i < lines.Length; i++)
+            {
+                if (string.IsNullOrWhiteSpace(lines[i]))
+                    continue;
+                return IsTableRow(lines[i]) && i + 1 < lines.Length && IsTableSeparator(lines[i + 1]);
+            }
+            return false;
+        }
+
         private static bool IsTableRow(string line)
         {
             string t = (line ?? "").Trim();
@@ -419,16 +597,16 @@ namespace Cat5201
             return t.Split('|').Select(c => c.Trim()).ToList();
         }
 
-        private static Table MakeTable(List<string> tableLines)
+        private static Table MakeTable(List<string> tableLines, DeckArtDirection art)
         {
             // 年報式表格：沒有直線、沒有網格底色，只有表頭下的實線與列間髮絲線。
             var props = new TableProperties(
                 new TableBorders(
                     new TopBorder { Val = BorderValues.None },
-                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = _art.Muted },
+                    new BottomBorder { Val = BorderValues.Single, Size = 4, Color = art.Muted },
                     new LeftBorder { Val = BorderValues.None },
                     new RightBorder { Val = BorderValues.None },
-                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 2, Color = _art.Muted },
+                    new InsideHorizontalBorder { Val = BorderValues.Single, Size = 2, Color = art.Muted },
                     new InsideVerticalBorder { Val = BorderValues.None }),
                 new TableWidth { Width = "5000", Type = TableWidthUnitValues.Pct });
 
@@ -438,7 +616,11 @@ namespace Cat5201
             {
                 bool isHeader = r == 0;
                 var cells = SplitRowCells(tableLines[r]);
-                var row = new TableRow();
+
+                // 標題列跨頁重複，資料列不被頁面切成兩半——長表格跨頁時最基本的可讀性。
+                var rowProps = new TableRowProperties(new CantSplit());
+                if (isHeader) rowProps.AppendChild(new TableHeader());
+                var row = new TableRow(rowProps);
 
                 foreach (var cellText in cells)
                 {
@@ -448,13 +630,13 @@ namespace Cat5201
                     if (isHeader)
                         cellProps.Append(new TableCellBorders(new BottomBorder
                         {
-                            Val = BorderValues.Single, Size = 10, Color = _art.Ink
+                            Val = BorderValues.Single, Size = 10, Color = art.Ink
                         }));
 
                     var para = new Paragraph(new ParagraphProperties(
                         new SpacingBetweenLines { Before = "60", After = "60" }));
 
-                    foreach (var run in ParseInlineRuns(cellText, forceBold: isHeader))
+                    foreach (var run in ParseInlineRuns(cellText, art, forceBold: isHeader))
                         para.AppendChild(run);
 
                     row.Append(new TableCell(cellProps, para));
@@ -466,10 +648,10 @@ namespace Cat5201
             return table;
         }
 
-        private static IEnumerable<Run> ParseInlineRuns(string text)
-            => ParseInlineRuns(text, forceBold: false);
+        private static IEnumerable<Run> ParseInlineRuns(string text, DeckArtDirection art)
+            => ParseInlineRuns(text, art, forceBold: false);
 
-        private static IEnumerable<Run> ParseInlineRuns(string text, bool forceBold)
+        private static IEnumerable<Run> ParseInlineRuns(string text, DeckArtDirection art, bool forceBold)
         {
             // Regex.Split with a capturing group returns alternating: normal, bold, normal, bold...
             // odd-indexed parts are the captured (bold) text.
@@ -482,8 +664,8 @@ namespace Cat5201
 
                 var run = new Run();
                 var runProps = new RunProperties(
-                    Fonts(_art.BodyLatinFont, _art.BodyEaFont),
-                    new Color { Val = _art.Ink },
+                    Fonts(art.BodyLatinFont, art.BodyEaFont),
+                    new Color { Val = art.Ink },
                     new FontSize { Val = "21" });
                 if (i % 2 == 1 || forceBold) runProps.AppendChild(new Bold());
                 run.AppendChild(runProps);

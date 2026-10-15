@@ -189,7 +189,9 @@ namespace Cat5201
             var lines = new List<string> { modeLine };
 
             if (!string.IsNullOrWhiteSpace(log.TaskMode))
-                lines.Add($"📌 判斷任務：{Safe(log.TaskMode)}（信心 {log.Confidence:P0}）");
+                // 分數留在下面的「任務判斷」區塊。摘要第一眼只要回答「它把這件事當成什麼」，
+                // 一個沒有校準過、也不是機率的小數放在這裡只會讓人停下來想它是什麼意思。
+                lines.Add($"📌 判斷任務：{Safe(log.TaskMode)}");
 
             // §6 第一層輸出判斷：這次想要的輸出（報告 / 表格 / 簡報）。
             if (!string.IsNullOrWhiteSpace(log.OutputIntentSummary))
@@ -233,6 +235,10 @@ namespace Cat5201
             // 哪個模型不能用、換成了誰（自動後備本來只寫在技術區的英文行裡）。
             foreach (var attemptLine in FailureExplainer.DescribeAttempts(log.FallbackAttempts, GetModelLabel))
                 lines.Add($"⚠ {attemptLine}");
+
+            // 個人化可稽查：這次實際採用了哪些偏好、哪一項被本次請求覆寫。
+            if (!string.IsNullOrWhiteSpace(log.EffectivePreferences))
+                lines.Add("⚙ 個人化：" + log.EffectivePreferences);
 
             // 成本可稽查：逐筆明細（用途 · 模型 · 用量 · 金額）。失敗的執行也照列——錢可能已經花了。
             var breakdown = UsageSummary.BuildBreakdownLines(log.UsageRecords);
@@ -407,12 +413,12 @@ namespace Cat5201
         {
             var lines = new List<string>
             {
-                $"Task Mode: {Safe(log.TaskMode)}",
-                $"Confidence: {log.Confidence:0.00}"
+                $"判斷為：{Safe(log.TaskMode)}",
+                $"判斷分數：{log.Confidence:0.00}（0～1 的比對分數，不是機率）"
             };
 
             if (!string.IsNullOrWhiteSpace(log.ResolverReason))
-                lines.Add($"Reason: {log.ResolverReason}");
+                lines.Add($"判斷理由：{log.ResolverReason}");
 
             if (log.ResolverKeywords != null && log.ResolverKeywords.Count > 0)
             {
@@ -420,14 +426,14 @@ namespace Cat5201
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct(StringComparer.OrdinalIgnoreCase);
 
-                lines.Add("Keywords: " + string.Join(", ", keywords));
+                lines.Add("命中的字詞：" + string.Join("、", keywords));
             }
 
             return new NodeDecisionStepViewData
             {
-                Title = "Task Mode",
+                Title = "任務判斷",
                 IsTechnical = true,
-                Detail = $"{Safe(log.TaskMode)} / confidence {log.Confidence:0.00}",
+                Detail = $"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}",
                 State = NodeDecisionStepState.Info,
                 Highlight = true,
                 DetailLines = lines
@@ -689,19 +695,19 @@ namespace Cat5201
         {
             var lines = new List<string>
             {
-                $"Resolver: {Safe(resolver)}",
-                $"Selection Mode: {Safe(log.SelectionMode)}"
+                $"挑選方式：{Safe(resolver)}",
+                $"模式：{(string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? "手動指定" : "自動選擇")}"
             };
 
             if (!string.IsNullOrWhiteSpace(log.ResolverReason))
-                lines.Add($"Resolver Reason: {log.ResolverReason}");
+                lines.Add($"理由：{log.ResolverReason}");
 
             if (apiFallbackUsed)
-                lines.Add("API resolver failed or downgraded, fallback to rules.");
+                lines.Add("讓 AI 判斷這一步沒成功，已改用關鍵字規則挑模型。");
 
             return new NodeDecisionStepViewData
             {
-                Title = "Resolver",
+                Title = "怎麼挑模型的",
                 IsTechnical = true,
                 Detail = Safe(resolver),
                 State = apiFallbackUsed ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
@@ -740,7 +746,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "Capability",
+                Title = "模型能力檢查",
                 IsTechnical = true,
                 Detail = detail,
                 State = state,
@@ -757,7 +763,7 @@ namespace Cat5201
             {
                 return new NodeDecisionStepViewData
                 {
-                    Title = "Memory",
+                    Title = "記憶",
                     IsTechnical = true,
                     Detail = "本次略過記憶",
                     State = NodeDecisionStepState.Info,
@@ -791,7 +797,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "Memory",
+                Title = "記憶",
                 IsTechnical = true,
                 Detail = detail,
                 State = recall.HasAny ? NodeDecisionStepState.Success : NodeDecisionStepState.Info,
@@ -833,7 +839,8 @@ namespace Cat5201
                 detailLines.AddRange(log.WorkspaceArtifacts
                     .Where(x => x != null)
                     .Take(20)
-                    .Select(x => $"ArtifactRecord: {Safe(x.ArtifactKind)} / {Safe(x.ContentFormat)} / {(x.IsUserVisible ? "visible" : "internal")} / Type: {Safe(x.ItemType)} / Agent: {Safe(x.SourceAgentId)} / Title: {Safe(x.Title)}"));
+                    .Select(x => $"{Safe(x.Title)}　（{Safe(x.ArtifactKind)}・{Safe(x.ContentFormat)}・" +
+                                 $"{(x.IsUserVisible ? "使用者看得到" : "只給系統內部用")}・來自 {Safe(x.SourceAgentId)}）"));
             }
 
             string detail = "-";
@@ -841,7 +848,7 @@ namespace Cat5201
 
             if (detailLines.Count == 0)
             {
-                detail = "No workspace artifacts";
+                detail = "這次沒有產生共享資料";
             }
             else
             {
@@ -858,7 +865,7 @@ namespace Cat5201
                 if (factCount == 0 && log.WorkspaceArtifacts != null)
                     factCount = log.WorkspaceArtifacts.Sum(x => x?.FactCount ?? 0);
 
-                detail = $"Artifacts: {artifactCount}, facts: {factCount}";
+                detail = $"資料 {artifactCount} 項・查到的事實 {factCount} 筆";
                 state = factCount > 0 ? NodeDecisionStepState.Success : NodeDecisionStepState.Info;
             }
 
@@ -873,7 +880,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "Workspace",
+                Title = "共享工作區",
                 IsTechnical = true,
                 Detail = detail,
                 State = state,
@@ -888,25 +895,25 @@ namespace Cat5201
             var lines = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequestedModelId))
-                lines.Add($"Requested: {GetModelLabel(log.CapabilityRequestedModelId)}");
+                lines.Add($"原本要用：{GetModelLabel(log.CapabilityRequestedModelId)}");
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityResolvedModelId))
-                lines.Add($"Resolved: {GetModelLabel(log.CapabilityResolvedModelId)}");
+                lines.Add($"實際改用：{GetModelLabel(log.CapabilityResolvedModelId)}");
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequired))
-                lines.Add($"Required: {log.CapabilityRequired}");
+                lines.Add($"這個任務需要：{log.CapabilityRequired}");
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityMissing))
-                lines.Add($"Missing: {log.CapabilityMissing}");
+                lines.Add($"原本那個模型沒有：{log.CapabilityMissing}");
 
             if (log.CapabilityStreamingAdjusted)
-                lines.Add("Streaming adjusted: off");
+                lines.Add("已關閉逐字輸出（這個模型不支援）");
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityReason))
-                lines.Add($"Reason: {log.CapabilityReason}");
+                lines.Add($"原因：{log.CapabilityReason}");
 
             if (lines.Count == 0)
-                lines.Add("Capability Guard: OK");
+                lines.Add("模型能力符合這個任務，沒有調整。");
 
             return lines;
         }
@@ -920,10 +927,10 @@ namespace Cat5201
             var lines = new List<string>();
 
             if (apiFallbackUsed)
-                lines.Add("Resolver fallback: API Auto → Rules");
+                lines.Add("讓 AI 挑模型失敗，改用關鍵字規則。");
 
             if (log.RuntimeFallbackUsed && !string.IsNullOrWhiteSpace(log.RuntimeFallbackSummary))
-                lines.Add($"Runtime Summary: {log.RuntimeFallbackSummary}");
+                lines.Add($"經過：{log.RuntimeFallbackSummary}");
 
             if (log.FallbackAttempts != null && log.FallbackAttempts.Count > 0)
             {
@@ -942,11 +949,11 @@ namespace Cat5201
             }
 
             if (lines.Count == 0)
-                lines.Add("No fallback used.");
+                lines.Add("第一個模型就成功了，沒有換過。");
 
             return new NodeDecisionStepViewData
             {
-                Title = "Fallback",
+                Title = "換過的模型",
                 IsTechnical = true,
                 Detail = detail,
                 State = (log.RuntimeFallbackUsed || apiFallbackUsed)
@@ -976,28 +983,31 @@ namespace Cat5201
 
             var lines = new List<string>
             {
-                $"StartedAtUtc: {log.StartedAtUtc:yyyy-MM-dd HH:mm:ss}",
-                $"EndedAtUtc: {log.EndedAtUtc:yyyy-MM-dd HH:mm:ss}",
-                $"Duration: {log.DurationMs} ms",
-                $"Success: {log.Success}"
+                $"開始：{log.StartedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                $"結束：{log.EndedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
+                $"花了：{FormatDuration(log.DurationMs)}",
+                $"結果：{(log.Success ? "成功" : "失敗")}"
             };
 
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
-                lines.Add($"成本：{log.CostDisplay}（輸入 {log.InputTokens} / 輸出 {log.OutputTokens} tokens）");
+                lines.Add($"成本：{log.CostDisplay}（讀進 {log.InputTokens}、寫出 {log.OutputTokens} 個 token）");
 
             foreach (var r in log.UsageRecords ?? Array.Empty<UsageRecord>())
             {
-                string amount = r.Kind == UsageKinds.Llm ? $"in {r.InputTokens} / out {r.OutputTokens}" : $"{r.Quantity:0.##} {r.Unit}";
-                string note = string.IsNullOrWhiteSpace(r.Note) ? "" : $" ({r.Note})";
-                lines.Add($"Usage: {r.AtUtc:HH:mm:ss} {r.Kind} {r.Purpose} {r.ModelId} {amount} US${r.UsdCost:0.#####}{(r.IsActual ? "" : " est")}{note}");
+                string amount = r.Kind == UsageKinds.Llm
+                    ? $"讀進 {r.InputTokens}、寫出 {r.OutputTokens} 個 token"
+                    : $"{r.Quantity:0.##} {r.Unit}";
+                string note = string.IsNullOrWhiteSpace(r.Note) ? "" : $"（{r.Note}）";
+                string estimated = r.IsActual ? "" : "（估算）";
+                lines.Add($"{r.AtUtc.ToLocalTime():HH:mm:ss}　{r.Purpose}・{GetModelLabel(r.ModelId)}・{amount}・{ModelCostEstimator.FormatTwd(r.UsdCost)}{estimated}{note}");
             }
 
             if (!string.IsNullOrWhiteSpace(log.ErrorMessage))
-                lines.Add($"Error: {log.ErrorMessage}");
+                lines.Add($"錯誤訊息：{log.ErrorMessage}");
 
             return new NodeDecisionStepViewData
             {
-                Title = "Execution",
+                Title = "執行細節",
                 IsTechnical = true,
                 Detail = executionDetail,
                 State = log.Success ? NodeDecisionStepState.Success : NodeDecisionStepState.Error,
@@ -1008,7 +1018,7 @@ namespace Cat5201
 
         private static string BuildTaskSummary(AiExecutionLogEntry log)
         {
-            return $"{Safe(log.TaskMode)} / {log.Confidence:0.00} / {FormatDuration(log.DurationMs)}";
+            return $"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}・{FormatDuration(log.DurationMs)}";
         }
 
         private static string BuildKeywordSummary(AiExecutionLogEntry log)
@@ -1077,7 +1087,7 @@ namespace Cat5201
                 extraParts.Add(log.ErrorMessage);
 
             if (!string.IsNullOrWhiteSpace(log.WorkspaceSummary))
-                extraParts.Add("多代理協作: " + Trim(log.WorkspaceSummary, 360));
+                extraParts.Add("多代理協作：" + Trim(log.WorkspaceSummary, 360));
 
 
             return extraParts.Count == 0 ? "" : string.Join(" / ", extraParts);
@@ -1094,19 +1104,19 @@ namespace Cat5201
             var parts = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityMissing))
-                parts.Add($"missing: {log.CapabilityMissing}");
+                parts.Add($"缺少 {log.CapabilityMissing}");
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequired) &&
                 !string.Equals(log.CapabilityRequired, AiModelCapability.None.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                parts.Add($"required: {log.CapabilityRequired}");
+                parts.Add($"需要 {log.CapabilityRequired}");
             }
 
             if (!string.Equals(requestedLabel, resolvedLabel, StringComparison.OrdinalIgnoreCase))
                 parts.Add($"{requestedLabel} → {resolvedLabel}");
 
             if (log.CapabilityStreamingAdjusted)
-                parts.Add("streaming → off");
+                parts.Add("改成不逐字輸出");
 
             return parts.Count == 0 ? "" : string.Join(" / ", parts);
         }

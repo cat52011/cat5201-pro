@@ -34,7 +34,7 @@ namespace Cat5201
 
             return
                 "【上游鏈設定（優先於全域偏好）】\n" +
-                "整體優先級：本節點自身明確指定 ＞ 上游鏈設定 ＞ 全域偏好 ＞ 系統預設。\n" +
+                PreferencePriority.Rule + "\n" +
                 "下列為上游鏈傳承下來的設定/指示；其中輸出語言、格式、語氣、風格等持續性設定必須延續沿用，並優先於下方的全域偏好。\n" +
                 "若有多條，以最接近本節點者為準（列在最前者最優先）。\n" +
                 chainDirectiveBlock.Trim() + "\n\n";
@@ -51,8 +51,8 @@ namespace Cat5201
                 return "";
 
             string prefs = hasPrefs
-                ? preferenceBlock.Trim() + "\n" +
-                  "（以上全域偏好優先於本提示的「預設使用繁體中文」等預設規則；但若上方有【上游鏈設定】且指定了輸出語言/格式/語氣，則以上游鏈設定為準、全域偏好退居其次。）\n\n"
+                ? PreferencePriority.BlockHeader + "\n" + preferenceBlock.Trim() + "\n" +
+                  "（" + PreferencePriority.Rule + "）\n\n"
                 : "";
 
             return prefs + skills;

@@ -80,7 +80,7 @@ namespace Cat5201
             _contextService = new NodeContextService(main);
             // pro 專屬記憶（不再誤用畢業版旁的 final\file；首次存取會把舊記憶複製過來，Codex P0-2）。
             _memoryStore = new MemoryStore(main.GetMemoryBaseDir());
-            _memoryService = new NodeMemoryService(main, _memoryStore);
+            _memoryService = new NodeMemoryService(main, _memoryStore, router);
             _promptBuilder = new NodePromptBuilder(_contextService);
             _executionHeuristics = new NodeExecutionHeuristicsService(main);
 
@@ -137,6 +137,9 @@ namespace Cat5201
         private readonly AsyncLocal<NodeControl?> _currentExecutionNode = new();
         private readonly AsyncLocal<string?> _currentExecutionInstructions = new();
         private readonly MemoryStore _memoryStore;
+
+        /// <summary>記憶庫（刪除／復原存檔時要連同該存檔的記憶一起處理）。</summary>
+        public MemoryStore Memories => _memoryStore;
         private readonly NodeMemoryService _memoryService;
         private readonly WorkflowRunStore _workflowRuns = new();
 
@@ -157,11 +160,13 @@ namespace Cat5201
         public int DeletePreference(string key) => _memoryService.DeletePreference(key);
 
         /// <summary>右鍵「將此節點加入記憶」：存一筆最高重要性、全域可見的共享記憶。回傳標題。</summary>
-        public string RememberNodeManually(
+        public async Task<string> RememberNodeManuallyAsync(
             NodeControl node, string agentId, string topText, string bottomText,
-            NodeTaskMode taskMode, string modelId)
+            NodeTaskMode taskMode, string modelId, CancellationToken ct = default)
         {
-            var title = _memoryService.RememberNodeManually(node, agentId, topText, bottomText, taskMode, modelId);
+            var title = await _memoryService
+                .RememberNodeManuallyAsync(node, agentId, topText, bottomText, taskMode, modelId, ct)
+                .ConfigureAwait(true);
             TryRefreshMemoryPanel();
             return title;
         }
@@ -273,6 +278,14 @@ namespace Cat5201
             return await runtime.RegeneratePresentationSlideAsync(node, outline, slideOrder, userInput, ct);
         }
 
+        /// <summary>依指示改寫某一頁的文字（行數不變，版面不動）。</summary>
+        public async Task<IReadOnlyList<string>> RewriteSlideTextAsync(
+            NodeControl node, IReadOnlyList<string> lines, string instruction, CancellationToken ct)
+        {
+            var runtime = _agentRuntimeFactory.Create();
+            return await runtime.RewriteSlideTextAsync(node, lines, instruction, ct);
+        }
+
         /// <summary>
         /// 一段話有沒有「要配圖」的意思。語意判斷（任何語言都認得），API 不通才退回關鍵字。
         /// </summary>
@@ -323,7 +336,9 @@ namespace Cat5201
             try
             {
                 var workspace = new AgentWorkspace();
-                var outputIntent = await ResolveOutputIntentAsync(topText, ct);
+                // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
+                // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
+                var outputIntentTask = ResolveOutputIntentAsync(topText, ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
@@ -336,8 +351,11 @@ namespace Cat5201
                     SkipCapabilities = ShouldSkipCapabilities(topText),
                     Workspace = workspace,
                     PreferenceBlock = _memoryService.GetPreferenceBlock(),
-                    OutputIntent = outputIntent
+                    OutputIntentTask = outputIntentTask
                 });
+
+                // 這時候一定已經完成（AgentRuntime 內部先 await 過），拿來做決策窗顯示。
+                var outputIntent = await outputIntentTask;
 
                 var decision = agentResult.Decision;
                 var execution = agentResult.Execution;
@@ -348,6 +366,11 @@ namespace Cat5201
                     string.IsNullOrWhiteSpace(decision.ActualAgentId) ? agent.Id : decision.ActualAgentId,
                     topText,
                     decision.TaskMode);
+
+                // 個人化可稽查：這次採用了哪些偏好、哪一項被本次請求覆寫（例如全域設繁中、這次要求英文）。
+                decision.EffectivePreferences = PreferencePriority
+                    .Resolve(_memoryService.GetPreferenceBlock(), outputIntent?.RequestedLanguage)
+                    .Summary();
 
                 // §6 第一層輸出判斷視覺化：想要檔案時記下「報告 / 表格 / 簡報」摘要，供決策窗顯示。
                 if (outputIntent != null && outputIntent.WantsAny)
@@ -563,7 +586,9 @@ namespace Cat5201
 
             try
             {
-                var outputIntent = await ResolveOutputIntentAsync(topText, ct);
+                // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
+                // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
+                var outputIntentTask = ResolveOutputIntentAsync(topText, ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
@@ -576,8 +601,11 @@ namespace Cat5201
                     SkipCapabilities = skipCapabilities,
                     Workspace = workspace,
                     PreferenceBlock = _memoryService.GetPreferenceBlock(),
-                    OutputIntent = outputIntent
+                    OutputIntentTask = outputIntentTask
                 });
+
+                // 這時候一定已經完成（AgentRuntime 內部先 await 過），拿來做決策窗顯示。
+                var outputIntent = await outputIntentTask;
 
                 var decision = agentResult.Decision;
                 var execution = agentResult.Execution;
@@ -588,6 +616,11 @@ namespace Cat5201
                     string.IsNullOrWhiteSpace(decision.ActualAgentId) ? agent.Id : decision.ActualAgentId,
                     topText,
                     decision.TaskMode);
+
+                // 個人化可稽查：這次採用了哪些偏好、哪一項被本次請求覆寫（例如全域設繁中、這次要求英文）。
+                decision.EffectivePreferences = PreferencePriority
+                    .Resolve(_memoryService.GetPreferenceBlock(), outputIntent?.RequestedLanguage)
+                    .Summary();
 
                 // §6 第一層輸出判斷視覺化：想要檔案時記下「報告 / 表格 / 簡報」摘要，供決策窗顯示。
                 if (outputIntent != null && outputIntent.WantsAny)
@@ -1230,6 +1263,14 @@ namespace Cat5201
                 .ToList();
         }
 
+        /// <summary>
+        /// 一次請求裡所有附件文字加起來的上限（字元）。
+        ///
+        /// 約 25 萬字 ≈ 17 萬 token，對 1M 上下文的模型還留了很大餘裕給對話與工具。
+        /// 沒有上限的話，一份大 PDF 就能讓整個請求被伺服器退回，而使用者只會看到「很久然後失敗」。
+        /// </summary>
+        private const int AttachmentTextBudgetChars = 250_000;
+
         private Task<AiRequest> BuildAiRequestAsync(
             NodeControl currentNode,
             string model,
@@ -1245,13 +1286,38 @@ namespace Cat5201
             // 之後同一附件（含下游繼承、節點重跑）都用便宜文字。圖片維持以圖片形式傳送（需要視覺）。
             var fileAttachments = new List<AiAttachment>();
             var extracted = new List<string>();
+            int budget = AttachmentTextBudgetChars;
+
             foreach (var a in CollectAiAttachments(currentNode))
             {
                 string? text = AttachmentTextCache.TryGetText(a.AbsolutePath, a.FileName, a.MimeType);
-                if (!string.IsNullOrWhiteSpace(text))
-                    extracted.Add($"【附件內容：{a.FileName}】\n{text}");
-                else
+                if (string.IsNullOrWhiteSpace(text))
+                {
                     fileAttachments.Add(a); // 圖片 / 抽取失敗 → 維持原樣傳檔
+                    continue;
+                }
+
+                // 附件文字一直是無上限地接在提示後面。一份幾百頁的 PDF 就能把整個請求撐爆：
+                // 2026-10-13 一次簡報請求被伺服器擋下來，寫著 prompt is too long: 1,112,319 tokens，
+                // 而使用者等了 8.8 分鐘才看到那個錯誤——光是把它送上去就花了這麼久。
+                // 截斷要講出來，不然模型會以為自己讀到的是全文。
+                if (budget <= 0)
+                {
+                    extracted.Add($"【附件：{a.FileName}】（因前面的附件已用完可讀額度，這份未納入）");
+                    continue;
+                }
+
+                string body = text!;
+                if (body.Length > budget)
+                {
+                    body = body.Substring(0, budget) +
+                           $"\n…（此附件共 {text!.Length:N0} 字，已截斷至前 {budget:N0} 字。需要完整內容請分段提問或拆檔。）";
+                    AppLog.Info("Attachment",
+                        $"{a.FileName} 抽出 {text!.Length:N0} 字，超過單次可讀額度，截斷至 {budget:N0} 字");
+                }
+
+                budget -= Math.Min(budget, text!.Length);
+                extracted.Add($"【附件內容：{a.FileName}】\n{body}");
             }
 
             string finalUserPrompt = userPrompt ?? "";
