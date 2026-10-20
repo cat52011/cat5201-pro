@@ -209,6 +209,13 @@ namespace Cat5201
                 outputIntent,
                 allowGeneration);
 
+            // 圖片任務：下面 finalInput 會被整段換成一句確認語，真正產圖的 GenerateImageFile
+            // 也只吃 topText（不是 capabilityAugmentedText）——能力層與平行代理產出的東西
+            // 沒有任何一行進得了最終提示。跑了就是純白花，所以這裡直接不跑。
+            bool discardsContext =
+                orchestrationPlan.TaskType == OrchestrationTaskType.ImageGeneration ||
+                orchestrationPlan.TaskType == OrchestrationTaskType.ImageEdit;
+
             // Sub-agents (DelegationDepth > 0) write internal orchestration_plans only;
             // the root agent's plan is the authoritative visible one.
             bool isRootRun = request.DelegationDepth == 0;
@@ -265,7 +272,11 @@ namespace Cat5201
                 .Cast<IAgentCapability>()
                 .ToList();
             bool runCapabilityLayer =
-                !request.SkipCapabilities;
+                !request.SkipCapabilities &&
+                !discardsContext;   // 圖片任務：產出會被丟掉，見上面 discardsContext
+
+            if (discardsContext && !request.SkipCapabilities)
+                AppLog.Info("AgentRuntime", "圖片任務：略過能力層與平行代理（它們的產出不會進入圖片提示）");
 
             if (runCapabilityLayer)
             {
@@ -610,7 +621,8 @@ namespace Cat5201
             AgentParallelExecutionResult? parallelResult = null;
 
             if (allowAgentFirstAutomation &&
-                request.DelegationDepth == 0)
+                request.DelegationDepth == 0 &&
+                !discardsContext)
             {
                 var parallelTasks = _parallelPlanner.Plan(
                     runtimeAgent,
@@ -1575,16 +1587,19 @@ namespace Cat5201
                 {
                     var photos = sub.WantsDeck ? deckPhotos : new List<ClaudeDocumentSkillsService.ContainerFile>();
 
+                    // retryNote 另外送：跟主提示黏成同一個 text block 的話，整塊內容會因為
+                    // 這幾句話而改變，前面幾千 token 的共同前綴就永遠命中不了快取。
                     result = await service.GenerateAsync(
                         DocumentSkillsPrompt.SystemPrompt,
-                        DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos) + retryNote,
+                        DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos),
                         DocumentSkillsPrompt.SkillIds(sub),
                         DocumentSkillsPrompt.WantedExtensions(sub),
                         (round, steps) => { skillSteps = steps; ShowProgress(); },
                         ct,
                         remaining,
                         photos,
-                        remainingUsd);
+                        remainingUsd,
+                        retryNote);
                 }
                 catch (OperationCanceledException) { throw; }
                 catch (Exception ex)

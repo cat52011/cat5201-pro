@@ -1320,9 +1320,15 @@ namespace Cat5201
                 extracted.Add($"【附件內容：{a.FileName}】\n{body}");
             }
 
+            // 附件放在最前面、指示留在最後。
+            //
+            // 原本是接在提示尾巴。快取比對的是「前綴」，而附件正是整個請求裡唯一不會變的大區塊
+            //（同一個節點重跑、下游沿用，內容一字不差），把它擺在會變的指示後面，
+            // 等於保證永遠命中不了——OpenAI 的自動快取寫入不另外收費，純粹是白白放棄的折扣。
+            // 「長文件在前、問題在後」也是兩家官方的長上下文建議排法。
             string finalUserPrompt = userPrompt ?? "";
             if (extracted.Count > 0)
-                finalUserPrompt += "\n\n" + string.Join("\n\n", extracted);
+                finalUserPrompt = string.Join("\n\n", extracted) + "\n\n" + finalUserPrompt;
 
             var request = new AiRequest
             {

@@ -204,6 +204,37 @@ data: {""type"":""message_stop""}
             Assert.Null(off["context_management"]);
         }
 
+        /// <summary>
+        /// 重試時只有最後一塊會變，前面照片與主提示那幾塊一字不差——
+        /// 這正是快取前綴能不能命中的分界線。
+        /// </summary>
+        [Fact]
+        public void RetryNote_IsItsOwnBlock_SoThePrefixStaysCacheable()
+        {
+            var photos = new[]
+            {
+                new ClaudeDocumentSkillsService.ContainerFile("file_1", "cover.png")
+            };
+
+            var first = ClaudeDocumentSkillsService.BuildFirstMessageContent("做一份京都簡報", null, photos);
+            var retry = ClaudeDocumentSkillsService.BuildFirstMessageContent(
+                "做一份京都簡報", "【重要】上一次沒有輸出檔案。", photos);
+
+            Assert.Equal(2, first.Count);     // 照片 + 主提示
+            Assert.Equal(3, retry.Count);     // 照片 + 主提示 + 重試提示
+
+            // 前面每一塊都必須逐字相同，否則前綴就斷了
+            for (int i = 0; i < first.Count; i++)
+                Assert.Equal(first[i]!.ToJsonString(), retry[i]!.ToJsonString());
+
+            Assert.Equal("container_upload", (string?)retry[0]!["type"]);
+            Assert.Equal("做一份京都簡報", (string?)retry[1]!["text"]);
+            Assert.Equal("【重要】上一次沒有輸出檔案。", (string?)retry[2]!["text"]);
+
+            // 空白的重試提示不要多塞一塊空白訊息
+            Assert.Equal(2, ClaudeDocumentSkillsService.BuildFirstMessageContent("x", "   ", photos).Count);
+        }
+
         /// <summary>費用上限是「已經花了這麼多」才回的訊息，再重試一次就是再花一次。</summary>
         [Fact]
         public void CostCeiling_IsNotRetried()

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -51,7 +51,8 @@ public static class NativeDeckStorage
     {
         try
         {
-            using var doc = PresentationDocument.Open(path, false);
+            using var file = ReadOnlyOfficeFile.Pptx(path);
+            var doc = file.Document;
             foreach (var part in doc.PresentationPart!.CustomXmlParts)
             {
                 using var stream = part.GetStream();

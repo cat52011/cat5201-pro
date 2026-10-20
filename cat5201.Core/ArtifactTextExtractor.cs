@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -25,7 +25,8 @@ namespace Cat5201
         /// </summary>
         public static string ExtractDocx(string path)
         {
-            using var doc = WordprocessingDocument.Open(path, false);
+            using var docFile = ReadOnlyOfficeFile.Docx(path);
+            var doc = docFile.Document;
             var body = doc.MainDocumentPart?.Document?.Body;
             if (body == null)
                 return "";
@@ -155,7 +156,8 @@ namespace Cat5201
         {
             var result = new System.Collections.Generic.List<System.Collections.Generic.List<string>>();
 
-            using var pres = PresentationDocument.Open(path, false);
+            using var presFile = ReadOnlyOfficeFile.Pptx(path);
+            var pres = presFile.Document;
             var presPart = pres.PresentationPart;
             var slideIds = presPart?.Presentation?.SlideIdList?.Elements<DocumentFormat.OpenXml.Presentation.SlideId>();
             if (presPart == null || slideIds == null)
@@ -188,7 +190,8 @@ namespace Cat5201
         {
             try
             {
-                using var pres = PresentationDocument.Open(path, false);
+                using var presFile = ReadOnlyOfficeFile.Pptx(path);
+            var pres = presFile.Document;
                 var presPart = pres.PresentationPart;
                 var slideIds = presPart?.Presentation?.SlideIdList?.Elements<DocumentFormat.OpenXml.Presentation.SlideId>();
                 if (presPart == null || slideIds == null)
@@ -226,7 +229,8 @@ namespace Cat5201
             var result = new List<byte[]?>();
             try
             {
-                using var pres = PresentationDocument.Open(path, false);
+                using var presFile = ReadOnlyOfficeFile.Pptx(path);
+            var pres = presFile.Document;
                 var presPart = pres.PresentationPart;
                 var slideIds = presPart?.Presentation?.SlideIdList?.Elements<DocumentFormat.OpenXml.Presentation.SlideId>();
                 if (presPart == null || slideIds == null)
@@ -290,7 +294,8 @@ namespace Cat5201
         {
             var rows = new List<List<XlsxCell>>();
 
-            using var doc = SpreadsheetDocument.Open(path, false);
+            using var docFile = ReadOnlyOfficeFile.Xlsx(path);
+            var doc = docFile.Document;
             var wbPart = doc.WorkbookPart;
             var sheet = wbPart?.Workbook?.Sheets?.Elements<S.Sheet>().FirstOrDefault();
             if (wbPart == null || sheet?.Id?.Value == null)
@@ -522,7 +527,8 @@ namespace Cat5201
         /// <summary>PPTX → 逐張投影片的文字大綱，每張以「— 投影片 N —」分隔。</summary>
         public static string ExtractPptx(string path)
         {
-            using var pres = PresentationDocument.Open(path, false);
+            using var presFile = ReadOnlyOfficeFile.Pptx(path);
+            var pres = presFile.Document;
             var presPart = pres.PresentationPart;
             var slideIds = presPart?.Presentation?.SlideIdList?.Elements<DocumentFormat.OpenXml.Presentation.SlideId>();
             if (presPart == null || slideIds == null)

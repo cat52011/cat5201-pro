@@ -62,23 +62,41 @@ namespace Cat5201
             }
             catch { return; }
 
-            if (string.Equals(action, "regen", StringComparison.OrdinalIgnoreCase))
-                await RegenerateSlideFromPreviewAsync(order, instruction);
-            else if (string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase))
-                await ApplySlideEditFromPreviewAsync(order, heading, bullets);
-            else if (string.Equals(action, "image", StringComparison.OrdinalIgnoreCase))
-                await ChangeSlideImageFromPreviewAsync(order, instruction, remove: false);
-            else if (string.Equals(action, "imageRemove", StringComparison.OrdinalIgnoreCase))
-                await ChangeSlideImageFromPreviewAsync(order, "", remove: true);
-            // 以下三個是「沒有大綱」的簡報用的：版面不是我們排的，但文字與圖都能就地換。
-            else if (string.Equals(action, "editText", StringComparison.OrdinalIgnoreCase))
-                await ApplySlideTextDirectAsync(order, bullets);
-            else if (string.Equals(action, "rewriteText", StringComparison.OrdinalIgnoreCase))
-                await RegenerateSlideFromPreviewAsync(order, instruction);
-            else if (string.Equals(action, "replaceImage", StringComparison.OrdinalIgnoreCase))
-                await ReplaceSlideImageInPlaceAsync(order, instruction);
-            else if (string.Equals(action, "removeImage", StringComparison.OrdinalIgnoreCase))
-                await RemoveSlideImagesInPlaceAsync(order);
+            // 這裡是 async void 事件的終點：漏出去的例外沒有人接得住，整個程式會被帶走。
+            // 最常見的那一種是「檔案正被 PowerPoint / LibreOffice 開著」——那不是錯誤，是要講清楚的狀況。
+            try
+            {
+                if (string.Equals(action, "regen", StringComparison.OrdinalIgnoreCase))
+                    await RegenerateSlideFromPreviewAsync(order, instruction);
+                else if (string.Equals(action, "edit", StringComparison.OrdinalIgnoreCase))
+                    await ApplySlideEditFromPreviewAsync(order, heading, bullets);
+                else if (string.Equals(action, "image", StringComparison.OrdinalIgnoreCase))
+                    await ChangeSlideImageFromPreviewAsync(order, instruction, remove: false);
+                else if (string.Equals(action, "imageRemove", StringComparison.OrdinalIgnoreCase))
+                    await ChangeSlideImageFromPreviewAsync(order, "", remove: true);
+                // 以下三個是「沒有大綱」的簡報用的：版面不是我們排的，但文字與圖都能就地換。
+                else if (string.Equals(action, "editText", StringComparison.OrdinalIgnoreCase))
+                    await ApplySlideTextDirectAsync(order, bullets);
+                else if (string.Equals(action, "rewriteText", StringComparison.OrdinalIgnoreCase))
+                    await RegenerateSlideFromPreviewAsync(order, instruction);
+                else if (string.Equals(action, "replaceImage", StringComparison.OrdinalIgnoreCase))
+                    await ReplaceSlideImageInPlaceAsync(order, instruction);
+                else if (string.Equals(action, "removeImage", StringComparison.OrdinalIgnoreCase))
+                    await RemoveSlideImagesInPlaceAsync(order);
+            }
+            catch (IOException ex)
+            {
+                AppLog.Warn("Preview", $"就地編輯失敗（檔案被佔用）：{action}", ex);
+                MenuConfirmDialog.ShowMessage(this, "改不了這一頁",
+                    "這個檔案正被其他程式開著（PowerPoint、LibreOffice…），沒辦法寫入。\n" +
+                    "請先把它關掉，再回來編輯。", this);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Preview", $"就地編輯失敗：{action}", ex);
+                MenuConfirmDialog.ShowMessage(this, "改不了這一頁",
+                    "這一頁沒有改成功：" + ex.Message, this);
+            }
         }
 
         /// <summary>
@@ -638,6 +656,24 @@ namespace Cat5201
         /// 被 PowerPoint 手動改過的簡報仍然照常顯示內容，只是關掉單頁編輯：
         /// 內容明明讀得出來，卻只給一句「請開啟原始簡報」，使用者會以為檔案壞了。
         /// </summary>
+        /// <summary>
+        /// 預覽用的暫存資料夾。HTML 與它引用的配圖都放這裡，用相對路徑互相指。
+        ///
+        /// 以前配圖是 base64 內嵌在 HTML 裡。Claude 排的簡報一張配圖就有 2～3 MB，
+        /// 四張編成 base64 之後整頁 HTML 接近 14 MB，瀏覽器要先把那串文字讀完才畫得出任何東西
+        ///（2026-10-15 實測：第一次開啟看不到圖片）。寫成檔案就沒有這個問題，
+        /// 而且省掉 base64 多出來的三成體積，圖片還能延後載入。
+        /// </summary>
+        private static string PreviewTempDir
+        {
+            get
+            {
+                string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201_preview");
+                Directory.CreateDirectory(dir);
+                return dir;
+            }
+        }
+
         private string BuildDeckPreviewHtml(string path)
         {
             var read = NativeDeckStorage.ReadDetailed(path);
@@ -660,7 +696,7 @@ namespace Cat5201
             // 編輯則走每一頁下面的表單——跟有大綱的那條路徑同一種操作方式。
             var extracted = PptxContentPreview.Read(path);
             if (extracted != null)
-                return BuildExtractedDeckHtml(extracted);
+                return BuildExtractedDeckHtml(extracted, PreviewTempDir);
 
             return "<!doctype html><html lang='zh-TW'><meta charset='utf-8'>" +
                    "<body style='font-family:Microsoft JhengHei;padding:48px;color:#1b1b1f'>" +
@@ -678,8 +714,16 @@ namespace Cat5201
         /// 畫布只負責「看」，所有會改到檔案的動作都在表單裡、按下去才發生——
         /// 這樣也跟有大綱那條路徑的操作方式一致。
         /// </summary>
-        private static string BuildExtractedDeckHtml(PptxContentPreview.Deck deck)
+        private static string BuildExtractedDeckHtml(PptxContentPreview.Deck deck, string assetDir)
         {
+            // 上一次預覽留下的配圖先清掉，免得暫存資料夾無限長大。
+            try
+            {
+                foreach (var old in Directory.GetFiles(assetDir, "pic-*.*"))
+                    File.Delete(old);
+            }
+            catch (Exception ex) { AppLog.Warn("Preview", "清理預覽暫存配圖失敗（不影響預覽）", ex); }
+
             // 版面與配色完全沿用內建版型預覽那一套（DeckHtmlRenderer.Css）：
             // 同一個視窗裡兩種簡報長得不一樣，使用者只會覺得是壞掉
             //（2026-10-15：「字體 顏色所有設計都要一樣」）。
@@ -700,8 +744,16 @@ namespace Cat5201
               .Append(".slide{max-width:").Append(F(CanvasWidthPx)).Append("px;margin:0 auto 28px}")
               .Append(".page{position:relative;width:100%;height:").Append(F(canvasHeight)).Append("px;")
               .Append("background:#fff;overflow:hidden;box-shadow:0 2px 6px #0000001a,0 12px 28px #00000014}")
-              .Append(".tx{position:absolute;overflow:hidden;z-index:2}")
-              .Append(".pic{position:absolute;object-fit:cover;z-index:1}")
+              // 不要給 z-index。
+              //
+              // 原本是「文字 2、圖片 1」，想當然耳地讓文字壓在圖片上面——但 pptx 的疊放順序
+              // 就是形狀在 ShapeTree 裡的先後順序，而 Claude 排的版第一個形狀常常是一塊滿版底色。
+              // 於是那塊底色（.tx）被硬抬到圖片上面，整張照片就被蓋掉了
+              //（2026-10-15：「預覽還是沒圖片」——圖其實一直在，只是被一塊 #F2EEE6 蓋住）。
+              // 兩者都是 position:absolute，z-index 留 auto 就會照 DOM 先後順序畫，
+              // 而我們本來就是照 ShapeTree 順序輸出的。
+              .Append(".tx{position:absolute;overflow:hidden}")
+              .Append(".pic{position:absolute;object-fit:cover}")
               .Append(".pno{position:absolute;right:10px;bottom:8px;font:600 11px/1 'Segoe UI';color:#C9C9C2}")
               .Append("details{margin-top:10px;background:#fff;border:1px solid #DFDFDA;border-radius:6px;overflow:hidden}")
               .Append("details[open]{border-color:#").Append(accent).Append("55}")
@@ -754,9 +806,13 @@ namespace Cat5201
 
                     if (shape.Image != null)
                     {
-                        sb.Append("<img class='pic' style=\"").Append(box)
-                          .Append("\" src=\"data:").Append(shape.Image.ContentType).Append(";base64,")
-                          .Append(Convert.ToBase64String(shape.Image.Bytes)).Append("\"/>");
+                        // 寫成檔案再用相對路徑引用（不要 base64 內嵌，理由見 PreviewTempDir）。
+                        string? src = WritePreviewImage(assetDir, slide.Order, shape.Index, shape.Image);
+                        if (src != null)
+                        {
+                            sb.Append("<img class='pic' decoding='async' style=\"").Append(box)
+                              .Append("\" src=\"").Append(src).Append("\"/>");
+                        }
                         continue;
                     }
 
@@ -786,6 +842,33 @@ namespace Cat5201
 
             sb.Append(PanelScript).Append("</body></html>");
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// 把一張配圖寫進預覽暫存資料夾，回傳 HTML 要用的相對檔名；寫不出來就回 null（那一頁少一張圖，不是整份壞掉）。
+        /// </summary>
+        private static string? WritePreviewImage(string assetDir, int slideOrder, int shapeIndex, PptxContentPreview.Image image)
+        {
+            try
+            {
+                string ext = image.ContentType switch
+                {
+                    "image/jpeg" => ".jpg",
+                    "image/gif" => ".gif",
+                    "image/bmp" => ".bmp",
+                    "image/webp" => ".webp",
+                    _ => ".png",
+                };
+
+                string name = $"pic-{slideOrder}-{shapeIndex}{ext}";
+                File.WriteAllBytes(System.IO.Path.Combine(assetDir, name), image.Bytes);
+                return name;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Preview", $"寫入預覽配圖失敗（第 {slideOrder} 頁）", ex);
+                return null;
+            }
         }
 
         /// <summary>
@@ -1108,7 +1191,8 @@ namespace Cat5201
 
                 // NavigateToString 有約 2MB 字串上限：含封面圖（base64）的簡報會超過，導致
                 // 「Value does not fall within the expected range」。改寫成暫存 HTML 檔再用 file:// 導覽，無大小限制。
-                string tempHtml = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201_preview.html");
+                // 放在 PreviewTempDir 裡：配圖是同一個資料夾中的檔案，HTML 用相對路徑指過去。
+                string tempHtml = System.IO.Path.Combine(PreviewTempDir, "preview.html");
                 File.WriteAllText(tempHtml, html, new System.Text.UTF8Encoding(false));
                 string uri = new Uri(tempHtml).AbsoluteUri + "?t=" + DateTime.Now.Ticks;
                 PreviewWeb.CoreWebView2.Navigate(uri);

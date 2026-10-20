@@ -62,6 +62,16 @@ namespace Cat5201
         private const int MaxOutputTokensPerRound = 64000;
 
         /// <summary>
+        /// 真的送出去之前，用免費的 count_tokens 端點問一次「這包到底多大」。
+        ///
+        /// 我們自己估得到的只有打出去的字；伺服器端注入的技能內容估不到，
+        /// 而 2026-10-15 被退回的那幾筆正是倒在這上面：等 6～8 分鐘、傳完整包，
+        /// 換到一行 prompt is too long: 1,634,773 tokens，然後重試再來一次。
+        /// 預檢不改變任何送出去的內容，只是不要把錢花在注定被退回的請求上。
+        /// </summary>
+        private const int HardPromptTokenLimit = 900_000;
+
+        /// <summary>
         /// 送得出去的提示上限（估算 token）。模型的硬上限是 100 萬，這裡抓得保守一些，
         /// 留空間給技能內容、工具結果與多輪對話——快要滿的請求就算送得出去也跑不完。
         /// </summary>
@@ -159,14 +169,15 @@ namespace Cat5201
             CancellationToken ct,
             TimeSpan? budget = null,
             IReadOnlyList<ContainerFile>? containerFiles = null,
-            double maxUsd = 0)
+            double maxUsd = 0,
+            string? retryNote = null)
         {
             var spent = new Spent();
             Result result;
             try
             {
                 result = await RunAsync(systemPrompt, userPrompt, skillIds, wantedExtensions,
-                                        onProgress, ct, budget, containerFiles, maxUsd, spent)
+                                        onProgress, ct, budget, containerFiles, maxUsd, spent, retryNote)
                     .ConfigureAwait(false);
             }
             finally
@@ -189,7 +200,8 @@ namespace Cat5201
             TimeSpan? budget,
             IReadOnlyList<ContainerFile>? containerFiles,
             double maxUsd,
-            Spent spent)
+            Spent spent,
+            string? retryNote)
         {
             if (!IsConfigured)
                 return Fail("找不到 ANTHROPIC_API_KEY。");
@@ -198,7 +210,8 @@ namespace Cat5201
             // 再收一句 prompt is too long —— 那幾分鐘的上傳與處理是會計費的，
             // 而且畫面上跟「模型在思考」完全分不出來（2026-10-13：8.8 分鐘換到一行錯誤）。
             int promptTokens = ModelCostEstimator.EstimateTokens(systemPrompt) +
-                               ModelCostEstimator.EstimateTokens(userPrompt);
+                               ModelCostEstimator.EstimateTokens(userPrompt) +
+                               ModelCostEstimator.EstimateTokens(retryNote);
             if (promptTokens > MaxPromptTokens)
             {
                 AppLog.Warn("DocSkills",
@@ -235,23 +248,13 @@ namespace Cat5201
                 };
             }
 
-            // 第一則訊息：先放要帶進容器的檔案（我們自己生的照片），再放文字。
-            // 沙箱裡沒有圖片模型，照片只能這樣進去。
-            var firstContent = new JsonArray();
-            foreach (var file in containerFiles ?? Array.Empty<ContainerFile>())
-            {
-                if (string.IsNullOrWhiteSpace(file.FileId)) continue;
-                firstContent.Add(new JsonObject
-                {
-                    ["type"] = "container_upload",
-                    ["file_id"] = file.FileId,
-                });
-            }
-            firstContent.Add(new JsonObject { ["type"] = "text", ["text"] = userPrompt ?? "" });
-
             var messages = new JsonArray
             {
-                new JsonObject { ["role"] = "user", ["content"] = firstContent }
+                new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = BuildFirstMessageContent(userPrompt, retryNote, containerFiles)
+                }
             };
 
             string? containerId = null;
@@ -287,12 +290,28 @@ namespace Cat5201
                             $"messages {messages.ToJsonString().Length:N0}、技能 {string.Join("/", skillIds)}）");
                     }
 
-                    using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages");
-                    req.Headers.Add("x-api-key", _apiKey);
-                    req.Headers.Add("anthropic-version", ApiVersion);
                     var betas = new List<string> { CodeExecutionBeta };
                     if (useFallbacks) betas.Add(FallbackBeta);
                     if (useContextEditing) betas.Add(ContextEditingBeta);
+
+                    // 預檢只做第一輪：爆掉的是整包的大小，後面幾輪只會更大但那時已經有產出了。
+                    if (round == 1)
+                    {
+                        int? counted = await TryCountTokensAsync(body, betas, ct).ConfigureAwait(false);
+                        if (counted is int n)
+                        {
+                            AppLog.Info("DocSkills", $"預檢：伺服器算出這包 {n:N0} token（我們送的內容，不含技能注入）");
+                            if (n > HardPromptTokenLimit)
+                                return Fail(
+                                    $"這一包送出去會是 {n:N0} token，超過模型上限，送了也只會被退回（prompt is too long）。" +
+                                    "已在送出前停止，沒有產生費用。",
+                                    round, toolSteps);
+                        }
+                    }
+
+                    using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages");
+                    req.Headers.Add("x-api-key", _apiKey);
+                    req.Headers.Add("anthropic-version", ApiVersion);
                     req.Headers.Add("anthropic-beta", string.Join(",", betas));
                     req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
                     req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
@@ -498,6 +517,38 @@ namespace Cat5201
         }
 
         // ===== 可測試的純函式 =====
+
+        /// <summary>
+        /// 第一則訊息：容器檔案（我們自己生的照片）→ 主提示 → 重試提示。
+        ///
+        /// 三段各自一塊，順序固定。重試提示**不可以**黏進主提示那一塊：
+        /// 快取比對的是前綴，黏在一起的話整塊會因為那幾句話而改變，
+        /// 前面幾千 token 的共同前綴跟著失效，同一份文件重試三次就重買三次。
+        /// </summary>
+        public static JsonArray BuildFirstMessageContent(
+            string? userPrompt,
+            string? retryNote,
+            IReadOnlyList<ContainerFile>? containerFiles)
+        {
+            var content = new JsonArray();
+
+            foreach (var file in containerFiles ?? Array.Empty<ContainerFile>())
+            {
+                if (string.IsNullOrWhiteSpace(file.FileId)) continue;
+                content.Add(new JsonObject
+                {
+                    ["type"] = "container_upload",
+                    ["file_id"] = file.FileId,
+                });
+            }
+
+            content.Add(new JsonObject { ["type"] = "text", ["text"] = userPrompt ?? "" });
+
+            if (!string.IsNullOrWhiteSpace(retryNote))
+                content.Add(new JsonObject { ["type"] = "text", ["text"] = retryNote });
+
+            return content;
+        }
 
         public static JsonObject BuildRequestBody(
             string model,
@@ -720,6 +771,11 @@ namespace Cat5201
             int cacheWrite = ReadInt(usage, "cache_creation_input_tokens");
             int cacheRead = ReadInt(usage, "cache_read_input_tokens");
 
+            // adaptive 沒有 budget_tokens 可設，深度由 output_config.effort 決定（Sonnet 5 預設 high）。
+            // 這個數字是唯一能回答「該不該把 effort 調低」的依據：思考以輸出計價（$10/M），
+            // 而且之後每一輪還會以輸入的身分再被買一次。串流時它只出現在最後一個 message_delta。
+            int thinking = ReadInt(usage["output_tokens_details"] as JsonObject, "thinking_tokens");
+
             // 快取寫入 1.25 倍、讀取 0.1 倍輸入單價（Anthropic 官方計價）；沙盒時間每月 1,550 小時免費，超過 $0.05/小時，此處不計。
             string modelId = ModelCostEstimator.ResolvePricingModelId((string?)message["model"] ?? _model);
             double cacheUsd =
@@ -735,6 +791,7 @@ namespace Cat5201
 
             AppLog.Info("DocSkills",
                 $"第 {round} 輪用量：輸入 {input:N0}（快取讀 {cacheRead:N0}／寫 {cacheWrite:N0}）、輸出 {output:N0}" +
+                (thinking > 0 ? $"（其中思考 {thinking:N0}）" : "") +
                 (cleared > 0 ? $"、伺服器清掉舊工具結果 {cleared:N0}" : "") +
                 $" → US${(record?.UsdCost ?? 0):0.000}" +
                 (string.IsNullOrEmpty(note) ? "" : $"（{note}）"));
@@ -818,6 +875,51 @@ namespace Cat5201
             {
                 AppLog.Warn("DocSkills", $"下載產出檔失敗：{fileId}", ex);
                 return Array.Empty<byte>();
+            }
+        }
+
+        /// <summary>
+        /// 免費端點 /v1/messages/count_tokens：回傳這包的實際 input_tokens（含伺服器端注入的技能）。
+        ///
+        /// 永遠不讓它擋住正常流程——端點不收某個欄位、逾時、網路問題，一律回 null 當作沒量過。
+        /// 它只能幫忙省錢，不能製造新的失敗。
+        /// </summary>
+        private async Task<int?> TryCountTokensAsync(JsonObject body, IReadOnlyList<string> betas, CancellationToken ct)
+        {
+            try
+            {
+                var probe = body.DeepClone().AsObject();
+                // count_tokens 不收 container（2026-10-15 實測 400：container: Extra inputs are not permitted），
+                // 所以量到的是「我們自己送的內容」，不含伺服器端的技能注入。
+                foreach (var field in new[] { "max_tokens", "stream", "fallbacks", "cache_control", "container" })
+                    probe.Remove(field);
+
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+
+                using var req = new HttpRequestMessage(HttpMethod.Post, $"{ApiBase}/messages/count_tokens");
+                req.Headers.Add("x-api-key", _apiKey);
+                req.Headers.Add("anthropic-version", ApiVersion);
+                req.Headers.Add("anthropic-beta", string.Join(",", betas));
+                req.Content = new StringContent(probe.ToJsonString(), Encoding.UTF8, "application/json");
+
+                using var resp = await _http.SendAsync(req, timeout.Token).ConfigureAwait(false);
+                string json = await resp.Content.ReadAsStringAsync(timeout.Token).ConfigureAwait(false);
+
+                if (!resp.IsSuccessStatusCode)
+                {
+                    AppLog.Info("DocSkills", $"預檢沒做成（{(int)resp.StatusCode}），照常送出：{Shorten(json, 200)}");
+                    return null;
+                }
+
+                var node = JsonNode.Parse(json) as JsonObject;
+                return ReadInt(node, "input_tokens") is int n && n > 0 ? n : null;
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+            catch (Exception ex)
+            {
+                AppLog.Info("DocSkills", "預檢沒做成（" + ex.GetType().Name + "），照常送出");
+                return null;
             }
         }
 

@@ -58,7 +58,8 @@ namespace Cat5201
         {
             try
             {
-                using var doc = PresentationDocument.Open(path, false);
+                using var file = ReadOnlyOfficeFile.Pptx(path);
+                var doc = file.Document;
                 var part = doc.PresentationPart;
                 if (part?.Presentation?.SlideIdList == null)
                     return null;
