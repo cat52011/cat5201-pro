@@ -4,11 +4,14 @@ obj/
 *.user
 *.suo
 
-# docs/ is intentionally tracked: design reasons, known limits, roadmap and test checklists
-# must travel with the repo, otherwise whoever clones it only sees code, not why.
+# Not needed to build or use the app; kept locally only.
+# docs/: design notes, evaluation experiment, test checklists, handoff notes
+#        (test fixtures the tests need are copied into tests/cat5201.Tests/TestData/)
+# tools/: evaluation scoring tool (run with: dotnet run --project tools/EvalScorer)
+# reports/: old reports and generated decks
+/docs/
 docs_bak
-
-# reports/ holds old generated decks and images (119MB); move anything worth keeping to docs/.
+/tools/
 reports/
 
 # App output / saves / attachments (SavesDir points here)

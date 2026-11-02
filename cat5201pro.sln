@@ -9,8 +9,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cat5201.Core", "cat5201.Cor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "cat5201.Tests", "tests\cat5201.Tests\cat5201.Tests.csproj", "{8D5B2FA1-4E3C-4A7B-AF69-2C3D4E5F6071}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "EvalScorer", "tools\EvalScorer\EvalScorer.csproj", "{9A1D4C72-5E6B-4F83-B0A1-7D2E3F4A5B61}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -29,10 +27,6 @@ Global
 		{8D5B2FA1-4E3C-4A7B-AF69-2C3D4E5F6071}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D5B2FA1-4E3C-4A7B-AF69-2C3D4E5F6071}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D5B2FA1-4E3C-4A7B-AF69-2C3D4E5F6071}.Release|Any CPU.Build.0 = Release|Any CPU
-		{9A1D4C72-5E6B-4F83-B0A1-7D2E3F4A5B61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{9A1D4C72-5E6B-4F83-B0A1-7D2E3F4A5B61}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{9A1D4C72-5E6B-4F83-B0A1-7D2E3F4A5B61}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{9A1D4C72-5E6B-4F83-B0A1-7D2E3F4A5B61}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -26,14 +26,10 @@ namespace Cat5201.Tests
 
         private static string PilotOutput(string name, [System.Runtime.CompilerServices.CallerFilePath] string? here = null)
         {
-            var dir = new DirectoryInfo(Path.GetDirectoryName(here)!);
-            while (dir != null)
-            {
-                string p = Path.Combine(dir.FullName, "docs", "eval", "runs", "2026-10-29", "outputs", name);
-                if (File.Exists(p)) return File.ReadAllText(p);
-                dir = dir.Parent;
-            }
-            throw new FileNotFoundException("找不到第一階段的產出檔：" + name);
+            // 第一階段的九份真實產出，複製在測試專案的 TestData（docs/ 不上傳 GitHub）。
+            string p = Path.Combine(Path.GetDirectoryName(here) ?? "", "TestData", "eval", "pilot-outputs", name);
+            if (File.Exists(p)) return File.ReadAllText(p);
+            throw new FileNotFoundException("找不到第一階段的產出檔：" + p);
         }
 
         /// <summary>

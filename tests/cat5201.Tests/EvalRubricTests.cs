@@ -427,24 +427,14 @@ namespace Cat5201.Tests
         // ───────────────────────── 真正要跑的那十題也得過關 ─────────────────────────
 
         /// <summary>
-        /// 找出 repo 裡的 docs/eval/tasks。
-        /// 從編譯時記下的原始碼路徑往上找，而不是從執行目錄——因為建置輸出被導到
-        /// 專案外的暫存資料夾（bin 會被執行中的 App 鎖住），往上找永遠找不到 repo。
-        /// 找不到原始碼路徑時（例如在別人的機器上重建）再退回執行目錄往上找。
+        /// 評測題目：測試專案自己的 TestData/eval/tasks（複製自本機的 docs/eval，docs/ 不上傳 GitHub）。
+        /// 從編譯時記下的原始碼路徑找，而不是從執行目錄——建置輸出被導到專案外的暫存資料夾。
         /// </summary>
         private static string TasksDir([System.Runtime.CompilerServices.CallerFilePath] string? here = null)
         {
-            foreach (string? start in new[] { Path.GetDirectoryName(here), AppContext.BaseDirectory })
-            {
-                var dir = string.IsNullOrEmpty(start) ? null : new DirectoryInfo(start);
-                while (dir != null)
-                {
-                    string candidate = Path.Combine(dir.FullName, "docs", "eval", "tasks");
-                    if (Directory.Exists(candidate)) return candidate;
-                    dir = dir.Parent;
-                }
-            }
-            throw new DirectoryNotFoundException("找不到 docs/eval/tasks——評測題目不在 repo 裡");
+            string candidate = Path.Combine(Path.GetDirectoryName(here) ?? "", "TestData", "eval", "tasks");
+            if (Directory.Exists(candidate)) return candidate;
+            throw new DirectoryNotFoundException("找不到 TestData/eval/tasks：" + candidate);
         }
 
         /// <summary>

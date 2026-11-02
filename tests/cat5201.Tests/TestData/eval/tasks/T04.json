@@ -1,0 +1,83 @@
+{
+  "task_id": "T04",
+  "title": "純分析：定期定額 vs 單筆進場",
+  "category": "純分析（不需外部資料）",
+  "prompt": "比較「定期定額 vs 單筆進場」在高波動市場的優劣，給出適用情境",
+  "expires_on": "",
+  "required": [
+    {
+      "id": "R1",
+      "label": "兩種做法都談到",
+      "kind": "all_of",
+      "critical": true,
+      "patterns": [
+        "定期定額",
+        "單筆"
+      ]
+    },
+    {
+      "id": "R2",
+      "label": "波動與風險的機制",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "波動",
+        "風險",
+        "標準差",
+        "平均成本",
+        "攤平"
+      ]
+    },
+    {
+      "id": "R3",
+      "label": "適用情境",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "適用",
+        "情境",
+        "適合",
+        "何時"
+      ]
+    },
+    {
+      "id": "R4",
+      "label": "各自的代價或缺點",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "缺點",
+        "代價",
+        "劣勢",
+        "不利",
+        "機會成本"
+      ]
+    },
+    {
+      "id": "R5",
+      "label": "不構成投資建議的聲明",
+      "kind": "any_of",
+      "patterns": [
+        "不構成投資建議",
+        "僅供參考",
+        "請自行評估",
+        "非投資建議"
+      ]
+    }
+  ],
+  "forbidden": [
+    {
+      "id": "F1",
+      "label": "保證報酬",
+      "patterns": [
+        "保證獲利",
+        "穩賺",
+        "絕對不會賠",
+        "必賺"
+      ]
+    }
+  ],
+  "human_checks": [
+    "論述是否有事實錯誤（例如把定期定額說成一定優於單筆）"
+  ]
+}
