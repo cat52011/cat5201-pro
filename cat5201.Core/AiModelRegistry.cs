@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -39,7 +39,7 @@ namespace Cat5201
             new AiModelDefinition
             {
                 Id = AiModels.Claude_Sonnet5,
-                DisplayName = "Claude Sonnet 5",
+                DisplayName = "Claude Sonnet 5.5",
                 IconPath = "pack://application:,,,/Assets/Claude_logo.png",
                 Provider = AiProviderType.Claude,
                 Capabilities = AiModelCapability.Streaming | AiModelCapability.Images | AiModelCapability.Files
@@ -130,6 +130,7 @@ namespace Cat5201
             ["claude-sonnet-4-6"] = AiModels.Claude_Sonnet5,
             ["claude-opus-4-8"] = AiModels.Claude_Opus5,
             ["claude-opus-5"] = AiModels.Claude_Opus5,     // 舊專案檔存的是 Opus 5 → 路由到 5.5
+            ["claude-sonnet-5"] = AiModels.Claude_Sonnet5, // 舊專案檔存的是 Sonnet 5 → 路由到 5.5
         };
 
         private static readonly Dictionary<string, string> LegacyDisplayNames = new(StringComparer.OrdinalIgnoreCase)
@@ -138,6 +139,7 @@ namespace Cat5201
             ["claude-sonnet-4-6"] = "Claude Sonnet 4.6",
             ["claude-opus-4-8"] = "Claude Opus 4.8",
             ["claude-opus-5"] = "Claude Opus 5",           // 歷史帳目照實顯示當時跑的版本
+            ["claude-sonnet-5"] = "Claude Sonnet 5",       // 2026-10-29 的九次評測就是用它跑的
         };
 
         /// <summary>舊世代 ID → 後繼模型 ID；非舊 ID 原樣返回。只用於「要實際執行/路由」的場合。</summary>

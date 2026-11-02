@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -58,7 +58,11 @@ namespace Cat5201.Tests
             public string GetAttachmentsRootDir() => Dir;
             public string GetGeneratedFilesDir() => Dir;
             public void SetLiveDecisionResolving(INodeContext node, NodeExecutionDecision decision) { }
-            public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent) => Task.FromResult(true);
+            public Task<GenerationApproval> ConfirmGenerationAsync(
+                OrchestrationTaskType taskType, OutputIntent? outputIntent, GenerationChoices choices)
+                => Task.FromResult(GenerationApproval.Accepted);
+
+            public string GetNodeSelectedModel(INodeContext node) => "";
         }
 
         private sealed class FakeResolver : IExecutionDecisionResolver

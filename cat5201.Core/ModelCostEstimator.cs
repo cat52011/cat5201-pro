@@ -63,7 +63,8 @@ namespace Cat5201
             // GPT-5.6 Sol：目前官方促銷價 $4/$20（標價 $5/$30），促銷「至少到 2026-11-21」——過後回來改。
             ["gpt-5.6-sol"] = new Price(4.00, 20.00),
             ["gpt-6-astra"] = new Price(10.00, 50.00),                  // OpenAI 官方（standard）
-            ["claude-sonnet-5"] = new Price(2.00, 10.00),               // Anthropic 官方
+            ["claude-sonnet-5-5"] = new Price(2.00, 10.00),             // Anthropic 官方（2026-10-29 查證）
+            ["claude-sonnet-5"] = new Price(2.00, 10.00),               // 舊世代：歷史紀錄算成本用
             ["claude-opus-5-5"] = new Price(4.00, 20.00),               // Anthropic 官方（2026-09-25 查證）
             ["claude-opus-5"] = new Price(5.00, 25.00),                 // Anthropic 官方
 
@@ -72,9 +73,17 @@ namespace Cat5201
             ["claude-sonnet-4-6"] = new Price(3.00, 15.00),
             ["claude-opus-4-8"] = new Price(5.00, 25.00),
 
-            // Perplexity Agent API 代跑第三方模型：官方寫明「依原廠直售價、不加價」，且列的是 GPT-5.6 Sol 標價 $5/$30
-            // （不是 OpenAI 直連的促銷價）。web_search 工具費另計，見 PerplexityAgentWebSearchUsd。
-            ["openai/gpt-5.6-sol"] = new Price(5.00, 30.00),
+            // Perplexity Agent API 代跑的模型（docs.perplexity.ai/docs/agent-api/models，2026-10-29 核對）。
+            // web_search 工具費另計，見 PerplexityAgentWebSearchUsd。
+            // 2026-10-29 更正：gpt-5.6-sol 原本寫 $5/$30，頁面現在是 $4/$20（≤272k 輸入）；
+            // 舊值讓 2026-10-29 九次評測的搜尋成本高估約兩成五。
+            // OpenAI 兩款在單次輸入 >272k 時單價翻倍，本表只建 ≤272k 檔——搜尋研究每次約一至兩萬 token，遠低於門檻。
+            // 有 API 回報金額時一律用回報值（UsageMeter.RecordLlm 的 reportedUsd），本表只是後備估算。
+            ["openai/gpt-5.6-sol"] = new Price(4.00, 20.00),
+            ["openai/gpt-6-astra"] = new Price(10.00, 50.00),
+            ["anthropic/claude-sonnet-5-5"] = new Price(2.00, 10.00),
+            ["anthropic/claude-opus-5-5"] = new Price(4.00, 20.00),
+            ["perplexity/sonar"] = new Price(0.25, 2.50),
 
             ["pplx-sonar"] = new Price(1.00, 1.00, 0.008),              // + $8/千次 request fee（medium context）
             // Deep research 除 token 外還有 citation tokens($2/M)、search queries($5/千次)、reasoning tokens($3/M)，

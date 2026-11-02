@@ -62,5 +62,9 @@ namespace Cat5201
 
         // §6 第一層輸出判斷的白話摘要（報告 / 表格 / 簡報 / 純文字），給決策窗顯示。
         public string OutputIntentSummary { get; set; } = "";
+
+        // 各步驟實際收到了什麼（字數、雜湊、是否完整包含原始要求），以及完整內容檔的位置。
+        public List<StepInputRecord> StepInputs { get; set; } = new();
+        public string StepInputLogPath { get; set; } = "";
     }
 }

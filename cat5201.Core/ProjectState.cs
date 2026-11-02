@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Cat5201
@@ -23,7 +23,9 @@ namespace Cat5201
         string? TaskMode = null,
         bool UnsupportedDownstreamNode = false,
         List<string>? OutputFilePaths = null,
-        string? OutputImagePath = null
+        string? OutputImagePath = null,
+        // 協作模式：這個節點由哪幾個模型一起回答（2026-10-29）。舊專案檔沒有 → null。
+        List<string>? CollaborationModels = null
     );
 
     public record ConnState(string StartId, string EndId, string StartThumb, string EndThumb, bool FlowMode = false);
@@ -83,7 +85,18 @@ namespace Cat5201
         int OutputTokens = 0,
         string CostDisplay = "",
         // 逐筆帳目（2026-09-17 起）；舊專案檔沒有此欄位 → null，顯示時只剩總額文字。
-        List<UsageRecord>? UsageRecords = null
+        List<UsageRecord>? UsageRecords = null,
+
+        // 稽查三件組（2026-10-27 起）：這三個欄位在執行當下就產生了，卻一直沒有存檔，
+        // 重開專案後決策窗就少了「召回了哪些記憶、當時生效的偏好是什麼、輸出意圖怎麼判的」。
+        // 對一個主打可追溯的產品，這是核心資料遺失。舊專案檔沒有這些欄位 → 預設空值。
+        MemoryRecallStats? MemoryRecall = null,
+        string EffectivePreferences = "",
+        string OutputIntentSummary = "",
+
+        // 各步驟實際收到了什麼（2026-10-29）。舊專案檔沒有 → null。完整內容在 StepInputLogPath 指的檔案裡。
+        List<StepInputRecord>? StepInputs = null,
+        string StepInputLogPath = ""
     );
 
     public record AppState(

@@ -588,9 +588,11 @@ namespace Cat5201
                 OrchestrationPlanPayload orchestration => Safe(orchestration.ModelId),
                 // 簡報大綱帶有實際作者模型（多階段作者寫入），讓決策窗顯示「簡報是誰寫的」。
                 PresentationOutlinePayload presentation => Safe(presentation.ModelId),
-                // 研究 / 搜尋固定由 Perplexity 執行（research-agent 預設 pplx-sonar），據此標明來源模型。
-                VerifiedFactPayload => AiModels.Perplexity_Sonar,
-                SearchSummaryPayload => AiModels.Perplexity_Sonar,
+                // 研究 / 搜尋的模型由能力層自己回報（item.ModelId，上面已先取用）。
+                // 這裡刻意不再硬寫 Perplexity_Sonar：2026-10-29 實測，搜尋走的是
+                // Perplexity Agent API + openai/gpt-5.6-sol，逐筆帳目裡沒有任何 pplx-sonar，
+                // 但決策窗照樣顯示「Perplexity Sonar」——那是一個沒被呼叫也沒被計費的模型。
+                // 推導不出來就留空，讓「參與」欄（以逐筆帳目為準）去說明，不要猜一個名字出來。
                 _ => ""
             };
         }

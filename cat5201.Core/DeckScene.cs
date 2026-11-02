@@ -155,8 +155,10 @@ internal static class DeckScene
                 // 續頁沿用同一張圖的話，同一張照片會在相鄰兩頁各出現一次，看起來就是做壞了。
                 byte[]? pageImage = chunk == 0 ? image : null;
 
+                // 沒有任何重點的內容頁也走這個版面：以前它落到下面「items.Length == 0」那一支，
+                // 頁首印一次標題、內文區再用更大的字印一次，同一句話上下各一遍（2026-11-02 第三輪手測）。
                 bool statement = !coverPage && !sources && pageImage == null && !metrics
-                                 && items.Length == 1 && items[0].Length <= 70;
+                                 && (items.Length == 0 || (items.Length == 1 && items[0].Length <= 70));
                 bool inverse = coverPage || statement;
 
                 string bg = inverse ? art.InverseBackground : art.Background;
@@ -321,7 +323,10 @@ internal static class DeckScene
         string title, string body, string ink, string muted, float contentW)
     {
         Rect(L.Left, 150, 56, 3, art.Accent, 100);
-        if (!string.IsNullOrWhiteSpace(title))
+        // 主句就是標題本身時（沒有重點、或唯一的重點跟標題一樣），小標不再重複一次。
+        bool sameAsTitle = string.Equals(
+            title.Replace("（續）", "").Trim(), body.Trim(), StringComparison.Ordinal);
+        if (!string.IsNullOrWhiteSpace(title) && !sameAsTitle)
             Text(L.Left, 170, contentW - 120, L.KickerSize * 1.4f,
                 OneLine(title, contentW - 120, L.KickerSize, L.KickerTrack), L.KickerSize, muted, false, false, "l", L.KickerTrack);
 
@@ -493,7 +498,7 @@ internal static class DeckScene
     /// 實際會印出幾頁。跟 Build 用同一套判斷（哪些頁不配圖、內容怎麼切塊），
     /// 兩邊分岔的話頁碼就會對不上，所以規則集中在 SplitIntoChunks。
     /// </summary>
-    private static int CountPages(IReadOnlyList<PresentationSlidePayload> slides, byte[]? cover)
+    internal static int CountPages(IReadOnlyList<PresentationSlidePayload> slides, byte[]? cover)
         => Math.Max(1, slides.Sum(slide => SplitIntoChunks(slide, cover).Count));
 
     /// <summary>把一張投影片的內容切成「實際頁面」的塊（封面多一塊；內容太長會有續頁）。</summary>

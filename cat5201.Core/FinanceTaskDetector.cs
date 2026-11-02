@@ -66,6 +66,37 @@ namespace Cat5201
                    DetectCashtags(text).Count > 0;
         }
 
+        // 會隨時間過時的資訊。刻意不含「查詢／搜尋／查證／research」——那是「要不要搜尋」，
+        // 不是「答案會不會過時」；也不含單獨的 now（子字串比對會命中 know、knowledge）。
+        private static readonly string[] TimeSensitiveTerms =
+        {
+            "最新", "即時", "今天", "今日", "現在", "目前", "最近", "近期", "本週", "本月", "今年",
+            "這一季", "上一季", "股價", "收盤", "盤後", "盤前", "報價", "匯率", "天氣", "新聞",
+            "財報", "營收", "利率",
+            "latest", "today", "current price", "this week", "breaking", "stock price",
+            "exchange rate", "earnings", "quote", "weather",
+        };
+
+        /// <summary>
+        /// 這個要求的答案會不會因為時間而過時——「即時資料未取得」該不該警告，看的是這個。
+        ///
+        /// 2026-10-29 實測：Auto 模式下「做一份 5 頁簡報，介紹澳洲特有美食」被標成研究任務，
+        /// 研究任務一律算「需要即時資料」，於是答案頂端出現「即時資料未取得」，
+        /// 這句話還被寫進了簡報的資料來源頁——交出去的檔案告訴觀眾資料沒查到，但根本不需要即時資料。
+        ///
+        /// 「要不要搜尋」與「沒拿到最新資料要不要警告」是兩件事：研究澳洲美食當然可以搜尋，
+        /// 但袋鼠肉的介紹不會明天就過時。RequiresFreshFacts 繼續決定前者，這個只決定後者。
+        /// </summary>
+        public static bool IsTimeSensitive(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            return ContainsAny(text, TimeSensitiveTerms)
+                   || DetectKnownTickers(text).Count > 0
+                   || DetectCashtags(text).Count > 0;
+        }
+
         public static bool RequiresFreshFacts(string? text, NodeTaskMode taskMode)
         {
             if (taskMode == NodeTaskMode.Research)

@@ -1,0 +1,80 @@
+{
+  "task_id": "T08",
+  "title": "表格：近五年台灣電動機車銷量成長（輸出 Excel）",
+  "category": "表格",
+  "prompt": "整理近五年台灣電動機車銷量成長為表格，輸出 Excel",
+  "expires_on": "",
+  "required": [
+    {
+      "id": "R1",
+      "label": "五個年度",
+      "kind": "at_least",
+      "critical": true,
+      "min_count": 5,
+      "patterns": [
+        "2020",
+        "2021",
+        "2022",
+        "2023",
+        "2024",
+        "2025",
+        "2026"
+      ]
+    },
+    {
+      "id": "R2",
+      "label": "成長率欄位",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "成長率",
+        "yoy",
+        "年增",
+        "增減",
+        "成長"
+      ]
+    },
+    {
+      "id": "R3",
+      "label": "銷量單位",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "輛",
+        "台",
+        "units",
+        "萬輛"
+      ]
+    },
+    {
+      "id": "R4",
+      "label": "官方統計來源",
+      "kind": "source",
+      "domains": [
+        "mvdis.gov.tw",
+        "motc.gov.tw",
+        "gov.tw",
+        "stat.gov.tw"
+      ]
+    },
+    {
+      "id": "R5",
+      "label": "資料時點或口徑說明",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "截至",
+        "資料日期",
+        "口徑",
+        "統計範圍",
+        "新車掛牌",
+        "掛牌數"
+      ]
+    }
+  ],
+  "forbidden": [],
+  "human_checks": [
+    "五個年度的數字是否與交通部統計一致（執行當天抄下正解）",
+    "Excel 是否真的可開、數字是否為數值而非文字"
+  ]
+}

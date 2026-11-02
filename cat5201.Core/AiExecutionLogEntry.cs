@@ -67,6 +67,10 @@ namespace Cat5201
         // §6 第一層輸出判斷的白話摘要（報告 / 表格 / 簡報 / 純文字）。
         public string OutputIntentSummary { get; init; } = "";
 
+        // 各步驟實際收到了什麼（2026-10-29）：證明某項要求「真的傳到了」，而不只是設計上應該如此。
+        public IReadOnlyList<StepInputRecord> StepInputs { get; init; } = Array.Empty<StepInputRecord>();
+        public string StepInputLogPath { get; init; } = "";
+
         // Product UX：Token / 成本估算，供決策窗顯示（與節點底部的成本估算同一來源）。
         public int InputTokens { get; init; }
         public int OutputTokens { get; init; }

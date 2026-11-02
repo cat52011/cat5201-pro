@@ -48,6 +48,9 @@ namespace Cat5201
             public bool WantsTable { get; init; }
             public int RequestedSlides { get; init; }
             public bool WantsImages { get; init; }
+
+            /// <summary>是否要附一份同內容的 PDF（個人化的「同時產出對照 PDF」）。</summary>
+            public bool WantsPdf { get; init; } = true;
             public IReadOnlyList<(string Title, string Url)> Sources { get; init; } = new List<(string, string)>();
             public string PreferenceBlock { get; init; } = "";
 
@@ -105,9 +108,24 @@ namespace Cat5201
             if (r.WantsDeck) exts.Add(".pptx");
             if (r.WantsReport) exts.Add(".docx");
             if (r.WantsTable) exts.Add(".xlsx");
-            if (r.WantsDeck || r.WantsReport || r.WantsTable) exts.Add(".pdf");
+            // 使用者關掉對照 PDF 就不要收 PDF：多轉一份不只是多一個檔案，
+            // 沙箱裡那幾步 LibreOffice 轉檔的脈絡，後面每一輪都要再當輸入買一次。
+            if (r.WantsPdf && (r.WantsDeck || r.WantsReport || r.WantsTable)) exts.Add(".pdf");
             return exts;
         }
+
+        /// <summary>
+        /// 系統提示。PDF 那一條是條件式的：個人化關掉對照 PDF 時不可以還叫它轉，
+        /// 否則設定等於沒有作用，而且白白多跑好幾個沙箱步驟。
+        /// </summary>
+        public static string SystemPromptFor(bool wantsPdf)
+            => SystemPrompt.Replace(PdfDeliveryRule, wantsPdf ? PdfDeliveryRule : NoPdfDeliveryRule);
+
+        internal const string PdfDeliveryRule =
+            "- 每個 pptx / docx / xlsx 都另外轉出一份內容一致的 PDF（例如用 LibreOffice headless 轉檔）。";
+
+        internal const string NoPdfDeliveryRule =
+            "- 不需要交付 PDF：只交 pptx / docx / xlsx 本身（檢查版面時在沙箱內轉圖沒問題，但那只是過程檔，不要交付）。";
 
         public const string SystemPrompt =
 @"你是頂尖的簡報設計師與商業文件撰稿人，要替使用者產出可以直接交付、拿去開會或寄給客戶的專業檔案。
@@ -172,7 +190,9 @@ namespace Cat5201
                 sb.AppendLine("- 16:9（Presentation().slide_width = Inches(13.333), slide_height = Inches(7.5)）。");
                 sb.AppendLine("- 用空白版面（slide_layouts[6]）自己放文字方塊，不要用內建的標題/內容版型，那個長得像範本。");
                 sb.AppendLine("- 東亞字型要同時設定：run.font.name 之外，還要設 rPr 的 a:ea typeface 為 Microsoft JhengHei，否則 Windows 上會變成預設字體。");
-                sb.AppendLine("- 做完轉一份同內容的 PDF（LibreOffice headless），再把兩個檔案複製到輸出資料夾並列出檔名。");
+                sb.AppendLine(r.WantsPdf
+                    ? "- 做完轉一份同內容的 PDF（LibreOffice headless），再把兩個檔案複製到輸出資料夾並列出檔名。"
+                    : "- 做完把 .pptx 複製到輸出資料夾並列出檔名（不需要 PDF）。");
                 sb.AppendLine();
                 sb.AppendLine(PresentationDesignBrief.Build(""));
                 sb.AppendLine("配圖必須解釋該頁內容，不可用上升箭頭、飛機房屋拼貼或泛用商業象徵圖代替數據。數據頁用可編輯圖表或數字與清楚的單位、時間。圖片和長文使用分離區域，不把主體裁掉。需要真實作品／景點圖片而缺素材時，使用有來源的內容與圖解，明示缺素材，不捏造照片。");
@@ -182,16 +202,19 @@ namespace Cat5201
             sb.AppendLine("【需要產出的檔案】");
             if (r.WantsDeck)
             {
+                // 使用者說 N 頁：封面＋內容正好 N 頁，最後再加 1 頁資料來源（2026-10-29 使用者指示）。
+                // 更早寫過「封面與來源頁不計」，結果「5 頁」交出 7、8 頁（2026-10-27）——所以這裡把數字講死。
                 string pages = r.RequestedSlides > 0
-                    ? $"正好 {r.RequestedSlides} 張內容頁（封面與來源頁不計）"
-                    : "張數依內容決定，通常 8～14 張";
-                sb.AppendLine($"- 簡報 .pptx（{pages}）＋ 同內容 .pdf");
+                    ? $"封面＋內容正好 {r.RequestedSlides} 頁，最後再加 1 頁資料來源，整份共 {r.RequestedSlides + 1} 頁；不得多也不得少"
+                    : "張數依內容決定，通常 8～14 張，最後一頁是資料來源";
+                sb.AppendLine($"- 簡報 .pptx（{pages}）" + (r.WantsPdf ? "＋ 同內容 .pdf" : ""));
             }
             if (r.WantsReport)
-                sb.AppendLine("- 書面報告 .docx ＋ 同內容 .pdf");
+                sb.AppendLine("- 書面報告 .docx" + (r.WantsPdf ? " ＋ 同內容 .pdf" : ""));
             if (r.WantsTable)
             {
-                sb.AppendLine("- 表格 .xlsx（有標題列、適當欄寬、數字格式、必要時加總或圖表）＋ 同內容 .pdf");
+                sb.AppendLine("- 表格 .xlsx（有標題列、適當欄寬、數字格式、必要時加總或圖表）"
+                    + (r.WantsPdf ? "＋ 同內容 .pdf" : ""));
                 sb.AppendLine("  表格品質底線（2026-10-13 實測的成品被評為「很爛」，以下每一條都是當時犯的錯）：");
                 sb.AppendLine("  · 一整欄都查不到資料就**刪掉那一欄**，不要留一整排「未取得」——那只是把空白排版得很整齊。");
                 sb.AppendLine("  · 同一欄裡超過一半是「未取得」時也刪掉，改在備註裡用一句話說明哪些資料查不到。");

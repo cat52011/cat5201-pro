@@ -17,7 +17,7 @@ public static class DeckHtmlRenderer
         var cover = slideImages?.FirstOrDefault();
         var pages = DeckScene.Build(outline, cover);
         var art = DeckArtDirection.ForOutline(outline);
-        string imageCost = ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, "high");
+        string imageCost = ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, AgentRuntime.IllustrationQuality);
 
         var html = new StringBuilder("<!doctype html><html lang='zh-TW'><meta charset='utf-8'><style>")
             .Append(Css(art))

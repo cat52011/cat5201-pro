@@ -627,6 +627,15 @@ namespace Cat5201
             string displayModel = IsEditing ? _editingModelId : _committedModelId;
             SelectModelInComboBox(displayModel);
 
+            // 協作模式要看得出來：模型選單只顯示一個，實際上會有好幾個模型一起回答。
+            var collaborators = _parent?.GetNodeCollaborationModels(this) ?? Array.Empty<string>();
+            bool collaborating = ModelCollaboration.IsActive(collaborators);
+            string names = string.Join("、", collaborators.Select(id => AiModelRegistry.Find(id)?.DisplayName ?? id));
+            if (ModelSelector != null)
+                ModelSelector.ToolTip = collaborating ? $"協作模式：{names} 一起回答（右鍵 → 協作模型 可修改）" : null;
+            if (CollaborationMenuItem != null)
+                CollaborationMenuItem.Header = collaborating ? $"協作模型…（{collaborators.Count} 個）" : "協作模型…";
+
             UpdateEditButtons();
         }
 
@@ -1280,6 +1289,13 @@ namespace Cat5201
                 ? Visibility.Visible
                 : Visibility.Collapsed;
 
+            // 這個節點自己正在跑的時候才給「強制停止生成」。
+            // 以前只有手機鏡像叫得到 StopActiveRun()，桌面這邊唯一的停止是「停止工作流」，
+            // 而那個只在整條鏈在跑時才出現——單獨跑一個節點就完全沒有煞車。
+            bool canStopThisNode = _isGenerating && _activeManualStop != null;
+            StopGenerationMenuItem.IsEnabled = canStopThisNode;
+            StopGenerationMenuItem.Visibility = canStopThisNode ? Visibility.Visible : Visibility.Collapsed;
+
             // §4 stop：只有「鏈正在跑」時才顯示「停止工作流」。
             bool chainRunning = _parent.IsWorkflowChainRunning;
             StopWorkflowMenuItem.IsEnabled = chainRunning;
@@ -1315,6 +1331,19 @@ namespace Cat5201
         private void AddToMemoryMenuItem_Click(object sender, RoutedEventArgs e)
         {
             _parent?.AddNodeToMemory(this);
+        }
+
+        // 協作模式：指定這個節點由哪幾個模型一起回答（2026-10-29）。
+        private void CollaborationMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (_parent == null) return;
+
+            var dlg = new CollaborationModelsDialog(_parent, _parent.GetNodeCollaborationModels(this));
+            if (dlg.ShowDialog() == true && dlg.SelectedModels != null)
+            {
+                _parent.SetNodeCollaborationModels(this, dlg.SelectedModels);
+                RefreshModelSelectionUI();
+            }
         }
 
         private void ChangeUpstreamMenuItem_Click(object sender, RoutedEventArgs e)
@@ -1366,6 +1395,23 @@ namespace Cat5201
         }
 
         // §4 stop：停止整條正在跑的工作流鏈。
+        /// <summary>
+        /// 強制停止這個節點目前的生成。
+        ///
+        /// 停掉之後不會再有新的 API 呼叫，串流也會斷開讓伺服器停止生成；
+        /// 但已經生出來的 token 該收的還是會收（AgentRuntime 會把那一段估進帳）。
+        /// 影片是例外：Veo 是非同步任務，取消輪詢不會讓雲端那邊停工，
+        /// 費用照算，任務也留在 VideoJobJournal 裡可以之後取回。
+        /// </summary>
+        private void StopGenerationMenuItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (!StopActiveRun())
+                return;
+
+            AppLog.Info("Node", "使用者強制停止生成");
+            SetLoadingHint("正在停止…");
+        }
+
         private void StopWorkflowMenuItem_Click(object sender, RoutedEventArgs e)
         {
             _parent?.StopWorkflowChain();
@@ -1993,7 +2039,7 @@ namespace Cat5201
             string prompt = topText ?? "";
 
             if (_parent != null &&
-                _parent.TryBuildInputFromFirstUpstream(this, out var injectedPrompt) &&
+                _parent.TryBuildInputFromUpstreams(this, out var injectedPrompt) &&
                 !string.IsNullOrWhiteSpace(injectedPrompt))
             {
                 prompt = injectedPrompt;

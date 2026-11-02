@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -406,6 +406,285 @@ namespace Cat5201
         /// （封面、資料來源頁不計，原樣保留）。太多→把多餘投影片併進最後一張；太少→拆分重點最多的投影片。
         /// 內容不會遺失，只是重新分配。requested ≤ 0 時原樣返回。
         /// </summary>
+        /// <summary>
+        /// 把整份簡報壓到「使用者說的那個頁數」——含封面與來源頁。
+        ///
+        /// 使用者說五頁就是五頁。以前這個數字只算內容頁，封面與來源頁另計，
+        /// 於是「5 頁」交出 7 頁；再加上排版時內容放不下又自動多拆一頁，就變成 8 頁
+        ///（2026-10-27 實測）。所以這裡：① 扣掉封面與附錄頁再分配內容頁，
+        /// ② 用 DeckScene 實際會排出幾頁來驗收，超出就再少一頁內容，直到排得下。
+        /// </summary>
+        /// <summary>
+        /// 使用者說 N 頁：封面＋內容共 N 頁，最後再加 1 頁資料來源（共 N+1 頁）。
+        ///
+        /// 2026-10-29 使用者指示「簡報做要求頁數＋1 頁，給資料來源用」。
+        /// 以前來源頁算在 N 裡面，5 頁的簡報實際只有 3 張內容，來源頁還常常被頁數上限擠掉。
+        /// 做法：先把來源頁拿出來，其餘照舊壓到 N 頁，再把來源頁接回最後。沒有來源頁就是 N 頁。
+        /// </summary>
+        /// <summary>沒有任何外部來源時，資料來源頁上寫的話。</summary>
+        public const string NoExternalSourcesNote = "本簡報沒有使用外部搜尋，內容依撰寫模型的既有知識整理，可能不是最新資訊。";
+
+        /// <summary>
+        /// 確保最後有一頁資料來源。沒有外部來源時照實寫「沒有查外部資料」，而不是讓那一頁消失。
+        ///
+        /// 2026-11-02 第三輪手測：手動 GPT 的簡報沒有搜尋，作者模型回傳的來源是空的，
+        /// 程式就不放來源頁，「5 頁＋1 頁來源」只交出 5 頁。來源頁是使用者指定的固定頁，
+        /// 而「這份內容沒有查證過」本身就是讀者該知道的來源資訊。
+        /// </summary>
+        public static PresentationOutlinePayload EnsureSourcesSlide(PresentationOutlinePayload outline)
+        {
+            if (outline?.Slides == null || outline.Slides.Count == 0)
+                return outline ?? new PresentationOutlinePayload();
+            if (outline.Slides.Any(x => IsKind(x, "sources")))
+                return outline;
+
+            var slides = outline.Slides.ToList();
+            slides.Add(new PresentationSlidePayload
+            {
+                Order = slides.Count + 1,
+                Kind = "sources",
+                Heading = "資料來源",
+                Bullets = new List<string>
+                {
+                    NoExternalSourcesNote,
+                    "引用其中的數字、年份或事實之前，請以官方或原始資料再確認。",
+                },
+            });
+
+            return new PresentationOutlinePayload
+            {
+                Title = outline.Title,
+                Topic = outline.Topic,
+                Slides = slides,
+                SlideCount = slides.Count,
+                RequestedSlideCount = outline.RequestedSlideCount,
+                PipelineId = outline.PipelineId,
+                ModelId = outline.ModelId,
+                AgentId = outline.AgentId,
+                SourceSummary = string.IsNullOrWhiteSpace(outline.SourceSummary) ? "未使用外部來源" : outline.SourceSummary,
+                CreatedAtUtc = outline.CreatedAtUtc,
+            };
+        }
+
+        public static PresentationOutlinePayload EnforcePageCountPlusSources(
+            PresentationOutlinePayload outline, int requestedPages, byte[]? cover = null)
+        {
+            if (outline?.Slides == null || requestedPages <= 0)
+                return outline ?? new PresentationOutlinePayload();
+
+            var sources = outline.Slides.LastOrDefault(x => IsKind(x, "sources"));
+            if (sources == null || outline.Slides.All(x => IsKind(x, "sources")))
+                return EnforceTotalPageCount(outline, requestedPages, cover);
+
+            var body = EnforceTotalPageCount(RemoveKind(outline, "sources"), requestedPages, cover);
+            var slides = body.Slides.ToList();
+            slides.Add(Reorder(sources, slides.Count + 1));
+
+            return new PresentationOutlinePayload
+            {
+                Title = body.Title,
+                Topic = body.Topic,
+                Slides = slides,
+                SlideCount = slides.Count,
+                RequestedSlideCount = body.RequestedSlideCount,
+                PipelineId = body.PipelineId,
+                ModelId = body.ModelId,
+                AgentId = body.AgentId,
+                SourceSummary = body.SourceSummary,
+                CreatedAtUtc = body.CreatedAtUtc,
+            };
+        }
+
+        public static PresentationOutlinePayload EnforceTotalPageCount(
+            PresentationOutlinePayload outline, int requestedTotalPages, byte[]? cover = null)
+        {
+            if (outline?.Slides == null || requestedTotalPages <= 0)
+                return outline ?? new PresentationOutlinePayload();
+
+            // 頁數少到連封面與來源頁都放不下時，要犧牲的是它們，不是內容。
+            // 2026-10-28 AI 輔助審查：要求 1 頁仍輸出 3 頁（封面＋內容＋來源）——
+            // 使用者說一頁就是一頁，附屬頁沒有優先權。
+            var working = outline;
+            int extras = working.Slides.Count(x => !IsKind(x, "content"));
+
+            if (requestedTotalPages - extras < 1)
+            {
+                working = RemoveKind(working, "sources");
+                extras = working.Slides.Count(x => !IsKind(x, "content"));
+            }
+            if (requestedTotalPages - extras < 1)
+            {
+                working = RemoveKind(working, "cover");
+                extras = working.Slides.Count(x => !IsKind(x, "content"));
+            }
+
+            int contentTarget = Math.Max(1, requestedTotalPages - extras);
+
+            var result = EnforceSlideCount(working, contentTarget);
+
+            // 排版時一頁放不下會自動拆續頁，所以還要用真正的排版結果驗收。
+            //
+            // 注意不能靠「再少一張投影片」來收斂：合併投影片只是把重點全部擠到更少的頁面，
+            // 排版照樣會把它拆回去，頁數反而更多（2026-10-27 實測：壓到 3 張反而排出 11 頁，
+            // 其中一張有 35 個重點）。真正能減少頁數的是減少內容，所以這裡逐步砍每頁的重點數。
+            for (int maxBullets = MaxBulletsPerSlide; maxBullets >= 1; maxBullets--)
+            {
+                if (DeckScene.CountPages(result.Slides, cover) <= requestedTotalPages)
+                    break;
+
+                result = CapBulletsPerSlide(result, maxBullets);
+            }
+
+            // 砍到剩一個重點還是超頁，代表問題不在「幾個重點」而在「那個重點有多長」：
+            // 排版是照文字量拆頁的，一個 500 字的重點照樣會被拆成好幾頁
+            //（2026-10-27 第三方審查：要求 5 頁、實際排出 8 頁，單一重點 568 字）。
+            // 這時候只能縮短字數。這是最後手段，會砍掉內容，所以要留下紀錄。
+            foreach (int cap in BulletLengthCaps)
+            {
+                if (DeckScene.CountPages(result.Slides, cover) <= requestedTotalPages)
+                    break;
+
+                result = CapBulletLength(result, cap);
+            }
+
+            int finalPages = DeckScene.CountPages(result.Slides, cover);
+            if (finalPages > requestedTotalPages)
+            {
+                AppLog.Warn("Deck",
+                    $"要求 {requestedTotalPages} 頁，壓到最小仍需 {finalPages} 頁——內容量超出版面能承載的極限。");
+            }
+            else if (finalPages < DeckScene.CountPages(outline.Slides, cover))
+            {
+                AppLog.Info("Deck",
+                    $"為符合「{requestedTotalPages} 頁」已精簡內容：" +
+                    $"{DeckScene.CountPages(outline.Slides, cover)} 頁 → {finalPages} 頁、" +
+                    $"重點 {CountBullets(outline)} → {CountBullets(result)} 個。");
+            }
+
+            return result;
+        }
+
+        /// <summary>整份大綱的重點總數（用來量「為了守住頁數犧牲了多少內容」）。</summary>
+        public static int CountBullets(PresentationOutlinePayload? outline)
+            => outline?.Slides?.Sum(x => x.Bullets?.Count ?? 0) ?? 0;
+
+        /// <summary>移除某一種附屬投影片（封面 / 來源頁），並重新編號。</summary>
+        private static PresentationOutlinePayload RemoveKind(PresentationOutlinePayload outline, string kind)
+        {
+            var slides = outline.Slides.Where(x => !IsKind(x, kind)).ToList();
+            if (slides.Count == 0) return outline;   // 不能把整份清空
+
+            for (int i = 0; i < slides.Count; i++)
+                slides[i] = Reorder(slides[i], i + 1);
+
+            return new PresentationOutlinePayload
+            {
+                Title = outline.Title,
+                Topic = outline.Topic,
+                Slides = slides,
+                SlideCount = slides.Count,
+                RequestedSlideCount = outline.RequestedSlideCount,
+                PipelineId = outline.PipelineId,
+                ModelId = outline.ModelId,
+                AgentId = outline.AgentId,
+                SourceSummary = outline.SourceSummary,
+                CreatedAtUtc = outline.CreatedAtUtc,
+            };
+        }
+
+        /// <summary>逐步收緊的單一重點字數上限（最後手段，用來守住使用者指定的頁數）。</summary>
+        private static readonly int[] BulletLengthCaps = { 220, 160, 120, 90, 70, 55, 40 };
+
+        /// <summary>
+        /// 把每個重點截到指定字數（在句讀處斷，斷不了才硬切）。
+        /// </summary>
+        private static PresentationOutlinePayload CapBulletLength(
+            PresentationOutlinePayload outline, int maxChars)
+        {
+            static string Trim(string text, int max)
+            {
+                string t = (text ?? "").Trim();
+                if (t.Length <= max) return t;
+
+                // 盡量在標點處收尾，讀起來才不像被切斷。
+                int cut = -1;
+                for (int i = Math.Min(max, t.Length) - 1; i >= max / 2; i--)
+                {
+                    if ("，。；、）」？！,.;)".IndexOf(t[i]) >= 0) { cut = i; break; }
+                }
+
+                return cut > 0 ? t.Substring(0, cut + 1) : t.Substring(0, max) + "…";
+            }
+
+            var slides = outline.Slides.Select(s =>
+            {
+                if (!IsKind(s, "content") || s.Bullets == null || s.Bullets.Count == 0)
+                    return s;
+
+                return new PresentationSlidePayload
+                {
+                    Order = s.Order,
+                    Kind = s.Kind,
+                    Heading = s.Heading,
+                    Bullets = s.Bullets.Select(b => Trim(b, maxChars)).ToList(),
+                    ImageBytes = s.ImageBytes,
+                    ImageSubject = s.ImageSubject,
+                };
+            }).ToList();
+
+            return new PresentationOutlinePayload
+            {
+                Title = outline.Title,
+                Topic = outline.Topic,
+                Slides = slides,
+                SlideCount = slides.Count,
+                RequestedSlideCount = outline.RequestedSlideCount,
+                PipelineId = outline.PipelineId,
+                ModelId = outline.ModelId,
+                AgentId = outline.AgentId,
+                SourceSummary = outline.SourceSummary,
+                CreatedAtUtc = outline.CreatedAtUtc,
+            };
+        }
+
+        /// <summary>
+        /// 每張內容投影片最多留幾個重點（多的捨去）。排版是照文字量拆頁的，
+        /// 要讓頁數降下來只能減量——合併投影片沒有用。
+        /// </summary>
+        private static PresentationOutlinePayload CapBulletsPerSlide(
+            PresentationOutlinePayload outline, int maxBullets)
+        {
+            var slides = outline.Slides.Select(s =>
+            {
+                if (!IsKind(s, "content") || s.Bullets == null || s.Bullets.Count <= maxBullets)
+                    return s;
+
+                return new PresentationSlidePayload
+                {
+                    Order = s.Order,
+                    Kind = s.Kind,
+                    Heading = s.Heading,
+                    Bullets = s.Bullets.Take(maxBullets).ToList(),
+                    ImageBytes = s.ImageBytes,
+                    ImageSubject = s.ImageSubject,
+                };
+            }).ToList();
+
+            return new PresentationOutlinePayload
+            {
+                Title = outline.Title,
+                Topic = outline.Topic,
+                Slides = slides,
+                SlideCount = slides.Count,
+                RequestedSlideCount = outline.RequestedSlideCount,
+                PipelineId = outline.PipelineId,
+                ModelId = outline.ModelId,
+                AgentId = outline.AgentId,
+                SourceSummary = outline.SourceSummary,
+                CreatedAtUtc = outline.CreatedAtUtc,
+            };
+        }
+
         public static PresentationOutlinePayload EnforceSlideCount(
             PresentationOutlinePayload outline, int requestedContentSlides)
         {
@@ -475,20 +754,129 @@ namespace Cat5201
             }
         }
 
-        // 太多：保留前 target 張，把多餘投影片的標題 + 重點併進最後一張。
-        private static List<SlideDraft> MergeDown(List<SlideDraft> drafts, int target)
+        /// <summary>
+        /// 標題一看就知道「刪掉會出事」的章節。
+        ///
+        /// 2026-10-28 第四輪 AI 輔助審查的指控：均勻取樣只是另一條**位置規則**，
+        /// 「重要限制若在第四節，仍可能被刪除」。那是對的。
+        /// 系統無法從使用者的需求推斷哪一節必要（那是本專題未解的問題），
+        /// 但它**認得自己產生的章節標題**——結論、建議、限制、風險這幾種名字，
+        /// 刪掉的代價遠高於刪掉一節背景介紹。所以保留依據從「純位置」改成「標題語意優先，位置次之」。
+        ///
+        /// 這不是完整的解法：使用者真正要的重點若掛在「天候判讀」這種中性標題下，依然救不回來。
+        /// </summary>
+        private static readonly string[] ProtectedHeadingHints =
         {
-            var kept = drafts.Take(target).ToList();
-            var last = kept[kept.Count - 1];
+            "結論", "總結", "小結", "綜上", "重點回顧",
+            "建議", "行動", "下一步", "後續",
+            "限制", "風險", "注意", "警告", "免責",
+            "來源", "參考", "引用",
+        };
 
-            foreach (var s in drafts.Skip(target))
+        internal static bool IsProtectedHeading(string? heading, IReadOnlyList<string>? extraHints = null)
+        {
+            string h = (heading ?? "").Trim();
+            if (h.Length == 0) return false;
+
+            foreach (string hint in ProtectedHeadingHints)
+                if (h.Contains(hint, StringComparison.OrdinalIgnoreCase)) return true;
+
+            foreach (string hint in extraHints ?? Array.Empty<string>())
+                if (!string.IsNullOrWhiteSpace(hint)
+                    && h.Contains(hint.Trim(), StringComparison.OrdinalIgnoreCase)) return true;
+
+            return false;
+        }
+
+        /// <summary>
+        /// 把 N 張內容投影片壓成 target 張。
+        ///
+        /// 關鍵是「留哪幾張」，這一段被連續三輪審查各打穿一次：
+        ///   1. 原本是 Take(target)——留前面幾張、其餘倒進尾巴再被字數上限截掉，
+        ///      等於整份簡報的後半段消失（九節壓五頁只剩第 1、2、3 節）。
+        ///   2. 改成均勻取樣＋固定保留最末節之後，結論救回來了，
+        ///      但第四輪指出這仍然只是位置規則：排在中段的「風險與限制」照樣被刪。
+        ///   3. 現在的順序是：**先挑標題語意上不能刪的章節**（結論／建議／限制／風險／來源），
+        ///      再用均勻取樣把剩下的額度填滿，並且永遠保留最末節。
+        ///
+        /// 沒被選中的節，其內容併入前一張被保留的投影片，次序不亂。
+        /// </summary>
+        private static List<SlideDraft> MergeDown(
+            List<SlideDraft> drafts, int target, IReadOnlyList<string>? protectedHints = null)
+        {
+            if (target >= drafts.Count)
+                return drafts;
+
+            var picks = new List<int>();
+
+            // ① 最末節永遠留（結論／下一步多半在那裡）。
+            picks.Add(drafts.Count - 1);
+
+            // ② 標題語意上不能刪的章節，由後往前收——靠後的通常是結論與建議。
+            if (picks.Count < target)
+                for (int i = drafts.Count - 2; i >= 0 && picks.Count < target; i--)
+                    if (IsProtectedHeading(drafts[i].Heading, protectedHints))
+                        picks.Add(i);
+
+            // ③ 剩下的額度用均勻取樣填滿，讓整份簡報的脈絡不只剩尾巴。
+            for (int i = 0; i < target && picks.Count < target; i++)
             {
-                if (!string.IsNullOrWhiteSpace(s.Heading))
-                    last.Bullets.Add(s.Heading);
-                last.Bullets.AddRange(s.Bullets);
+                int idx = target == 1
+                    ? drafts.Count - 1
+                    : (int)Math.Round(i * (drafts.Count - 1.0) / (target - 1));
+                if (!picks.Contains(idx))
+                    picks.Add(idx);
+            }
+
+            // ④ 四捨五入撞號導致還不夠時，從前往後補滿。
+            for (int i = 0; picks.Count < target && i < drafts.Count; i++)
+                if (!picks.Contains(i))
+                    picks.Add(i);
+
+            picks.Sort();
+
+            var kept = new List<SlideDraft>();
+            foreach (int idx in picks)
+                kept.Add(new SlideDraft(drafts[idx].Heading, new List<string>(drafts[idx].Bullets)));
+
+            // 沒被選中的節：併進「它前面最近的那一張保留投影片」。
+            for (int i = 0; i < drafts.Count; i++)
+            {
+                if (picks.Contains(i)) continue;
+
+                int slot = 0;
+                for (int k = 0; k < picks.Count; k++)
+                    if (picks[k] < i) slot = k;
+
+                if (!string.IsNullOrWhiteSpace(drafts[i].Heading))
+                    kept[slot].Bullets.Add(drafts[i].Heading);
+                kept[slot].Bullets.AddRange(drafts[i].Bullets);
             }
 
             return kept;
+        }
+
+        /// <summary>
+        /// 這次壓縮之後，原本的內容標題還有哪些沒被留下來。
+        /// 用途是**對使用者誠實**：被刪掉的是哪幾個主題，比「少了幾個重點」有用得多。
+        /// </summary>
+        public static IReadOnlyList<string> DroppedHeadings(
+            PresentationOutlinePayload before, PresentationOutlinePayload after)
+        {
+            if (before?.Slides == null || after?.Slides == null)
+                return Array.Empty<string>();
+
+            var kept = after.Slides
+                .Where(x => IsKind(x, "content"))
+                .Select(x => (x.Heading ?? "").Trim())
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            return before.Slides
+                .Where(x => IsKind(x, "content"))
+                .Select(x => (x.Heading ?? "").Trim())
+                .Where(h => h.Length > 0 && !kept.Contains(h))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
 
         // 太少：反覆把「重點最多」的投影片對半拆，直到達到 target；真的拆不動才補空白「補充」頁。
@@ -536,7 +924,9 @@ namespace Cat5201
                 Order = order,
                 Kind = s.Kind,
                 Heading = s.Heading,
-                Bullets = s.Bullets
+                Bullets = s.Bullets,
+                ImageBytes = s.ImageBytes,
+                ImageSubject = s.ImageSubject,
             };
     }
 }

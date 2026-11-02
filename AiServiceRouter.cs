@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Cat5201
 {
@@ -167,6 +169,30 @@ namespace Cat5201
         {
             _perplexityTool ??= new PerplexityService();
             return _perplexityTool;
+        }
+
+        /// <summary>
+        /// 用指定的模型做一次短的文字呼叫（意圖判斷、記憶萃取這類幫手用）。
+        ///
+        /// 存在的理由：幫手原本都寫死 GetOpenAiService(gpt-5.6-sol)，
+        /// 手動模式下使用者選了 Claude，背後仍是 GPT 在判斷要不要產出檔案、萃取記憶。
+        /// 手動模式要「只有所選的模型參與」，幫手就得能用任何一個模型——這是那條路。
+        /// </summary>
+        public Task<string> GenerateTextAsync(
+            string model, string instructions, string userText, int maxOutputTokens, CancellationToken ct)
+        {
+            var route = GetRouteInfo(model);
+            return route.Provider switch
+            {
+                AiProviderKind.Claude =>
+                    GetClaudeService(route.ServiceModel).GenerateAsync(instructions, userText, maxOutputTokens, ct),
+                AiProviderKind.PerplexitySonar =>
+                    GetPerplexitySonarService(route.ServiceModel).GenerateAsync(instructions, userText, maxOutputTokens, ct),
+                AiProviderKind.Gemini =>
+                    GetGeminiService(route.ServiceModel).GenerateAsync(instructions, userText, maxOutputTokens, ct),
+                _ =>
+                    GetOpenAiService(route.ServiceModel).GenerateAsync(instructions, userText, maxOutputTokens, ct),
+            };
         }
 
         public GeminiChatService GetGeminiService(string model)

@@ -1,0 +1,10 @@
+﻿code,task,group,rep,source_file
+S1000,T01,D,1,T01-D-1.txt
+S1001,T01,B,2,T01-B-2.txt
+S1002,T01,A,3,T01-A-3.txt
+S1003,T01,A,2,T01-A-2.txt
+S1004,T01,B,3,T01-B-3.txt
+S1005,T01,B,1,T01-B-1.txt
+S1006,T01,A,1,T01-A-1.txt
+S1007,T01,D,2,T01-D-2.txt
+S1008,T01,D,3,T01-D-3.txt

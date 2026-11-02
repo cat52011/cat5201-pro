@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -13,7 +13,8 @@ namespace Cat5201.Tests
         public void OpusIsNowFivePointFiveWithItsOwnPrice()
         {
             Assert.Equal("claude-opus-5-5", AiModels.Claude_Opus5);
-            Assert.Equal("claude-sonnet-5", AiModels.Claude_Sonnet5);
+            // 2026-10-29：常數名沿用，值升到 Sonnet 5.5（比照 Opus 5.5 的升級方式）。
+            Assert.Equal("claude-sonnet-5-5", AiModels.Claude_Sonnet5);
 
             // Opus 5.5：$4 / $20；Opus 5：$5 / $25；Sonnet 5：$2 / $10。
             var opus55 = ModelCostEstimator.FromUsage("claude-opus-5-5", 1_000_000, 1_000_000);
@@ -29,6 +30,7 @@ namespace Cat5201.Tests
         [Theory]
         [InlineData("claude-opus-5-5", 0.05)]   // 官方：Opus 5.5 的快取讀取是 0.05x
         [InlineData("claude-sonnet-5", 0.10)]
+        [InlineData("claude-sonnet-5-5", 0.10)]
         [InlineData("claude-opus-5", 0.10)]
         [InlineData("claude-fable-5-1", 0.025)]
         public void CacheReadMultiplierIsPerModel(string modelId, double expected)

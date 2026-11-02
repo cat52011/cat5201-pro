@@ -63,7 +63,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Translate 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
+                Notes = "Translate 首選 gpt-5.6-sol，次選 claude-sonnet-5-5。"
             },
 
             new NodeTaskRoutingProfile
@@ -83,7 +83,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Summarize 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
+                Notes = "Summarize 首選 gpt-5.6-sol，次選 claude-sonnet-5-5。"
             },
 
             new NodeTaskRoutingProfile
@@ -103,7 +103,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Rewrite 首選 claude-sonnet-5，次選 gpt-5.6-sol。"
+                Notes = "Rewrite 首選 claude-sonnet-5-5，次選 gpt-5.6-sol。"
             },
 
             new NodeTaskRoutingProfile
@@ -125,7 +125,7 @@ namespace Cat5201
                 PrefersSearch = false,
                 PrefersLongContext = true,
                 PrefersDeepResearch = false,
-                Notes = "Extract 首選 gpt-5.6-sol，次選 claude-sonnet-5。"
+                Notes = "Extract 首選 gpt-5.6-sol，次選 claude-sonnet-5-5。"
             },
 
             new NodeTaskRoutingProfile

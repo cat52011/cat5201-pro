@@ -726,7 +726,13 @@ namespace Cat5201
                 InputTokens: entry.InputTokens,
                 OutputTokens: entry.OutputTokens,
                 CostDisplay: entry.CostDisplay ?? "",
-                UsageRecords: entry.UsageRecords?.ToList()
+                UsageRecords: entry.UsageRecords?.ToList(),
+
+                MemoryRecall: entry.MemoryRecall,
+                EffectivePreferences: entry.EffectivePreferences ?? "",
+                OutputIntentSummary: entry.OutputIntentSummary ?? "",
+                StepInputs: entry.StepInputs?.ToList(),
+                StepInputLogPath: entry.StepInputLogPath ?? ""
             );
         }
         private static AiExecutionLogEntry ToExecutionLogEntry(ExecutionLogState state)
@@ -741,9 +747,15 @@ namespace Cat5201
                 SelectionMode = state.SelectionMode ?? "",
                 Resolver = state.Resolver ?? "",
 
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(state.RequestedModelId),
-                PlannedModelId = AiModelHelper.NormalizeNodeModel(state.PlannedModelId),
-                ActualModelId = AiModelHelper.NormalizeNodeModel(state.ActualModelId),
+                // 執行紀錄是「當時發生了什麼」，不是「現在該路由到哪裡」。
+                //
+                // NormalizeNodeModel 會把舊世代 ID 轉成後繼模型（gpt-5.5 → gpt-5.6-sol、
+                // claude-opus-5 → claude-opus-5-5），那是路由用的正規化；套在歷史紀錄上
+                // 等於竄改稽查資料——而且逐筆 UsageRecords 仍保留原 ID，同一份紀錄會自相矛盾
+                //（2026-10-27 第三方審查）。這裡一律原值讀回。
+                RequestedModelId = state.RequestedModelId ?? "",
+                PlannedModelId = state.PlannedModelId ?? "",
+                ActualModelId = state.ActualModelId ?? "",
 
                 TaskMode = state.TaskMode ?? "",
                 Confidence = state.Confidence,
@@ -754,8 +766,8 @@ namespace Cat5201
                 CapabilityAdjusted = state.CapabilityAdjusted,
                 CapabilityReason = state.CapabilityReason ?? "",
 
-                CapabilityRequestedModelId = AiModelHelper.NormalizeNodeModel(state.CapabilityRequestedModelId),
-                CapabilityResolvedModelId = AiModelHelper.NormalizeNodeModel(state.CapabilityResolvedModelId),
+                CapabilityRequestedModelId = state.CapabilityRequestedModelId ?? "",
+                CapabilityResolvedModelId = state.CapabilityResolvedModelId ?? "",
                 CapabilityRequired = state.CapabilityRequired ?? "",
                 CapabilityMissing = state.CapabilityMissing ?? "",
                 CapabilityStreamingAdjusted = state.CapabilityStreamingAdjusted,
@@ -778,6 +790,11 @@ namespace Cat5201
                 InputTokens = state.InputTokens,
                 OutputTokens = state.OutputTokens,
                 CostDisplay = state.CostDisplay ?? "",
+                MemoryRecall = state.MemoryRecall ?? MemoryRecallStats.Empty,
+                EffectivePreferences = state.EffectivePreferences ?? "",
+                OutputIntentSummary = state.OutputIntentSummary ?? "",
+                StepInputs = state.StepInputs ?? new List<StepInputRecord>(),
+                StepInputLogPath = state.StepInputLogPath ?? "",
                 UsageRecords = state.UsageRecords ?? new List<UsageRecord>()
             };
         }
@@ -1535,6 +1552,27 @@ namespace Cat5201
                 statusTextBrushHex: "#404040");
         }
 
+        // 協作模式：節點 → 一起回答的模型（2026-10-29）。少於兩個就是一般模式。
+        private readonly Dictionary<Guid, List<string>> _collaborationModelsByNode = new();
+
+        public IReadOnlyList<string> GetNodeCollaborationModels(NodeControl node)
+            => node != null && _collaborationModelsByNode.TryGetValue(node.Id, out var list)
+                ? list
+                : Array.Empty<string>();
+
+        public void SetNodeCollaborationModels(NodeControl node, IEnumerable<string>? models)
+        {
+            if (node == null) return;
+
+            var normalized = ModelCollaboration.Normalize(models).ToList();
+            if (normalized.Count >= ModelCollaboration.MinModels)
+                _collaborationModelsByNode[node.Id] = normalized;
+            else
+                _collaborationModelsByNode.Remove(node.Id);
+
+            RefreshDecisionForNode(node);
+        }
+
         public string GetEffectiveNodeModel(NodeControl node, string? topText = null)
         {
             var manualModel = GetNodeSelectedModel(node);
@@ -1635,6 +1673,7 @@ namespace Cat5201
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
+            SyncIllustrationQualityRadios();
             EnsureApiStatusRows();
             ApplyApiBalancePanelVisibility();   // 右下角餘額面板（依個人化開關）
             OrganizeGeneratedFilesOnce();       // 舊的散檔歸到各自的存檔資料夾
@@ -2695,6 +2734,49 @@ namespace Cat5201
                 SetPresentationEngine(PresentationEngine.Gpt);
             else
                 SetPresentationEngine(PresentationEngine.Claude);
+        }
+
+        private bool _suppressIllustrationQualityRadioEvents;
+
+        /// <summary>
+        /// 配圖品質三個選項。文字裡的單價直接問價目表，不寫死在 XAML——
+        /// 不然哪天官方調價，介面上就會長期掛著一個騙人的數字。
+        /// </summary>
+        private void SyncIllustrationQualityRadios()
+        {
+            _suppressIllustrationQualityRadioEvents = true;
+            try
+            {
+                string current = ImageQuality.Normalize(DeliveryOptions.IllustrationQuality);
+
+                void Fill(System.Windows.Controls.RadioButton? btn, string quality, string label)
+                {
+                    if (btn == null) return;
+                    btn.Content = $"{label}（約 {ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, quality)}）";
+                    btn.IsChecked = current == quality;
+                }
+
+                Fill(IllustrationQualityHigh, ImageQuality.High, "高品質");
+                Fill(IllustrationQualityMedium, ImageQuality.Medium, "標準（建議）");
+                Fill(IllustrationQualityLow, ImageQuality.Low, "最省");
+            }
+            finally
+            {
+                _suppressIllustrationQualityRadioEvents = false;
+            }
+        }
+
+        private void IllustrationQuality_Checked(object sender, RoutedEventArgs e)
+        {
+            if (_suppressIllustrationQualityRadioEvents)
+                return;
+
+            DeliveryOptions.IllustrationQuality =
+                ReferenceEquals(sender, IllustrationQualityHigh) ? ImageQuality.High :
+                ReferenceEquals(sender, IllustrationQualityLow) ? ImageQuality.Low :
+                ImageQuality.Medium;
+
+            SaveState();
         }
 
         private bool _suppressDocumentEngineRadioEvents;
@@ -3794,7 +3876,8 @@ namespace Cat5201
     GetNodeTaskModeStorageValue(child),
     _unsupportedDownstreamNodeIds.Contains(child.Id),
     child.GetOutputFilePaths().ToList(),
-    child.GetOutputImagePath()
+    child.GetOutputImagePath(),
+    GetNodeCollaborationModels(child) is { Count: > 0 } collab ? collab.ToList() : null
 ));
             }
 
@@ -3999,6 +4082,7 @@ namespace Cat5201
                     // 還原上次執行產生、可點擊開啟的檔案 chip 與 inline 圖片（檔案需仍存在）。
                     node.RestoreOutputFiles(n.OutputFilePaths);
                     node.SetOutputImage(n.OutputImagePath);
+                    SetNodeCollaborationModels(node, n.CollaborationModels);
 
                     idMap[n.Id] = node;
                 }
@@ -5299,6 +5383,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
+            SyncIllustrationQualityRadios();
             EnsureApiStatusRows();
             SyncVideoStyleUI();
             BuildTaskRoutingPanel();
@@ -5759,7 +5844,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
 
         public bool TryPrepareAutoFlowInput(NodeControl fromNode, NodeControl toNode)
         {
-            if (!TryBuildAutoFlowInjectedPrompt(fromNode, toNode, out var injected))
+            // 不只看 fromNode：toNode 若是匯流節點，所有上游都要對等地放進去（見 TryBuildInputFromUpstreams）。
+            if (fromNode == null || !TryBuildInputFromUpstreams(toNode, out var injected))
                 return false;
 
             toNode.SetTopText(injected);
@@ -5768,33 +5854,51 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             return true;
         }
 
-        public bool TryBuildInputFromFirstUpstream(NodeControl node, out string injectedPrompt)
+        /// <summary>
+        /// 下游節點的主要輸入：所有上游的產出，以對等的格式完整放進模板的 {{input}}。
+        ///
+        /// 原本叫 TryBuildInputFromFirstUpstream，只取 FirstOrDefault——匯流節點只完整看到
+        /// 先接上的那一條，其他上游只剩背景脈絡裡被截到 1,200 字的版本（2026-10-29 發現）。
+        /// 單一上游時行為不變。
+        /// </summary>
+        public bool TryBuildInputFromUpstreams(NodeControl node, out string injectedPrompt)
         {
             injectedPrompt = "";
 
             if (node == null)
                 return false;
 
-            var incoming = GetConnectionsForContext()
+            var sources = GetConnectionsForContext()
                 .Where(c => ReferenceEquals(c.EndNode, node))
                 .Select(c => c.StartNode)
-                .Where(n => n != null)
-                .FirstOrDefault();
+                .Where(n => n != null && !string.IsNullOrWhiteSpace(n.GetBottomText()))
+                .Distinct()
+                .Select(n => new UpstreamMerge.Source(
+                    ShortLabel(n),
+                    AiModelRegistry.Find(GetNodeSelectedModel(n))?.DisplayName ?? "",
+                    UpstreamMerge.CleanOutput(n.GetBottomText())))
+                .ToList();
 
-            return incoming != null && TryBuildAutoFlowInjectedPrompt(incoming, node, out injectedPrompt);
+            if (sources.Count == 0)
+                return false;
+
+            if (sources.Count > 1)
+                AppLog.Info("Flow", $"「{ShortLabel(node)}」匯流 {sources.Count} 個上游，全部完整放進輸入");
+
+            return TryBuildAutoFlowInjectedPrompt(UpstreamMerge.Combine(sources), node, out injectedPrompt);
         }
 
         private bool TryBuildAutoFlowInjectedPrompt(
-            NodeControl fromNode,
+            string sourceText,
             NodeControl toNode,
             out string injectedPrompt)
         {
             injectedPrompt = "";
 
-            if (fromNode == null || toNode == null)
+            if (toNode == null)
                 return false;
 
-            string sourceText = (fromNode.GetBottomText() ?? "").Trim();
+            sourceText = (sourceText ?? "").Trim();
             if (string.IsNullOrWhiteSpace(sourceText))
                 return false;
 
@@ -5831,8 +5935,7 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             var incoming = GetConnectionsForContext()
                 .Where(c => ReferenceEquals(c.EndNode, node))
                 .Select(c => c.StartNode)
-                .Where(n => n != null)
-                .FirstOrDefault();
+                .FirstOrDefault(n => n != null);
 
             return incoming != null && TryPrepareAutoFlowInput(incoming, node);
         }
@@ -6081,6 +6184,20 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                    top.Contains("future target: file-agent", StringComparison.OrdinalIgnoreCase) ||
                    top.Contains("future target: media-agent", StringComparison.OrdinalIgnoreCase) ||
                    top.Contains("future target: workflow-agent", StringComparison.OrdinalIgnoreCase);
+        }
+
+        /// <summary>所有入邊的上游節點（不分一般／流動連線）——匯流判斷與對等輸入都用這一份。</summary>
+        public IReadOnlyList<NodeControl> GetUpstreamNodes(NodeControl node)
+        {
+            if (node == null)
+                return Array.Empty<NodeControl>();
+
+            return GetConnectionsForContext()
+                .Where(c => ReferenceEquals(c.EndNode, node))
+                .Select(c => c.StartNode)
+                .Where(n => n != null)
+                .Distinct()
+                .ToList();
         }
 
         public IReadOnlyList<NodeControl> GetDownstreamNodes(NodeControl node)

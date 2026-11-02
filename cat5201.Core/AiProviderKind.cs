@@ -6,7 +6,7 @@
         Claude = 1,
         PerplexitySonar = 2,
         PerplexityTool = 3,
-        Gemini = 4,        // Multi-Model v1：擴充點，休眠中（尚未實作 GeminiProvider）
+        Gemini = 4,
         Unknown = 99
     }
 }

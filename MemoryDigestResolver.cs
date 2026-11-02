@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,18 +21,23 @@ namespace Cat5201
             _router = router;
         }
 
+        /// <param name="scope">手動模式下用使用者選的模型萃取；不適合或失敗時改走規則版（不需要換模型）。</param>
         public async Task<IReadOnlyList<string>> ExtractAsync(
-            string? topText, string? bottomText, CancellationToken ct = default)
+            string? topText, string? bottomText, CancellationToken ct = default, ModelScope? scope = null)
         {
             if (string.IsNullOrWhiteSpace(topText) && string.IsNullOrWhiteSpace(bottomText))
                 return Array.Empty<string>();
+
+            string? model = (scope ?? ModelScope.Auto).HelperModel(AiModels.OpenAi_Gpt56);
+            if (model == null)
+                return MemoryDigest.FromText(topText, bottomText);
 
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("記憶重點萃取");
                 string raw = await _router
-                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
-                    .GenerateAsync(
+                    .GenerateTextAsync(
+                        model,
                         MemoryDigest.BuildSystemPrompt(),
                         MemoryDigest.BuildUserPrompt(topText ?? "", bottomText ?? ""),
                         300, ct);

@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -18,17 +19,28 @@ namespace Cat5201
     /// 而不是一個軟體在問你一個明確的問題。
     ///
     /// 行為：回傳 true=執行；支援手機遠端設 DialogResult；autoConfirmSeconds 逾時自動同意。
+    ///
+    /// 2026-10-29 加入「撰寫者」與「配圖」：手動模式下所選模型以外的任何模型，
+    /// 都必須在這裡由使用者親手選，而不是由個人化設定在背後決定。
+    /// 預設撰寫者是節點選的模型；逾時自動同意或手機遠端回答時一律用預設。
     /// </summary>
     public sealed class GenerationConfirmDialog : Window
     {
         /// <summary>超支警告（null＝這次不會超過今日上限）。</summary>
         public sealed record BudgetWarning(string CommittedDisplay, int BudgetTwd, double EstimatedUsd);
 
+        /// <summary>使用者選的撰寫者（內部 id）。沒有撰寫者選單時為 null。</summary>
+        public string? SelectedAuthorModelId { get; private set; }
+
+        /// <summary>配圖勾選框的值。沒有勾選框時為 null。</summary>
+        public bool? IllustrationsChecked { get; private set; }
+
         public GenerationConfirmDialog(
             Window owner,
             IReadOnlyList<(string Icon, string Name, string Detail)> items,
             int autoConfirmSeconds,
-            BudgetWarning? budget = null)
+            BudgetWarning? budget = null,
+            GenerationChoices? choices = null)
         {
             Owner = owner;
             WindowStyle = WindowStyle.None;
@@ -121,6 +133,61 @@ namespace Cat5201
 
                 if (i < items.Count - 1)
                     root.Children.Add(new Border { Height = 1, Background = hairline });
+            }
+
+            // 撰寫者與配圖：只有手動模式的文件類產出才問（Auto 由個人化設定決定，AgentRuntime 不會送選項來）。
+            // 2026-10-29 第二輪手測：原本用 WPF 預設的下拉選單，跟這個框的其他元素完全不同調。
+            // 改成一排膠囊按鈕——選項只有三、四個，攤開來一眼看完，也不必多點一下才看得到有哪些。
+            choices ??= GenerationChoices.None;
+            if (choices.IncludesDocuments && choices.AuthorOptions.Count > 0)
+            {
+                SelectedAuthorModelId = choices.DefaultAuthorModelId;
+                root.Children.Add(SectionLabel("撰寫者", ink));
+
+                var authorNote = new TextBlock
+                {
+                    FontSize = 11.5,
+                    Foreground = muted,
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(0, 2, 0, 0),
+                };
+
+                void RefreshAuthorNote()
+                {
+                    string chosen = SelectedAuthorModelId ?? "";
+                    bool isClaude = AiModelHelper.GetProviderKind(chosen) == AiProviderKind.Claude;
+                    authorNote.Text = choices.BestQualityEnabled && !isClaude
+                        ? "非 Claude 撰寫時改用一般版面（最佳品質限 Claude）。"
+                        : "";
+                    authorNote.Visibility = authorNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+                }
+
+                var pills = ChoicePills(
+                    choices.AuthorOptions.Select(id => (id, AiModelRegistry.Find(id)?.DisplayName ?? id)).ToList(),
+                    choices.DefaultAuthorModelId,
+                    ink,
+                    id => { SelectedAuthorModelId = id; RefreshAuthorNote(); });
+                root.Children.Add(pills);
+                root.Children.Add(authorNote);
+                RefreshAuthorNote();
+            }
+
+            if (choices.IncludesDocuments && choices.ShowIllustrationOption)
+            {
+                IllustrationsChecked = choices.IllustrationsDefault;
+                root.Children.Add(SectionLabel("配圖", ink));
+                root.Children.Add(ChoicePills(
+                    new List<(string, string)> { ("no", "不配圖"), ("yes", "加入配圖") },
+                    choices.IllustrationsDefault ? "yes" : "no",
+                    ink,
+                    v => IllustrationsChecked = v == "yes"));
+                root.Children.Add(new TextBlock
+                {
+                    Text = "配圖會另外用到圖片模型。",
+                    FontSize = 11.5,
+                    Foreground = muted,
+                    Margin = new Thickness(0, 2, 0, 0),
+                });
             }
 
             // 超支：講清楚現在花到哪、上限多少、這次估多少，而不是只說「超過了」。
@@ -222,6 +289,76 @@ namespace Cat5201
             {
                 countdownText.Visibility = Visibility.Collapsed;
             }
+        }
+
+        private static TextBlock SectionLabel(string text, Brush ink) => new()
+        {
+            Text = text,
+            FontSize = 13.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = ink,
+            Margin = new Thickness(0, 16, 0, 8),
+        };
+
+        /// <summary>一排單選膠囊：選中的是黑底白字，其餘白底細框。</summary>
+        private static WrapPanel ChoicePills(
+            IReadOnlyList<(string Value, string Caption)> options, string selected, Brush ink, Action<string> onSelect)
+        {
+            var panel = new WrapPanel();
+            var selectedBg = new SolidColorBrush(Color.FromRgb(0x11, 0x11, 0x11));
+            var idleBorder = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE4));
+            var buttons = new List<(Button Button, string Value)>();
+
+            void Paint(string value)
+            {
+                foreach (var (b, v) in buttons)
+                {
+                    bool on = string.Equals(v, value, StringComparison.OrdinalIgnoreCase);
+                    b.Background = on ? selectedBg : Brushes.White;
+                    b.BorderBrush = on ? selectedBg : idleBorder;
+                    b.Foreground = on ? Brushes.White : ink;
+                }
+            }
+
+            foreach (var (value, caption) in options)
+            {
+                var btn = new Button
+                {
+                    Content = caption,
+                    FontSize = 12,
+                    Padding = new Thickness(11, 5, 11, 5),
+                    Margin = new Thickness(0, 0, 6, 6),
+                    BorderThickness = new Thickness(1),
+                    Cursor = Cursors.Hand,
+                    Focusable = false,
+                };
+                var template = new ControlTemplate(typeof(Button));
+                var border = new FrameworkElementFactory(typeof(Border));
+                var parent = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent);
+                border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = parent });
+                border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = parent });
+                border.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = parent });
+                border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = parent });
+                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+                var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+                presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
+                presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
+                border.AppendChild(presenter);
+                template.VisualTree = border;
+                btn.Template = template;
+
+                string v = value;
+                btn.Click += (_, __) => { Paint(v); onSelect(v); };
+                buttons.Add((btn, value));
+                panel.Children.Add(btn);
+            }
+
+            // 預設值不在選項裡時選第一個，畫面上永遠有一個是選中的。
+            string initial = buttons.Any(b => string.Equals(b.Value, selected, StringComparison.OrdinalIgnoreCase))
+                ? selected
+                : buttons.FirstOrDefault().Value ?? "";
+            Paint(initial);
+            return panel;
         }
 
         private static Button MakePillButton(string caption, Color bg, Color fg)

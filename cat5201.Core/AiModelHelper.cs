@@ -9,8 +9,7 @@ namespace Cat5201
             // 舊世代 ID（舊專案/舊偏好存的）先轉成同廠牌後繼模型，再查表——否則會掉到預設模型、默默換廠牌。
             var def = AiModelRegistry.Find(AiModelRegistry.ResolveAlias(model));
 
-            // 休眠中的擴充點（IsAvailable=false，如尚未啟用的 Gemini）一律退回預設模型，
-            // 避免實際路由到沒有 provider 實作的模型。
+            // 休眠中的擴充點（IsAvailable=false）一律退回預設模型，避免路由到沒有 provider 實作的模型。
             if (def == null || !def.IsAvailable)
                 return AiModelRegistry.Default.Id;
 
@@ -51,7 +50,7 @@ namespace Cat5201
                 AiProviderType.OpenAI => AiProviderKind.OpenAI,
                 AiProviderType.Claude => AiProviderKind.Claude,
                 AiProviderType.Perplexity => AiProviderKind.PerplexitySonar,
-                AiProviderType.Gemini => AiProviderKind.Gemini, // 休眠：router 尚無 case，需配合 GeminiProvider 實作
+                AiProviderType.Gemini => AiProviderKind.Gemini,
                 _ => AiProviderKind.Unknown
             };
         }

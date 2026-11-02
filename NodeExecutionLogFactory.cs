@@ -81,11 +81,17 @@ namespace Cat5201
                 MemoryRecall = decision.MemoryRecall ?? MemoryRecallStats.Empty,
                 EffectivePreferences = decision.EffectivePreferences ?? "",
                 OutputIntentSummary = decision.OutputIntentSummary ?? "",
+                StepInputs = decision.StepInputs?.ToList() ?? new List<StepInputRecord>(),
+                StepInputLogPath = decision.StepInputLogPath ?? "",
             };
         }
 
         private static string GetSelectionModeLabel(NodeExecutionDecision decision)
         {
+            // 協作模式要跟手動區分開：評測的 ingest 靠這個欄位分組，協作不是單一模型組。
+            if (string.Equals(decision.ResolverLabel, "Collaboration", StringComparison.OrdinalIgnoreCase))
+                return "Collaboration";
+
             if (decision.UsedApiResolver)
                 return "API Auto";
 

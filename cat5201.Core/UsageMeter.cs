@@ -23,8 +23,24 @@ namespace Cat5201
         /// <summary>這次呼叫在做什麼（主回覆 / 輸出意圖判斷 / 影片導演企劃…）。</summary>
         public string Purpose { get; init; } = "";
 
+        /// <summary>未命中快取、以一般單價計費的輸入 token（API 回報的 input_tokens 原值）。</summary>
         public int InputTokens { get; init; }
+
         public int OutputTokens { get; init; }
+
+        /// <summary>
+        /// 命中快取而以一折計價的輸入 token（原值，未加權）。
+        /// 2026-10-27 第三方審查：原本把快取量乘上計價倍率後併進 InputTokens，
+        /// 於是「輸入 100 ＋ 快取讀 1,000 ＋ 輸出 10」被顯示成「實際 210 tokens」——
+        /// 那是計費等值數，不是實際用量。三者口徑必須分開，否則跨模型比較與節省比例都會錯。
+        /// </summary>
+        public int CacheReadTokens { get; init; }
+
+        /// <summary>寫入快取而以 1.25 倍計價的輸入 token（原值，未加權）。</summary>
+        public int CacheWriteTokens { get; init; }
+
+        /// <summary>這一次呼叫實際處理的輸入 token 總量（一般 ＋ 快取讀 ＋ 快取寫）。</summary>
+        public int TotalInputTokens => InputTokens + CacheReadTokens + CacheWriteTokens;
 
         /// <summary>true＝API 回報的真實用量；false＝依字數或尺寸估算。</summary>
         public bool IsActual { get; init; } = true;
@@ -121,17 +137,40 @@ namespace Cat5201
             string? estimateOutputText = null,
             string note = "",
             double extraUsd = 0,
-            int cachedInputTokens = 0)
+            int cachedInputTokens = 0,
+            int cacheReadTokens = 0,
+            int cacheWriteTokens = 0,
+            double? reportedUsd = null)
         {
             string modelId = ModelCostEstimator.ResolvePricingModelId(serviceModel);
-            bool actual = actualInputTokens > 0 || actualOutputTokens > 0;
 
-            // 命中快取的輸入只收一折；不扣掉的話，重複送同一段系統提示的工作階段會被高估好幾倍。
+            // 兩家回報快取的方式不一樣，先正規化成同一種形狀再算錢：
+            //  · OpenAI：input_tokens **已含** 命中快取的部分 → cachedInputTokens 是其中的子集。
+            //  · Anthropic：input_tokens **不含** 快取 → cache_read / cache_write 是另外兩個數字。
+            // 不分清楚就會一邊重複計價、一邊漏計（2026-10-27）。
+            int inputRaw = Math.Max(0, actualInputTokens);
+            int subsetCached = Math.Clamp(cachedInputTokens, 0, inputRaw);
+            int uncachedInput = inputRaw - subsetCached;
+            int cacheRead = subsetCached + Math.Max(0, cacheReadTokens);
+            int cacheWrite = Math.Max(0, cacheWriteTokens);
+            int output = Math.Max(0, actualOutputTokens);
+
+            bool actual = inputRaw > 0 || output > 0 || cacheRead > 0 || cacheWrite > 0;
+
             var est = actual
-                ? ModelCostEstimator.FromUsageWithCache(modelId, actualInputTokens, actualOutputTokens, cachedInputTokens)
+                ? ModelCostEstimator.FromUsage(modelId, uncachedInput, output)
                 : ModelCostEstimator.Compute(modelId, estimateInputText, estimateOutputText);
 
-            if (est.TotalTokens == 0 && extraUsd <= 0)
+            // 快取：讀取一折、寫入 1.25 倍，都以該模型的輸入單價為基準。
+            double cacheUsd =
+                (cacheRead > 0
+                    ? ModelCostEstimator.FromUsage(modelId, cacheRead, 0).UsdCost * ModelCostEstimator.CacheReadMultiplier(modelId)
+                    : 0) +
+                (cacheWrite > 0
+                    ? ModelCostEstimator.FromUsage(modelId, cacheWrite, 0).UsdCost * ModelCostEstimator.CacheWriteMultiplier
+                    : 0);
+
+            if (est.TotalTokens == 0 && cacheRead == 0 && cacheWrite == 0 && extraUsd <= 0)
                 return null;
 
             var record = new UsageRecord
@@ -139,10 +178,18 @@ namespace Cat5201
                 Kind = UsageKinds.Llm,
                 ModelId = modelId,
                 Purpose = CurrentPurpose,
-                InputTokens = est.InputTokens,
+                InputTokens = actual ? uncachedInput : est.InputTokens,
                 OutputTokens = est.OutputTokens,
+                CacheReadTokens = cacheRead,
+                CacheWriteTokens = cacheWrite,
                 IsActual = actual,
-                UsdCost = est.UsdCost + Math.Max(0, extraUsd),
+                // 服務商自己回報了這次的金額就用它——那是帳單上的數字，本機價目表只是估計。
+                // 2026-10-29 發現 Perplexity Agent API 的路徑標著「費用取自 API 回報」，
+                // 實際記下的卻是本機價目表算出來的數（而且價目表已過期，高估約兩成五）。
+                // 標籤說的跟做的不一樣，對一個主打可稽查的產品是最糟的那種錯。
+                UsdCost = reportedUsd is > 0
+                    ? reportedUsd.Value
+                    : est.UsdCost + cacheUsd + Math.Max(0, extraUsd),
                 Note = note ?? ""
             };
 
@@ -239,9 +286,19 @@ namespace Cat5201
     public sealed class UsageSummary
     {
         public int LlmCalls { get; private init; }
+        /// <summary>未命中快取的輸入 token。</summary>
         public int InputTokens { get; private init; }
+
         public int OutputTokens { get; private init; }
-        public int TotalTokens => InputTokens + OutputTokens;
+
+        /// <summary>命中快取的輸入 token（以一折計價，但實際處理過）。</summary>
+        public int CacheReadTokens { get; private init; }
+
+        /// <summary>寫入快取的輸入 token（以 1.25 倍計價）。</summary>
+        public int CacheWriteTokens { get; private init; }
+
+        /// <summary>實際處理過的 token 總量 —— 這是「用量」，不是「計費等值量」。</summary>
+        public int TotalTokens => InputTokens + CacheReadTokens + CacheWriteTokens + OutputTokens;
         public bool LlmAllActual { get; private init; }
         public double LlmUsd { get; private init; }
         public double MeteredUsd { get; private init; }
@@ -262,6 +319,8 @@ namespace Cat5201
                 LlmCalls = llm.Count,
                 InputTokens = llm.Sum(r => r.InputTokens),
                 OutputTokens = llm.Sum(r => r.OutputTokens),
+                CacheReadTokens = llm.Sum(r => r.CacheReadTokens),
+                CacheWriteTokens = llm.Sum(r => r.CacheWriteTokens),
                 LlmAllActual = llm.All(r => r.IsActual),
                 LlmUsd = llm.Sum(r => r.UsdCost),
                 MeteredUsd = metered.Sum(r => r.UsdCost),

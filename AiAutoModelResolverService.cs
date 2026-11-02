@@ -81,7 +81,7 @@ namespace Cat5201
 
 {
   ""task_mode"": ""Chat | Research | Translate | Summarize | Rewrite | Extract | Code"",
-  ""recommended_model"": ""gpt-5.6-sol | claude-sonnet-5 | claude-opus-5 | pplx-sonar | pplx-sonar-deep-research"",
+  ""recommended_model"": ""gpt-5.6-sol | claude-sonnet-5-5 | claude-opus-5-5 | pplx-sonar | pplx-sonar-deep-research"",
   ""confidence"": 0.0
 }
 

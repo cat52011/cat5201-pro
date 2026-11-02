@@ -151,8 +151,10 @@ namespace Cat5201
             if (!string.IsNullOrEmpty(sourceNodeId))
                 _store.RemoveUserMarkedByNode(sourceNodeId);
 
+            // 手動模式：萃取記憶也只用使用者選的那個模型（2026-10-29 使用者指示）。
+            var scope = _main.IsAutoModelSelectionEnabled() ? ModelScope.Auto : ModelScope.Manual(modelId);
             var facts = _digest != null
-                ? await _digest.ExtractAsync(topText, bottomText, ct).ConfigureAwait(true)
+                ? await _digest.ExtractAsync(topText, bottomText, ct, scope).ConfigureAwait(true)
                 : MemoryDigest.FromText(topText, bottomText);
 
             // 萃取不出任何長期事實時，仍然留一句原文——使用者按了「加入記憶」，

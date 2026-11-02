@@ -1,4 +1,4 @@
-namespace Cat5201
+﻿namespace Cat5201
 {
     /// <summary>
     /// 交付設定（個人化）。
@@ -14,7 +14,21 @@ namespace Cat5201
         /// <summary>產出檔案時是否同時產生同內容的對照 PDF。</summary>
         public static bool CompanionPdf { get; set; } = true;
 
+        /// <summary>
+        /// 配圖（簡報、報告、影片首幀）的生成品質。
+        ///
+        /// 1024×1536 一張：high US$0.165、medium US$0.041、low US$0.005。
+        /// 預設 medium——這些圖是鋪在投影片半邊或當成 720p 影片的第一格，
+        /// 在那個尺寸下 high 多付的是看不出來的畫素。
+        /// 使用者自己點名要的圖片（圖片生成 / 圖片編輯）不走這個設定，那張圖本身就是交付物。
+        /// </summary>
+        public static string IllustrationQuality { get; set; } = ImageQuality.Medium;
+
         /// <summary>測試用：回到預設值，避免某個測試關掉之後影響別的測試。</summary>
-        public static void ResetForTests() => CompanionPdf = true;
+        public static void ResetForTests()
+        {
+            CompanionPdf = true;
+            IllustrationQuality = ImageQuality.Medium;
+        }
     }
 }

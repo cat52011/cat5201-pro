@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -13,11 +13,14 @@ namespace Cat5201.Tests
     public class FactEvidenceTests
     {
         [Theory]
-        [InlineData("https://investor.tsmc.com/q1-2026.pdf", "high")]
-        [InlineData("見 TSMC 投資人關係頁 https://investor.tsmc.com/", "high")]
+        // 非白名單網域：有連結但身分不明 → medium（2026-10-28 起）
+        [InlineData("https://investor.tsmc.com/q1-2026.pdf", "medium")]
+        [InlineData("見 TSMC 投資人關係頁 https://investor.tsmc.com/", "medium")]
         [InlineData("TSMC 2026 Q1 法說會簡報", "medium")]   // 有敘述、沒有網址
         [InlineData("", "low")]                              // 什麼都沒有
         [InlineData("   ", "low")]
+        // 2026-10-28 起連白名單都只給 medium：證據停在「網域歸屬」，沒有核對原文。
+        [InlineData("https://www.sec.gov/edgar/x", "medium")]
         public void ConfidenceFollowsTheEvidence(string evidence, string expected)
             => Assert.Equal(expected, SearchCapability.ResolveConfidence(evidence));
 
@@ -37,14 +40,27 @@ namespace Cat5201.Tests
         [Fact]
         public void WithASourceTheNormalRulesApply()
         {
+            // 2026-10-28 起改嚴：只有身分查得出來的網域（主管機關、交易所白名單）才給上限等級。
             Assert.Equal(
                 FactOwnership.AuthorityOfficial,
-                SearchCapability.ResolveFinanceAuthority("revenue", "https://investor.example.com/q1.pdf"));
+                SearchCapability.ResolveFinanceAuthority("revenue", "https://www.sec.gov/edgar/x"));
 
-            // 報價即使有來源也只是市場報價，不會升成官方。
             Assert.Equal(
                 FactOwnership.AuthorityMarketQuote,
-                SearchCapability.ResolveFinanceAuthority("regular_close_price", "https://finance.example.com/quote"));
+                SearchCapability.ResolveFinanceAuthority("regular_close_price", "https://www.nasdaq.com/quote/tsm"));
+        }
+
+        /// <summary>
+        /// 公司自己的投資人關係站看起來最像官方，但我們無法從網址確認
+        /// investor.某某.com 真的屬於那家公司——合成網址 investor.untrusted.example 一樣長這樣。
+        /// 寧可低估：降到 search_context。
+        /// </summary>
+        [Fact]
+        public void CompanyIrSitesAreNotTreatedAsOfficialBecauseWeCannotVerifyThem()
+        {
+            Assert.Equal(
+                FactOwnership.AuthoritySearchContext,
+                SearchCapability.ResolveFinanceAuthority("revenue", "https://investor.tsmc.com/q1.pdf"));
         }
 
         [Theory]

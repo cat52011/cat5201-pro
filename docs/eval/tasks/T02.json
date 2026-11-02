@@ -1,0 +1,109 @@
+{
+  "task_id": "T02",
+  "title": "分析：美國利率環境對台灣科技股的影響",
+  "category": "研究→分析",
+  "prompt": "分析目前美國利率環境對台灣科技股的影響，標註每個論點的依據",
+  "expires_on": "",
+  "required": [
+    {
+      "id": "R1",
+      "label": "美國政策利率現況",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "聯準會",
+        "fed",
+        "聯邦基金利率",
+        "fomc",
+        "政策利率"
+      ]
+    },
+    {
+      "id": "R2",
+      "label": "傳導機制（至少兩種）",
+      "kind": "at_least",
+      "critical": true,
+      "min_count": 2,
+      "patterns": [
+        "折現",
+        "估值",
+        "資金成本",
+        "匯率",
+        "外資",
+        "資金流",
+        "新台幣",
+        "本益比"
+      ]
+    },
+    {
+      "id": "R3",
+      "label": "具體指向台灣科技股",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "台積電",
+        "電子股",
+        "科技股",
+        "半導體",
+        "台股",
+        "加權指數"
+      ]
+    },
+    {
+      "id": "R4",
+      "label": "每個論點都標了依據",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "依據",
+        "來源",
+        "根據",
+        "參考",
+        "資料來源",
+        "http"
+      ]
+    },
+    {
+      "id": "R5",
+      "label": "可點開的官方／交易所來源",
+      "kind": "source",
+      "domains": [
+        "federalreserve.gov",
+        "cbc.gov.tw",
+        "twse.com.tw",
+        "stlouisfed.org"
+      ]
+    },
+    {
+      "id": "R6",
+      "label": "反面情形或不確定性",
+      "kind": "any_of",
+      "critical": true,
+      "patterns": [
+        "不確定",
+        "風險",
+        "反之",
+        "另一方面",
+        "限制",
+        "但也可能",
+        "變數"
+      ]
+    }
+  ],
+  "forbidden": [
+    {
+      "id": "F1",
+      "label": "保證式投資結論",
+      "patterns": [
+        "保證",
+        "穩賺",
+        "必漲",
+        "必跌"
+      ]
+    }
+  ],
+  "human_checks": [
+    "R1 提到的利率水準是否正確（執行當天查 FRED 或 Fed 官網並填入正解）",
+    "每個論點標的依據是否真的支持該論點——這題最容易出現『有來源但不相干』"
+  ]
+}

@@ -35,7 +35,8 @@ namespace Cat5201
         // 第一層意圖閘門（Auto 模式）：實際產生影片/圖片/檔案前的二次確認。
         // 回傳 true = 使用者同意產出；false = 只給純文字回答。
         // 在 UI 執行緒上同步彈窗（AgentRuntime.ExecuteAsync 本就跑在 UI 執行緒），故回傳已完成的 Task。
-        public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent)
+        public Task<GenerationApproval> ConfirmGenerationAsync(
+            OrchestrationTaskType taskType, OutputIntent? outputIntent, GenerationChoices choices)
         {
             // 逐項（名稱 / 說明）——成本一律取自 ModelCostEstimator 同一價目表。
             var items = new List<(string Icon, string Name, string Detail)>();
@@ -100,7 +101,7 @@ namespace Cat5201
                 : null;
 
             var dlg = new GenerationConfirmDialog(
-                this, items, autoConfirmSeconds: _autoConfirmSeconds, budget: budgetWarning);
+                this, items, autoConfirmSeconds: _autoConfirmSeconds, budget: budgetWarning, choices: choices);
             dlg.Loaded += (_, __) =>
             {
                 // 手機鏡像（§17 階段二）：登記此二次確認，手機端就能看到並遠端回答。
@@ -123,8 +124,25 @@ namespace Cat5201
             if (ok && budgetWarning != null)
                 SpendReservations.GrantOverBudget();
 
-            return Task.FromResult(ok);
+            if (!ok)
+                return Task.FromResult(GenerationApproval.Declined);
+
+            // 只回報「改過的」選擇：沒動預設就是 null，Auto 模式在使用者什麼都沒改時行為與以前相同。
+            string? author = dlg.SelectedAuthorModelId;
+            if (string.Equals(author, choices?.DefaultAuthorModelId, StringComparison.OrdinalIgnoreCase))
+                author = null;
+
+            // 沒動預設＝null：手動模式的預設是不配圖、Auto 的預設是交給配圖政策，兩邊都由 ModelScope 處理。
+            bool? illustrations = dlg.IllustrationsChecked;
+            if (illustrations == choices?.IllustrationsDefault)
+                illustrations = null;
+
+            return Task.FromResult(new GenerationApproval(true, author, illustrations));
         }
+
+        /// <summary>手動模式的「所選模型」。執行核心只認得 INodeContext，實際上流動的就是 NodeControl。</summary>
+        public string GetNodeSelectedModel(INodeContext node)
+            => node is NodeControl control ? GetNodeSelectedModel(control) : "";
 
         /// <summary>簡報會產出哪些檔案（對照 PDF 由個人化決定）。</summary>
         private static string DeckFormats() => WithPdf("PowerPoint");

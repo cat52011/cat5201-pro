@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    評測計分器：把 docs/eval/tasks 的必要內容清單套到 docs/eval/runs 的產出上。
+    刻意做成獨立小專案而不是塞進 App：評分必須能離線重跑、不需要金鑰、不會花錢，
+    這樣別人才有辦法拿同一份資料驗證同一個結果。
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Cat5201.EvalScorer</RootNamespace>
+    <AssemblyName>eval-scorer</AssemblyName>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\cat5201.Core\cat5201.Core.csproj" />
+  </ItemGroup>
+
+</Project>

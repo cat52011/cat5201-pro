@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -77,5 +77,30 @@ namespace Cat5201.Tests
             // 沒有任何用量＝沒真的呼叫，不得收固定費。
             Assert.Equal(0, ModelCostEstimator.FromUsage("pplx-sonar", 0, 0).UsdCost);
         }
+
+        /// <summary>
+        /// 配圖走 medium：那些圖是鋪在投影片半邊或當 720p 影片首幀，不值 high 的四倍價。
+        /// 使用者自己點名要的圖片維持 high（那張圖本身就是交付物）。
+        /// </summary>
+        [Fact]
+        public void Illustrations_UseMediumQuality_AndItIsMeaningfullyCheaper()
+        {
+            Assert.Equal(ImageQuality.Medium, DeliveryOptions.IllustrationQuality);   // 個人化的預設值
+
+            double high = ModelCostEstimator.ImageCostUsd(AgentRuntime.DeckImageSize, ImageQuality.High);
+            double used = ModelCostEstimator.ImageCostUsd(AgentRuntime.DeckImageSize, AgentRuntime.IllustrationQuality);
+
+            Assert.True(used * 3 < high, $"medium ({used}) 應該明顯比 high ({high}) 便宜，否則這個取捨沒有意義");
+        }
+
+        /// <summary>認不得的品質字串要回 high：寧可貴，也不要被 API 退件。</summary>
+        [Theory]
+        [InlineData("medium", "medium")]
+        [InlineData("LOW", "low")]
+        [InlineData("", "high")]
+        [InlineData(null, "high")]
+        [InlineData("ultra", "high")]
+        public void ImageQuality_Normalize(string? raw, string expected)
+            => Assert.Equal(expected, ImageQuality.Normalize(raw));
     }
 }

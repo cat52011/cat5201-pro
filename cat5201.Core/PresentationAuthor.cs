@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -47,9 +47,17 @@ $@"我要做一份關於以下主題的簡報（約 {slides} 頁），請幫我�
         {
             string topic = (userInput ?? "").Trim();
 
+            // 頁數規則的演變：最早只說「N 張內容頁」，
+            // 於是 5 頁變 7 頁；而且沒有給每頁的容量上限，
+            // 寫出來的每頁七八個長句排不下，排版再自動拆頁，最後變成 9 頁（2026-10-27）。
+            // 真正能控制頁數的是「每頁寫多少」，不是事後合併投影片。
+            // 2026-10-29 改：封面＋內容是 N 頁，資料來源另加 1 頁（使用者指示），所以內容投影片是 N−1 張。
             string slideCountRule = requestedSlides > 0
-                ? $"請產出剛好 {requestedSlides} 張內容投影片（不含封面與資料來源頁）。"
-                : "請依內容自行決定張數，通常 5 到 8 張內容投影片。";
+                ? $"封面＋內容正好 {requestedSlides} 頁，資料來源頁另外加在最後（不算在 {requestedSlides} 頁裡），" +
+                  $"所以內容投影片正好 {Math.Max(1, requestedSlides - 1)} 張。" +
+                  "每張內容投影片最多 4 個重點，每個重點不超過 40 個字——" +
+                  "寫不下的就捨棄次要資訊，不要塞滿，也不要自己多開一頁。"
+                : "請依內容自行決定張數，通常 5 到 8 張內容投影片；每張最多 4 個重點、每點不超過 40 字。";
 
             string research = string.IsNullOrWhiteSpace(researchText)
                 ? "（沒有額外研究素材，請用你自己的可靠知識，並標明屬於概述。）"

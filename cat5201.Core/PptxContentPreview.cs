@@ -26,7 +26,8 @@ namespace Cat5201
 
         public sealed record Deck(double WidthPt, double HeightPt, IReadOnlyList<Slide> Slides);
 
-        public sealed record Slide(int Order, IReadOnlyList<Shape> Shapes)
+        /// <param name="BackgroundColor">這一頁的底色（#RRGGBB）；檔案沒指定純色底時為 null（＝白底）。</param>
+        public sealed record Slide(int Order, IReadOnlyList<Shape> Shapes, string? BackgroundColor = null)
         {
             /// <summary>這一頁的文字（給摘要與測試用）。</summary>
             public IReadOnlyList<string> Lines =>
@@ -77,7 +78,7 @@ namespace Cat5201
                     if (slideId.RelationshipId?.Value is not string relId) continue;
                     if (part.GetPartById(relId) is not SlidePart slidePart) continue;
 
-                    slides.Add(new Slide(order, ReadShapes(slidePart, widthPt, heightPt)));
+                    slides.Add(new Slide(order, ReadShapes(slidePart, widthPt, heightPt), ReadBackground(slidePart)));
                 }
 
                 return slides.Count == 0 ? null : new Deck(widthPt, heightPt, slides);
@@ -175,6 +176,28 @@ namespace Cat5201
             }
 
             return lines;
+        }
+
+        /// <summary>
+        /// 頁面底色：先看這一頁，沒有就看它的版面配置，再看母片（PowerPoint 的繼承順序）。
+        ///
+        /// 2026-10-29 第二輪手測：Claude 排的 Vegemite 那頁是深色底（#141210）配米白字，
+        /// 預覽沒讀底色、一律畫白底，米白字在白底上幾乎看不見——檔案本身沒問題，是預覽畫錯。
+        /// 只認純色底；漸層、圖片底回 null（照舊白底）。
+        /// </summary>
+        internal static string? ReadBackground(SlidePart slidePart)
+        {
+            static string? FromCommon(P.CommonSlideData? data)
+                => data?.Background?.BackgroundProperties?.GetFirstChild<A.SolidFill>()
+                       ?.RgbColorModelHex?.Val?.Value is string hex ? "#" + hex : null;
+
+            try
+            {
+                return FromCommon(slidePart.Slide?.CommonSlideData)
+                       ?? FromCommon(slidePart.SlideLayoutPart?.SlideLayout?.CommonSlideData)
+                       ?? FromCommon(slidePart.SlideLayoutPart?.SlideMasterPart?.SlideMaster?.CommonSlideData);
+            }
+            catch { return null; }
         }
 
         private static string? SolidFill(P.ShapeProperties? props)

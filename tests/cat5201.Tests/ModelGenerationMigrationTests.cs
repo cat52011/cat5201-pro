@@ -1,4 +1,4 @@
-using Cat5201;
+﻿using Cat5201;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -13,7 +13,9 @@ namespace Cat5201.Tests
     {
         [Theory]
         [InlineData("gpt-5.5", "gpt-5.6-sol")]
-        [InlineData("claude-sonnet-4-6", "claude-sonnet-5")]
+        // 2026-10-29 Sonnet 升到 5.5：舊世代一律路由到目前的後繼者。
+        [InlineData("claude-sonnet-4-6", "claude-sonnet-5-5")]
+        [InlineData("claude-sonnet-5", "claude-sonnet-5-5")]
         [InlineData("claude-opus-4-8", "claude-opus-5-5")]
         public void LegacyId_RoutesToSameVendorSuccessor(string legacy, string successor)
         {
@@ -31,7 +33,7 @@ namespace Cat5201.Tests
             => Assert.Equal(original, AiModelRegistry.TryGetLegacyDisplayName(legacy));
 
         [Theory]
-        [InlineData("claude-sonnet-5")]
+        [InlineData("claude-sonnet-5-5")]
         [InlineData("gpt-6-astra")]
         public void CurrentId_IsNotTreatedAsLegacy(string current)
             => Assert.Null(AiModelRegistry.TryGetLegacyDisplayName(current));
@@ -39,7 +41,7 @@ namespace Cat5201.Tests
         [Theory]
         [InlineData("gpt-5.6-sol")]
         [InlineData("gpt-6-astra")]
-        [InlineData("claude-sonnet-5")]
+        [InlineData("claude-sonnet-5-5")]
         [InlineData("claude-opus-5-5")]
         public void NewModels_AreKnownAndAvailable(string id)
         {

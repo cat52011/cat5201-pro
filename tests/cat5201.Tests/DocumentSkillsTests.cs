@@ -196,6 +196,13 @@ data: {""type"":""message_stop""}
             Assert.True((int)edit["clear_at_least"]!["value"]! > 0);  // 清太少不值得打斷快取
             Assert.Null(edit["clear_tool_inputs"]);                   // 它寫過的程式碼要留著
 
+            // 門檻必須拉得夠高。清除會讓快取前綴失效、整段重寫，而讀快取只收一折、
+            // 寫快取收 1.25 倍——門檻太低時清除反而更貴（2026-10-27 實測 US$4.64 → US$8.27）。
+            Assert.True((int)edit["trigger"]!["value"]! >= 200_000,
+                "清除門檻太低會讓快取一直重寫，比不清還貴");
+            Assert.True((int)edit["clear_at_least"]!["value"]! >= 50_000,
+                "每次至少要清掉夠多，才值得打斷快取");
+
             // 伺服器不收這個參數時要能整包拿掉重送。
             var off = ClaudeDocumentSkillsService.BuildRequestBody(
                 "claude-sonnet-5", "sys", messages, new[] { "docx" }, null,
@@ -235,6 +242,40 @@ data: {""type"":""message_stop""}
             Assert.Equal(2, ClaudeDocumentSkillsService.BuildFirstMessageContent("x", "   ", photos).Count);
         }
 
+        /// <summary>
+        /// 個人化關掉「同時產出對照 PDF」時，技能路徑也要照辦。
+        /// 以前只有內建路徑看這個設定，技能路徑照樣叫 Claude 轉 PDF——
+        /// 多出來的那幾步 LibreOffice 轉檔，後面每一輪都要再當輸入買一次。
+        /// </summary>
+        [Fact]
+        public void CompanionPdfOff_IsHonouredByTheSkillsPath()
+        {
+            var r = new DocumentSkillsPrompt.Request
+            {
+                UserInput = "做一份澳洲美食簡報",
+                MainContent = "袋鼠肉、維吉麥醬……",
+                WantsDeck = true,
+                WantsPdf = false,
+            };
+
+            Assert.DoesNotContain(".pdf", DocumentSkillsPrompt.WantedExtensions(r));
+            Assert.Contains(".pptx", DocumentSkillsPrompt.WantedExtensions(r));
+
+            string prompt = DocumentSkillsPrompt.BuildUserPrompt(r);
+            Assert.DoesNotContain("同內容 .pdf", prompt);
+            Assert.DoesNotContain("轉一份同內容的 PDF", prompt);
+
+            string system = DocumentSkillsPrompt.SystemPromptFor(wantsPdf: false);
+            Assert.DoesNotContain(DocumentSkillsPrompt.PdfDeliveryRule, system);
+            Assert.Contains(DocumentSkillsPrompt.NoPdfDeliveryRule, system);
+
+            // 開著的時候維持原樣。
+            var withPdf = r with { WantsPdf = true };
+            Assert.Contains(".pdf", DocumentSkillsPrompt.WantedExtensions(withPdf));
+            Assert.Contains("同內容 .pdf", DocumentSkillsPrompt.BuildUserPrompt(withPdf));
+            Assert.Contains(DocumentSkillsPrompt.PdfDeliveryRule, DocumentSkillsPrompt.SystemPromptFor(wantsPdf: true));
+        }
+
         /// <summary>費用上限是「已經花了這麼多」才回的訊息，再重試一次就是再花一次。</summary>
         [Fact]
         public void CostCeiling_IsNotRetried()
@@ -250,6 +291,7 @@ data: {""type"":""message_stop""}
             Assert.False(ClaudeDocumentSkillsService.IsRetryable(hitCeiling));
         }
 
+
         [Fact]
         public void Prompt_ListsRequestedFiles_SlideCount_AndSources()
         {
@@ -264,8 +306,10 @@ data: {""type"":""message_stop""}
             };
 
             string prompt = DocumentSkillsPrompt.BuildUserPrompt(r);
-
-            Assert.Contains("正好 10 張內容頁", prompt);
+            // 頁數＝整份頁數（含封面與來源頁）——使用者說十頁就是十頁。
+            // 2026-10-29：封面＋內容 N 頁，資料來源另加 1 頁。
+            Assert.Contains("封面＋內容正好 10 頁", prompt);
+            Assert.Contains("整份共 11 頁", prompt);
             Assert.Contains("書面報告 .docx", prompt);
             Assert.Contains("https://investor.tsmc.com/", prompt);
             Assert.Contains("台積電 Q2 營收", prompt);
@@ -290,7 +334,8 @@ data: {""type"":""message_stop""}
             Assert.Equal(DocumentEngine.ClaudeSkills, DocumentEngineHelper.Parse("ClaudeSkills"));
             Assert.Equal(DocumentEngine.Builtin, DocumentEngineHelper.Parse("Builtin"));
             Assert.Equal("claude-opus-5-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: false));
-            Assert.Equal("claude-sonnet-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: true)); // 使用者自己封鎖 Opus 時尊重
+            // 使用者自己封鎖 Opus 時尊重；2026-10-29 起退到的是 Sonnet 5.5。
+            Assert.Equal("claude-sonnet-5-5", DocumentEngineHelper.ResolveSkillsModel(blockOpus: true));
         }
 
         [Fact]

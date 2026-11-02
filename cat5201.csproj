@@ -15,11 +15,13 @@
     <Authors>cat5201</Authors>
     <Description>節點畫布 × 多代理編排的 AI 工作台：串接 OpenAI / Claude / Gemini / Perplexity，可稽查每一步決策與成本，產出 PDF / DOCX / PPTX / XLSX / 圖片 / 影片。</Description>
     <Copyright>© 2026 cat5201</Copyright>
-    <Version>1.8.1</Version>
-    <FileVersion>1.8.1.0</FileVersion>
-    <InformationalVersion>1.8.1-pro</InformationalVersion>
-    <!-- tests\ 與 cat5201.Core\ 是獨立子專案；排除它們，避免主專案的預設 glob 把它們的 .cs 吸進來編。 -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;cat5201.Core\**</DefaultItemExcludes>
+    <Version>1.9.0</Version>
+    <FileVersion>1.9.0.0</FileVersion>
+    <InformationalVersion>1.9.0-pro</InformationalVersion>
+    <!-- tests\、cat5201.Core\、tools\ 都是獨立子專案；排除它們，避免主專案的預設 glob 把它們的 .cs 吸進來編。
+         漏掉一個的後果不只是多編幾個檔：子專案 obj\ 裡的 AssemblyInfo 與 GlobalUsings 也會被吸進來，
+         於是出現「組件屬性重複」(CS0579) 與莫名的 using 衝突（例如 Shapes.Path 撞上 System.IO.Path）。 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**;cat5201.Core\**;tools\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

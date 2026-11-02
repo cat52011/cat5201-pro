@@ -6,6 +6,12 @@
         public AgentDefinition Agent { get; init; } = null!;
 
         public string TopText { get; init; } = "";
+
+        /// <summary>
+        /// 使用者在這個節點自己寫的要求（不含上游貼進來的內容）；null＝整段 TopText 都是使用者寫的。
+        /// 「要不要查即時資料、要不要警告」只看這個——見 UpstreamMerge.OwnInstruction。
+        /// </summary>
+        public string? OwnInstruction { get; init; }
         public bool UseStreaming { get; init; }
         public System.Action<string>? OnDelta { get; init; }
 
@@ -29,5 +35,12 @@
         /// AgentRuntime 會在真正需要用到意圖的那一步才收這個結果。
         /// </summary>
         public System.Threading.Tasks.Task<OutputIntent?>? OutputIntentTask { get; init; }
+
+        /// <summary>
+        /// 使用者在這個節點指定「這次由哪幾個模型一起回答」（協作模式，至少兩個）。
+        /// 有值時：每個模型各自回答 → 互看後交叉檢視 → 固定列出共識與分歧；
+        /// 意圖判斷、搜尋等幫手也只用這幾個模型之一。空＝一般模式。
+        /// </summary>
+        public IReadOnlyList<string> CollaborationModels { get; init; } = Array.Empty<string>();
     }
 }

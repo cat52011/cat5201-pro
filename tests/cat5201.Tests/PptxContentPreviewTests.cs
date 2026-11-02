@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -96,6 +96,34 @@ namespace Cat5201.Tests
         [Fact]
         public void 檔案不存在也不會丟例外()
             => Assert.Null(PptxContentPreview.Read(Path.Combine(NewDir(), "missing.pptx")));
+
+        /// <summary>
+        /// 2026-10-29 第二輪手測：Claude 排的 Vegemite 那頁是深色底配米白字，
+        /// 預覽沒讀底色、畫成白底，字幾乎看不見。底色要讀出來。
+        /// </summary>
+        [Fact]
+        public void 讀得出頁面底色()
+        {
+            string path = BuildDeck();
+            using (var doc = DocumentFormat.OpenXml.Packaging.PresentationDocument.Open(path, true))
+            {
+                var part = doc.PresentationPart!;
+                var ids = part.Presentation.SlideIdList!.Elements<DocumentFormat.OpenXml.Presentation.SlideId>().ToList();
+                var slidePart = (DocumentFormat.OpenXml.Packaging.SlidePart)part.GetPartById(ids[1].RelationshipId!.Value!);
+                var common = slidePart.Slide.CommonSlideData!;
+                common.Background?.Remove();
+                common.InsertAt(new DocumentFormat.OpenXml.Presentation.Background(
+                    new DocumentFormat.OpenXml.Presentation.BackgroundProperties(
+                        new DocumentFormat.OpenXml.Drawing.SolidFill(
+                            new DocumentFormat.OpenXml.Drawing.RgbColorModelHex { Val = "141210" }),
+                        new DocumentFormat.OpenXml.Drawing.EffectList())), 0);
+                slidePart.Slide.Save();
+            }
+
+            var deck = PptxContentPreview.Read(path)!;
+
+            Assert.Equal("#141210", deck.Slides[1].BackgroundColor);
+        }
 
         // ── 用自家的 builder 產一份真的 pptx 當素材
 

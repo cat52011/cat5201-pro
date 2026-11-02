@@ -29,6 +29,13 @@ namespace Cat5201
         private readonly string _apiKey;
         private readonly string _agentModel;
 
+        /// <summary>
+        /// 這個服務實際送出去的模型 id。
+        /// Perplexity Agent API 提供搜尋基礎建設，但真正跑研究的是這個第三方模型，
+        /// 計價也按原廠直售價。決策窗要顯示的是它，不是「Perplexity Sonar」。
+        /// </summary>
+        public string AgentModelId => _agentModel;
+
         public PerplexityService(string agentModel = "openai/gpt-5.6-sol") // Perplexity Agent API 官方已支援（2026-09 核對）
         {
             _agentModel = agentModel;
@@ -61,19 +68,26 @@ namespace Cat5201
         // Agent API
         // =========================
 
+        /// <param name="modelOverride">
+        /// 這一次要用的模型（Agent API 的 id，例如 anthropic/claude-sonnet-5-5）。
+        /// 手動模式下必須是使用者選的那個模型，不能沿用預設的 GPT。空白＝用建構時的預設。
+        /// </param>
         public async Task<string> GenerateAgentAsync(
             string instructions,
             string userText,
             bool enableWebSearch = true,
             int maxOutputTokens = 8000,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string? modelOverride = null)
         {
             if (string.IsNullOrWhiteSpace(userText))
                 return "";
 
+            string model = string.IsNullOrWhiteSpace(modelOverride) ? _agentModel : modelOverride.Trim();
+
             var payload = new
             {
-                model = _agentModel,
+                model = model,
                 instructions = instructions,
                 input = userText,
                 max_output_tokens = maxOutputTokens,
@@ -102,7 +116,7 @@ namespace Cat5201
             }
 
             string text = ExtractAgentOutputText(body);
-            RecordAgentUsage(ParseAgentUsage(body), instructions, text, enableWebSearch);
+            RecordAgentUsage(ParseAgentUsage(body), model, instructions, text, enableWebSearch);
             return text;
         }
 
@@ -112,14 +126,17 @@ namespace Cat5201
             Action<string>? onDelta,
             bool enableWebSearch = true,
             int maxOutputTokens = 8000,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string? modelOverride = null)
         {
             if (string.IsNullOrWhiteSpace(userText))
                 return "";
 
+            string model = string.IsNullOrWhiteSpace(modelOverride) ? _agentModel : modelOverride.Trim();
+
             var payload = new
             {
-                model = _agentModel,
+                model = model,
                 instructions = instructions,
                 input = userText,
                 stream = true,
@@ -199,11 +216,11 @@ namespace Cat5201
             }
             catch (OperationCanceledException)
             {
-                RecordAgentUsage(usage, instructions, finalText.ToString(), enableWebSearch, "已取消（部分用量）");
+                RecordAgentUsage(usage, model, instructions, finalText.ToString(), enableWebSearch, "已取消（部分用量）");
                 throw;
             }
 
-            RecordAgentUsage(usage, instructions, finalText.ToString(), enableWebSearch);
+            RecordAgentUsage(usage, model, instructions, finalText.ToString(), enableWebSearch);
             return finalText.ToString().Trim();
         }
 
@@ -313,7 +330,8 @@ namespace Cat5201
             return result;
         }
 
-        private void RecordAgentUsage(AgentUsage usage, string instructions, string text, bool enableWebSearch, string note = "")
+        private static void RecordAgentUsage(
+            AgentUsage usage, string model, string instructions, string text, bool enableWebSearch, string note = "")
         {
             // 有開搜尋工具但回應裡數不到呼叫次數時，保守算 1 次（寧可高估一點不漏記）。
             int searches = usage.WebSearches > 0 ? usage.WebSearches : (enableWebSearch ? 1 : 0);
@@ -321,13 +339,16 @@ namespace Cat5201
 
             if (usage.ReportedCostUsd.HasValue && usage.ReportedCostUsd.Value > 0)
             {
-                UsageMeter.RecordLlm(_agentModel, usage.Input, usage.Output, instructions, text,
-                    note: AppendNote(note, "費用取自 API 回報"), extraUsd: 0);
+                // 真的用回報的金額（含搜尋工具費）。原本這裡只是標上「費用取自 API 回報」，
+                // 金額卻仍由本機價目表計算——標籤與數字不一致。
+                UsageMeter.RecordLlm(model, usage.Input, usage.Output, instructions, text,
+                    note: AppendNote(note, "費用取自 API 回報"), reportedUsd: usage.ReportedCostUsd.Value);
                 return;
             }
 
-            UsageMeter.RecordLlm(_agentModel, usage.Input, usage.Output, instructions, text,
-                note: AppendNote(note, searches > 0 ? $"含網路搜尋 {searches} 次" : ""), extraUsd: toolUsd);
+            UsageMeter.RecordLlm(model, usage.Input, usage.Output, instructions, text,
+                note: AppendNote(note, searches > 0 ? $"依價目表估算，含網路搜尋 {searches} 次" : "依價目表估算"),
+                extraUsd: toolUsd);
         }
 
         private static string AppendNote(string a, string b)

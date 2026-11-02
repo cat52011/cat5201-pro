@@ -17,6 +17,68 @@ namespace Cat5201
         private const int MaxRepairDiffChars = 14000;
 
         private readonly IAgentHost _main;   // #3：抽服務層第一刀——依賴抽象而非具體 MainWindow。
+
+        // 這次執行（或這次預覽操作）可以呼叫哪些模型。
+        // 2026-10-29 使用者指示：手動選擇模型時，不該出現選擇之外的模型參與；
+        // 文件的撰寫者與配圖由節點選的模型擔任，或由使用者在確認框裡親手改選。
+        // AgentRuntime 每次執行／每次預覽操作都是新的實例，所以這個欄位不會跨執行殘留。
+        private ModelScope _scope = ModelScope.Auto;
+
+        /// <summary>預覽裡的單頁操作不經過 ExecuteAsync，要自己依目前模式與節點的模型建立範圍。</summary>
+        private void EnsureScopeFor(INodeContext node)
+        {
+            _scope = _main.IsAutoModelSelectionEnabled()
+                ? ModelScope.Auto
+                : ModelScope.Manual(_main.GetNodeSelectedModel(node));
+        }
+
+        /// <summary>Auto 模式下（使用者沒改）文件會由誰寫——確認框的預設值要跟實際行為一致。</summary>
+        private string AutoDocumentAuthor()
+            => _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills
+                ? DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus)
+                : PresentationEngineHelper.ToAuthorModelId(_main.GetPresentationEngine());
+
+        private GenerationChoices BuildGenerationChoices(OrchestrationTaskType taskType, OutputIntent? intent)
+        {
+            bool wantsDeck = taskType == OrchestrationTaskType.Presentation || (intent?.WantsPresentation ?? false);
+            bool wantsReport = intent?.WantsReport ?? false;
+            bool wantsTable = intent?.WantsTable ?? false;
+            if (!wantsDeck && !wantsReport && !wantsTable)
+                return GenerationChoices.None;
+
+            // Auto：撰寫者與配圖已經在個人化設定寫好，確認框不再問一次（2026-10-29 第二輪手測）。
+            // 只有手動選了模型，「所選模型以外的模型要不要參與」才需要使用者在這裡親手決定。
+            if (!_scope.IsManual)
+                return GenerationChoices.None;
+
+            // 撰寫者選單：深度研究與 Sonar 不寫文件——那是搜尋模型，不是寫作模型
+            // （深度研究一次還以美元計）。選單攤開成膠囊後，多一個不該選的選項就多一份干擾。
+            var options = AiModelRegistry.Available
+                .Where(m => !m.IsDeepResearch)
+                .Where(m => AiModelHelper.GetProviderKind(m.Id) is not (AiProviderKind.PerplexitySonar or AiProviderKind.PerplexityTool))
+                .Select(m => m.Id)
+                .ToList();
+
+            string defaultAuthor = _scope.DocumentAuthorModel(AutoDocumentAuthor());
+            if (!options.Contains(defaultAuthor, StringComparer.OrdinalIgnoreCase))
+                options.Insert(0, defaultAuthor);
+
+            return new GenerationChoices
+            {
+                IncludesDocuments = true,
+                DefaultAuthorModelId = defaultAuthor,
+                AuthorOptions = options,
+                ShowIllustrationOption = wantsDeck || wantsReport,   // 表格不配圖
+                IllustrationsDefault = _scope.IllustrationsAllowed(),
+                BestQualityEnabled = _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills,
+            };
+        }
+
+        /// <summary>載入提示與決策窗用的撰寫者名稱：使用者改選過就顯示實際模型，而不是個人化引擎的名字。</summary>
+        private static string AuthorDisplayName(PresentationEngine engine, string authorModelId)
+            => string.Equals(authorModelId, PresentationEngineHelper.ToAuthorModelId(engine), StringComparison.OrdinalIgnoreCase)
+                ? PresentationEngineHelper.ToDisplayName(engine)
+                : AiModelRegistry.Find(authorModelId)?.DisplayName ?? authorModelId;
         private readonly IExecutionDecisionResolver _decisionResolver;
         private readonly Func<INodeContext, string, NodeExecutionDecision, Action<string>?, bool, CancellationToken, Task<AiFallbackExecutionResult>> _executeWithFallbackAsync;
         private readonly IDecisionFinalizer _executionFinalizer;
@@ -30,8 +92,119 @@ namespace Cat5201
         {
             _main = main;
             _decisionResolver = decisionResolver;
-            _executeWithFallbackAsync = executeWithFallbackAsync;
+            // 每一次經過執行器的呼叫都檢查「有沒有換過模型」：所選模型確定失敗時可以換，
+            // 但一定要告訴使用者（2026-10-29 使用者指示）。包在這裡，所有步驟就不會漏掉。
+            _executeWithFallbackAsync = async (node, prompt, decision, onDelta, stream, ct) =>
+            {
+                RecordStepInput(UsageMeter.CurrentPurpose, decision.ModelId, prompt);
+                var result = await executeWithFallbackAsync(node, prompt, decision, onDelta, stream, ct);
+                RecordModelSwitch(decision, result);
+                return result;
+            };
             _executionFinalizer = executionFinalizer;
+        }
+
+        // 放在答案最上方的說明：「所選模型失敗、改由其他模型完成」，以及「數字可能有單位錯誤」。
+        // 封面圖與內容頁配圖會同時跑，所以加鎖。
+        private readonly List<string> _topNotices = new();
+
+        private void AddTopNotice(string? notice)
+        {
+            if (string.IsNullOrWhiteSpace(notice)) return;
+            lock (_topNotices) _topNotices.Add(notice);
+        }
+
+        /// <summary>
+        /// 只有「使用者選的模型」被換掉才需要講：手動模式的每一步，以及使用者在確認框改選的撰寫者。
+        /// Auto 模式本來就由系統挑模型，換模型是它的本分，不需要每次都講。
+        /// </summary>
+        private void RecordModelSwitch(NodeExecutionDecision decision, AiFallbackExecutionResult result)
+        {
+            if (decision == null) return;
+
+            bool userChose = _scope.IsManual ||
+                (_scope.ApprovedAuthorModelId != null &&
+                 string.Equals(_scope.ApprovedAuthorModelId, decision.ModelId, StringComparison.OrdinalIgnoreCase));
+            if (!userChose) return;
+
+            AddTopNotice(ModelSwitchNotice.Build(decision.ModelId, result, UsageMeter.CurrentPurpose));
+        }
+
+        // ── 各步驟實際收到了什麼（2026-10-29）──
+        // 子代理（平行代理）跑在同一個實例上，所以它們收到的內容也會記在這裡——
+        // 這正好回答「主控把任務分給子代理時，是給原文還是自己的摘要」：看那幾步有沒有「含原始要求 ✓」。
+        private string _originalRequest = "";
+        private readonly List<(StepInputRecord Record, string FullText)> _stepInputs = new();
+
+        private void RecordStepInput(string? step, string? modelId, string? input)
+        {
+            var record = StepInputRecord.From(step, modelId, input, _originalRequest);
+            lock (_stepInputs) _stepInputs.Add((record, input ?? ""));
+        }
+
+        /// <summary>
+        /// 完整內容寫成一個檔案（每一步的用途、模型、雜湊與全文），專案檔只存摘要。
+        /// 寫不出來不影響這次執行，只是少了可對照的全文。
+        /// </summary>
+        private string WriteStepInputLog(INodeContext node)
+        {
+            List<(StepInputRecord Record, string FullText)> steps;
+            lock (_stepInputs) steps = _stepInputs.ToList();
+            if (steps.Count == 0) return "";
+
+            try
+            {
+                string dir = System.IO.Path.Combine(_main.GetAttachmentsRootDir(), "_steplog");
+                System.IO.Directory.CreateDirectory(dir);
+                string path = System.IO.Path.Combine(dir,
+                    $"{DateTime.Now:yyyyMMdd_HHmmss}_{node.Id.ToString("N").Substring(0, 8)}.txt");
+
+                var sb = new System.Text.StringBuilder();
+                sb.Append("# 各步驟實際收到的內容\n");
+                sb.Append("原始要求的雜湊：").Append(StepInputRecord.ShortHash(_originalRequest)).Append("\n\n");
+                for (int i = 0; i < steps.Count; i++)
+                {
+                    var r = steps[i].Record;
+                    sb.Append("════════ 第 ").Append(i + 1).Append(" 步：").Append(r.Step)
+                      .Append("｜").Append(r.ModelId).Append("｜").Append(r.Chars).Append(" 字｜")
+                      .Append(r.ContainsOriginalRequest ? "含原始要求" : "未完整包含原始要求")
+                      .Append("｜").Append(r.Sha256).Append(" ════════\n")
+                      .Append(steps[i].FullText).Append("\n\n");
+                }
+
+                System.IO.File.WriteAllText(path, sb.ToString(), new System.Text.UTF8Encoding(true));
+                return path;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("AgentRuntime", "各步驟內容檔寫入失敗（不影響執行）", ex);
+                return "";
+            }
+        }
+
+        /// <summary>協作中某一個模型的單次呼叫：只准用這個模型，不 fallback 到別人。</summary>
+        private static NodeExecutionDecision CollaboratorDecision(NodeExecutionDecision baseDecision, string modelId)
+            => new()
+            {
+                RequestedAgentId = baseDecision.RequestedAgentId,
+                ActualAgentId = baseDecision.ActualAgentId,
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(modelId),
+                ModelId = AiModelHelper.NormalizeNodeModel(modelId),
+                ActualModelId = "",
+                TaskMode = baseDecision.TaskMode,
+                ResolverLabel = "Collaboration",
+                ResolverReason = "協作模式：使用者指定的模型之一",
+                StatusLabel = "Collaboration",
+                ForceSingleModel = true,
+            };
+
+        private AiFallbackExecutionResult WithTopNotices(AiFallbackExecutionResult execution)
+        {
+            string banner;
+            lock (_topNotices) banner = ModelSwitchNotice.Combine(_topNotices);
+            return banner.Length == 0 || !execution.IsSuccess
+                ? execution
+                : ReplaceExecutionText(execution, banner + execution.Text);
         }
 
         public async Task<AgentExecutionResult> ExecuteAsync(
@@ -44,6 +217,16 @@ namespace Cat5201
                 throw new InvalidOperationException("AgentExecutionRequest.Agent 不可為 null。");
 
             string topText = request.TopText ?? "";
+
+            // 協作模式：使用者指定了這次由哪幾個模型一起回答。只有最外層才算（子代理不協作）。
+            var collaborators = request.DelegationDepth == 0
+                ? ModelCollaboration.Normalize(request.CollaborationModels)
+                : Array.Empty<string>();
+            bool collaborating = collaborators.Count >= ModelCollaboration.MinModels;
+
+            // 這個節點的原始要求——之後每一步都拿它比對「有沒有完整收到」。子代理不覆寫它。
+            if (request.DelegationDepth == 0)
+                _originalRequest = topText;
             if (request.Workspace == null)
             {
                 throw new InvalidOperationException(
@@ -120,7 +303,9 @@ namespace Cat5201
             }
 
             var runtimeAgent = AgentRegistry.Get(decision.ActualAgentId);
+            // 協作模式下不跑 Auto 的平行代理：使用者已經指定了由哪幾個模型回答。
             bool allowAgentFirstAutomation =
+                !collaborating &&
                 _main.IsAutoModelSelectionEnabled() &&
                 _main.IsAdvancedAutoResolverEnabled();
 
@@ -137,12 +322,22 @@ namespace Cat5201
                 TopText = topText,
                 TaskMode = decision.TaskMode,
                 Attachments = _main.GetAttachmentsForNode(node),
-                AttachmentsRootDir = _main.GetAttachmentsRootDir()
+                AttachmentsRootDir = _main.GetAttachmentsRootDir(),
+                // 手動模式：能力層先用使用者選的模型（2026-10-29 使用者指示）。
+                // 協作模式也算「使用者選定」：幫手只用協作名單裡的第一個模型，不讓名單外的模型進來。
+                Scope = _scope = collaborating
+                    ? ModelScope.Manual(collaborators[0])
+                    : _main.IsAutoModelSelectionEnabled()
+                        ? ModelScope.Auto
+                        : ModelScope.Manual(decision.ModelId)
             };
+
+            // 要不要查即時資料：看使用者自己寫的要求，不看上游貼進來的內容（見 UpstreamMerge.OwnInstruction）。
+            string intentText = string.IsNullOrWhiteSpace(request.OwnInstruction) ? topText : request.OwnInstruction!;
 
             var capabilityPlan = AgentCapabilityPlanner.Build(
     runtimeAgent,
-    topText,
+    intentText,
     decision.TaskMode,
     capabilityContext.Attachments != null && capabilityContext.Attachments.Count > 0);
 
@@ -194,7 +389,12 @@ namespace Cat5201
                     // 手動/Auto 一律彈二次確認（2026-07-04 修正）：先前手動模式直接封殺媒體生成，
                     // 導致使用者明確要求「生成照片」也只得到純文字。確認框＝明確徵詢，不是偷偷轉換，
                     // 不違反「純手動不自動轉換」的本意；使用者按「否」仍是純文字。
-                    allowGeneration = await _main.ConfirmGenerationAsync(detectedTaskType, outputIntent);
+                    // 2026-10-29：確認框也讓使用者選撰寫者與要不要配圖。手動模式下所選模型以外的模型
+                    // 要嘛從這裡由使用者親手選，要嘛是所選模型確定失敗後的替補（會在答案最上方告知）。
+                    var approval = await _main.ConfirmGenerationAsync(
+                        detectedTaskType, outputIntent, BuildGenerationChoices(detectedTaskType, outputIntent));
+                    allowGeneration = approval.Approved;
+                    _scope = _scope.WithApproval(approval);
                 }
             }
 
@@ -385,6 +585,8 @@ namespace Cat5201
                     {
                         using var capabilityPurpose = UsageMeter.Purpose(
                             capability.Id == "search-capability" ? "搜尋研究" : $"能力層：{capability.Id}");
+                        // 能力層不經過執行器，收到的是 capabilityContext.TopText——同樣要記。
+                        RecordStepInput(UsageMeter.CurrentPurpose, "", capabilityContext.TopText);
                         capabilityResult = await capability.ExecuteAsync(
                             capabilityContext,
                             request.CancellationToken);
@@ -449,6 +651,9 @@ namespace Cat5201
                         continue;
                     }
 
+                    // 能力層換過模型（例如所選模型無法搜尋）也要講。
+                    AddTopNotice(capabilityResult.Notice);
+
                     if (capabilityResult.Data != null && capabilityResult.Data.Count > 0)
                     {
                         foreach (var kv in capabilityResult.Data)
@@ -461,7 +666,9 @@ namespace Cat5201
                                     node,
                                     runtimeAgent.Id,
                                     kv.Key,
-                                    kv.Value));
+                                    kv.Value,
+                                    // 能力層自己回報用了哪個模型；推導不出來就留空，不要猜。
+                                    modelId: capabilityResult.ModelId));
                         }
                         System.Diagnostics.Debug.WriteLine(
                             $"[Capability] Agent={runtimeAgent.Id} Keys={string.Join(", ", capabilityData.Keys)}");
@@ -605,14 +812,22 @@ namespace Cat5201
             }
             // 需要最新資料的任務：看「實際拿到什麼」（FreshDataAssessment），不是看有沒有 search_summary 物件。
             // 資料不足 → 不再整個節點失敗，而是交付「部分結果」：最終答案頂端由程式加警告、模型收到硬規則不得假裝查證。
-            FreshDataAssessment? freshDataShortfall = null;
-            if (runCapabilityLayer && orchestrationPlan.RequiresFreshFacts)
+            // 「要不要對使用者講話」由 FreshDataAssessment.NeedsUserNotice 單點決定。
+            // 2026-10-29 實測：這裡原本寫 !HasUsableData，於是「資料拿到了但只核對過網域」
+            // （domain_checked，HasUsableData=true）整段被跳過，新增的橫幅一次都沒出現過。
+            //
+            // 2026-10-29：只有「答案會過時」的要求才檢查——研究型任務也會搜尋，但不代表需要即時資料
+            // （「介紹澳洲特有美食」曾被警告「即時資料未取得」，那句話還寫進了簡報的資料來源頁）。
+            FreshDataAssessment? freshDataNotice = null;
+            if (runCapabilityLayer && orchestrationPlan.RequiresFreshFacts &&
+                FinanceTaskDetector.IsTimeSensitive(intentText))
             {
                 var freshData = FreshDataAssessment.Evaluate(capabilityData);
-                if (!freshData.HasUsableData)
+                if (freshData.NeedsUserNotice)
                 {
-                    freshDataShortfall = freshData;
-                    AppLog.Info("AgentRuntime", $"需要即時資料但未取得（{freshData.Status}）：{freshData.Detail}");
+                    freshDataNotice = freshData;
+                    AppLog.Info("AgentRuntime",
+                        $"即時資料狀態需提醒使用者（{freshData.Status}）：{freshData.Detail}");
                 }
             }
 
@@ -793,7 +1008,7 @@ namespace Cat5201
                     decision,
                     request.PreferenceBlock,
                     request.CancellationToken,
-                    freshDataShortfall?.BuildSynthesisNotice() ?? "");
+                    freshDataNotice?.BuildSynthesisNotice() ?? "");
 
                 if (synthesisExecution != null)
                 {
@@ -974,12 +1189,12 @@ namespace Cat5201
                     finalInput;
             }
 
-            string freshDataBanner = freshDataShortfall?.BuildUserBanner() ?? "";
-            if (freshDataShortfall != null &&
+            string freshDataBanner = freshDataNotice?.BuildUserBanner() ?? "";
+            if (freshDataNotice != null &&
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageGeneration &&
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageEdit)
             {
-                finalInput += "\n\n" + freshDataShortfall.BuildSynthesisNotice();
+                finalInput += "\n\n" + freshDataNotice.BuildSynthesisNotice();
             }
 
             // 5. execution
@@ -994,7 +1209,30 @@ namespace Cat5201
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageGeneration &&
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageEdit;
 
-            if (synthesisExecution != null && synthesisExecution.IsSuccess)
+            if (collaborating)
+            {
+                // 協作：每個模型各自回答同一份輸入（相同的搜尋結果與背景）→ 互看後交叉檢視 → 共識與分歧。
+                // 每次呼叫都鎖定單一模型，失敗就標「未回應」，不找別的模型頂替。
+                execution = await ModelCollaboration.RunAsync(
+                    collaborators,
+                    finalInput,
+                    _originalRequest,
+                    async (modelId, prompt, purpose) =>
+                    {
+                        using var stepPurpose = UsageMeter.Purpose(purpose);
+                        return await _executeWithFallbackAsync(
+                            node, prompt, CollaboratorDecision(decision, modelId), null, false, request.CancellationToken);
+                    },
+                    hint => node.SetLoadingHint(hint),
+                    request.CancellationToken);
+
+                if (!string.IsNullOrEmpty(freshDataBanner) && execution.IsSuccess)
+                    execution = ReplaceExecutionText(execution, freshDataBanner + execution.Text);
+
+                if (request.UseStreaming && request.OnDelta != null && !string.IsNullOrWhiteSpace(execution.Text))
+                    request.OnDelta(execution.Text);
+            }
+            else if (synthesisExecution != null && synthesisExecution.IsSuccess)
             {
                 execution = FinalAnswerSanitizer.Sanitize(
                     synthesisExecution,
@@ -1148,8 +1386,12 @@ namespace Cat5201
             }
 
             // 6. finalize
-            if (execution.IsSuccess && freshDataShortfall != null)
-                orchestration.MarkSuccess("final_synthesis", $"model: {execution.ActualModelId}（部分結果：未取得即時資料）");
+            if (execution.IsSuccess && freshDataNotice != null)
+                orchestration.MarkSuccess("final_synthesis",
+                    $"model: {execution.ActualModelId}（" +
+                    (freshDataNotice.NeedsSourceCaution
+                        ? "來源僅核對網域，未取原文"
+                        : "部分結果：未取得即時資料") + "）");
             else if (execution.IsSuccess)
                 orchestration.MarkSuccess("final_synthesis", $"model: {execution.ActualModelId}");
             else
@@ -1178,7 +1420,10 @@ namespace Cat5201
                 (doReport || doTable || doDeck) &&
                 request.DelegationDepth == 0 &&
                 !string.IsNullOrWhiteSpace(execution.Text) &&
-                _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills)
+                _main.GetDocumentEngine() == DocumentEngine.ClaudeSkills &&
+                // 最佳品質只有 Claude 會；這次的撰寫者不是 Claude 就改走一般版面，
+                // 不能為了「最佳品質」把撰寫者換成 Claude。
+                _scope.SkillsModel(DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus)) != null)
             {
                 // 簡報仍然交給 Claude 排版（使用者說那幾份做得不錯），只是**不掛 pptx 技能**
                 // ——2026-10-15 量到技能那包自己就注入 118 萬 token，而我們的請求只有 1.5 萬。
@@ -1302,6 +1547,27 @@ namespace Cat5201
             orchestration.CompleteRun(execution.IsSuccess, execution.ErrorMessage);
             orchestrationItem.TextSummary = AgentWorkspaceBuilder.BuildTextSummary(orchestrationPlan);
 
+            // 換過模型的說明放在答案最上方——文件撰寫等步驟在主回覆之後才跑，所以在這裡統一加。
+            // 只在最外層加：子代理也跑在這個實例上，若每一層都加，說明會被重複塞進整合的輸入裡。
+            if (request.DelegationDepth == 0)
+            {
+                // 答案裡的數字跟查到的數字比一次：抓「數字相同、單位差十倍」（2026-10-29 第一階段九份裡有三份）。
+                if (execution.IsSuccess)
+                {
+                    var facts = workspace.GetByType("verified_facts")
+                        .Select(x => x.Payload).OfType<VerifiedFactPayload>()
+                        .SelectMany(x => x.Facts ?? new List<VerifiedFactItem>());
+                    var mismatches = NumberConsistency.FindScaleMismatches(facts, execution.Text);
+                    if (mismatches.Count > 0)
+                    {
+                        AppLog.Warn("AgentRuntime", $"答案與查到的數字疑似單位不一致：{mismatches.Count} 處");
+                        AddTopNotice(NumberConsistency.BuildNotice(mismatches));
+                    }
+                }
+
+                execution = WithTopNotices(execution);
+            }
+
             var workspaceSummary = workspace.BuildSummary();
             decision = _executionFinalizer.FinalizeDecision(decision, execution);
             decision.ActualAgentId = runtimeAgent.Id;
@@ -1311,6 +1577,11 @@ namespace Cat5201
             decision.WorkspaceArtifactDetails = workspaceSummary?.ArtifactDetails ?? Array.Empty<string>();
             decision.WorkspaceArtifacts = workspaceSummary?.Artifacts ?? Array.Empty<AgentWorkspaceArtifactRecord>();
 
+            if (request.DelegationDepth == 0)
+            {
+                lock (_stepInputs) decision.StepInputs = _stepInputs.Select(x => x.Record).ToList();
+                decision.StepInputLogPath = WriteStepInputLog(node);
+            }
 
             return new AgentExecutionResult
             {
@@ -1361,10 +1632,18 @@ namespace Cat5201
 
                 var (cover, _) = await coverTask;
                 if (cover is { Length: > 0 })
-                    await AddPhotoAsync(files, cover, "cover.png", ct);
+                    await AddPhotoAsync(files, cover, "cover.png", $"封面用；主題：{outline.Title}", ct);
 
+                // 檔名不用頁碼：2026-10-29 實測，照片叫 photo-3.png，Claude 就放到它自己簡報的第 3 頁——
+                // 但那是「我們從答案切出的大綱」的第 3 頁，跟 Claude 實際排的頁序不一樣，
+                // 結果海鮮那頁配了牛排。改用字母編號，並把每張照片畫什麼、原本為哪一頁生成寫進提示。
+                int index = 0;
                 foreach (var slide in outline.Slides.Where(x => x.ImageBytes is { Length: > 0 }).Take(6))
-                    await AddPhotoAsync(files, slide.ImageBytes!, $"photo-{slide.Order}.png", ct);
+                {
+                    char letter = (char)('a' + index++);
+                    await AddPhotoAsync(files, slide.ImageBytes!, $"photo-{letter}.png",
+                        DescribeSlidePhoto(slide.Heading, slide.ImageSubject), ct);
+                }
 
                 if (files.Count > 0)
                     AppLog.Info("DocSkills", $"已把 {files.Count} 張照片送進沙箱供簡報使用");
@@ -1379,15 +1658,25 @@ namespace Cat5201
         }
 
         private static async Task AddPhotoAsync(
-            List<ClaudeDocumentSkillsService.ContainerFile> files, byte[] png, string name, CancellationToken ct)
+            List<ClaudeDocumentSkillsService.ContainerFile> files, byte[] png, string name, string description, CancellationToken ct)
         {
             string? id = await ClaudeFilesApi.UploadAsync(png, name, "image/png", ct);
             if (!string.IsNullOrWhiteSpace(id))
-                files.Add(new ClaudeDocumentSkillsService.ContainerFile(id!, name));
+                files.Add(new ClaudeDocumentSkillsService.ContainerFile(id!, name, description));
         }
 
-        /// <summary>告訴 Claude 容器裡有哪些照片、怎麼用。沒有照片時回空字串。</summary>
-        private static string PhotoBlock(IReadOnlyList<ClaudeDocumentSkillsService.ContainerFile> photos)
+        /// <summary>一張內容頁照片的說明：原本為哪一頁生成、畫面主體是什麼。</summary>
+        internal static string DescribeSlidePhoto(string? heading, string? subject)
+        {
+            string h = (heading ?? "").Trim();
+            string s = (subject ?? "").Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (s.Length > 200) s = s.Substring(0, 200) + "…";
+            string forPage = h.Length > 0 ? $"為講「{h}」的內容生成" : "為內容頁生成";
+            return s.Length > 0 ? $"{forPage}；畫面主體：{s}" : forPage;
+        }
+
+        /// <summary>告訴 Claude 容器裡有哪些照片、各畫什麼、怎麼放。沒有照片時回空字串。</summary>
+        internal static string PhotoBlock(IReadOnlyList<ClaudeDocumentSkillsService.ContainerFile> photos)
         {
             if (photos.Count == 0)
                 return "";
@@ -1396,7 +1685,16 @@ namespace Cat5201
             sb.Append("\n\n【可用的照片】\n");
             sb.Append("這些檔案已經放進你的工作目錄，是依這份內容生成的照片，請實際嵌進簡報：\n");
             foreach (var f in photos)
-                sb.Append("- ").Append(f.FileName).Append(f.FileName == "cover.png" ? "（封面用）" : "").Append('\n');
+            {
+                sb.Append("- ").Append(f.FileName);
+                if (!string.IsNullOrWhiteSpace(f.Description))
+                    sb.Append("：").Append(f.Description!.Trim());
+                else if (f.FileName == "cover.png")
+                    sb.Append("（封面用）");
+                sb.Append('\n');
+            }
+            sb.Append("擺放規則：每張照片只能放在「內容跟它的畫面主體相符」的那一頁。檔名的字母不代表頁碼，不要依檔名順序擺。")
+              .Append("找不到相符的頁就不要放那張；寧可少一張，也不要圖文不符。\n");
             sb.Append("用 python-pptx 的 add_picture 放進去；滿版或大面積配置都可以，但不要把主體裁掉，也不要壓在文字上。\n");
             sb.Append("用不到的就不要硬放。除了這些照片，其餘視覺元素仍然只能用色塊、線條與圖表。");
             return sb.ToString();
@@ -1423,7 +1721,9 @@ namespace Cat5201
             OutputIntent? intent = null)
         {
             var none = new SkillsOutcome(execution, false, false, false);
-            string model = DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus);
+            string? model = _scope.SkillsModel(DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus));
+            if (model == null)
+                return none;
             var service = new ClaudeDocumentSkillsService(model);
             if (!service.IsConfigured)
             {
@@ -1460,11 +1760,15 @@ namespace Cat5201
                     : intent?.RequestedSlides > 0 ? intent.RequestedSlides
                     : PresentationOutlineBuilder.DetectRequestedSlideCount(userInput),
                 // 跟內建版型同一套判斷：使用者沒明講時，看內容需不需要圖，不是看請求那一行字。
-                WantsImages = DeckIllustrationPolicy.ShouldIllustrate(
+                WantsImages = _scope.IllustrationsAllowed() && DeckIllustrationPolicy.ShouldIllustrate(
                     userInput, null, intent?.WantsIllustrations ?? false, out _, execution.Text),
                 Sources = sources,
                 PreferenceBlock = preferenceBlock ?? "",
-                Language = intent?.RequestedLanguage ?? ""
+                Language = intent?.RequestedLanguage ?? "",
+                // 個人化關掉對照 PDF 時，這條路也得照辦。
+                // 以前這裡沒接上：設定關著，提示詞照樣要求「每個檔都另外轉一份 PDF」，
+                // 於是沙箱多跑好幾步 LibreOffice 轉檔，而那幾步的脈絡後面每一輪都要再買一次。
+                WantsPdf = DeliveryOptions.CompanionPdf
             };
 
             var whatParts = new List<string>();
@@ -1555,6 +1859,7 @@ namespace Cat5201
             // 2026-10-15 一份簡報跑掉 US$10.48，而同一天的預留額度寫的是 US$3。
             double skillsBudgetUsd = ClaudeDocumentSkillsService.DefaultJobBudgetUsd;
             double skillsSpentUsd = 0;
+            bool droppedPhotosAfterTooLong = false;
 
             foreach (var sub in subRequests)
             {
@@ -1585,12 +1890,28 @@ namespace Cat5201
 
                 try
                 {
-                    var photos = sub.WantsDeck ? deckPhotos : new List<ClaudeDocumentSkillsService.ContainerFile>();
+                    // 上一次是「整包太長」而這次有照片要帶 → 先把照片拿掉再試一次。
+                    //
+                    // 我們自己送的字只有 8,000 token，伺服器卻回 1,230,182（2026-10-27），
+                    // 而這趟沒有掛任何技能——整包裡唯一的大東西就是 container_upload 的照片。
+                    // 沒有照片的 Claude 版面，仍然比直接退回內建版型好。
+                    bool dropPhotos = droppedPhotosAfterTooLong ||
+                        (attempt > 1 && result.ErrorMessage.Contains("too long", StringComparison.OrdinalIgnoreCase));
+                    if (dropPhotos && !droppedPhotosAfterTooLong)
+                    {
+                        droppedPhotosAfterTooLong = true;
+                        AppLog.Warn("DocSkills", "整包過長，改成不帶照片重試一次（版面仍由 Claude 設計）");
+                        node.SetLoadingHint($"最佳品質模式製作{what}中（改成不帶照片重試）");
+                    }
+
+                    var photos = sub.WantsDeck && !dropPhotos
+                        ? deckPhotos
+                        : new List<ClaudeDocumentSkillsService.ContainerFile>();
 
                     // retryNote 另外送：跟主提示黏成同一個 text block 的話，整塊內容會因為
                     // 這幾句話而改變，前面幾千 token 的共同前綴就永遠命中不了快取。
                     result = await service.GenerateAsync(
-                        DocumentSkillsPrompt.SystemPrompt,
+                        DocumentSkillsPrompt.SystemPromptFor(sub.WantsPdf),
                         DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos),
                         DocumentSkillsPrompt.SkillIds(sub),
                         DocumentSkillsPrompt.WantedExtensions(sub),
@@ -1866,7 +2187,7 @@ namespace Cat5201
             {
                 // 階段3：報告智慧配圖（同簡報規格）——使用者要圖時，Claude 挑適合的章節生成呼應的圖並嵌入。
                 // 報告跟簡報同一個道理：內容需要圖就配圖，純數字與條文的報告不配。
-                if (DeckIllustrationPolicy.ShouldIllustrate(
+                if (_scope.IllustrationsAllowed() && DeckIllustrationPolicy.ShouldIllustrate(
                         userInput, null, intent.WantsIllustrations, out _, reportMarkdown))
                 {
                     reportMarkdown = await IllustrateReportMarkdownAsync(node, reportMarkdown, genDir, ct);
@@ -2081,10 +2402,15 @@ namespace Cat5201
                               AgentId = runtimeAgent?.Id ?? ""
                           });
 
-            // §7.1 投影片張數精準控制：使用者指定張數時，把內容投影片數修正到剛好那麼多
-            //（作者模型沒照辦、或確定性切段忽略張數時的安全網）。
+            // §7.1 投影片張數精準控制：使用者說 N 頁＝封面＋內容 N 頁，資料來源另加 1 頁（2026-10-29），
+            // 而且以「排版後真的會是幾頁」驗收——排不下自動拆的續頁也算在內。
+            // 資料來源頁固定放在最後（使用者指定 N＋1 頁）；沒有外部來源也照實寫一頁。
+            outline = PresentationOutlineBuilder.EnsureSourcesSlide(outline);
+            var outlineBeforeTrim = outline;
+            int bulletsBeforeTrim = PresentationOutlineBuilder.CountBullets(outline);
             if (requestedSlides > 0)
-                outline = PresentationOutlineBuilder.EnforceSlideCount(outline, requestedSlides);
+                outline = PresentationOutlineBuilder.EnforcePageCountPlusSources(outline, requestedSlides);
+            int bulletsAfterTrim = PresentationOutlineBuilder.CountBullets(outline);
 
             node.SetLoadingHint(null);
 
@@ -2105,6 +2431,12 @@ namespace Cat5201
             // 判斷放在大綱做好之後，因為請求那一行字看不出這份簡報會長成什麼樣子。
             bool wantsImages = DeckIllustrationPolicy.ShouldIllustrate(
                 userInput, outline, intent?.WantsIllustrations ?? false, out var illustrationReason);
+            if (wantsImages && !_scope.IllustrationsAllowed())
+            {
+                // 內容需要圖，但手動模式下圖片模型不是使用者選的，確認框也沒勾——不配。
+                wantsImages = false;
+                AppLog.Info("AgentRuntime", "簡報配圖：手動模式且確認框未勾選配圖，不使用圖片模型");
+            }
 
             AppLog.Info("AgentRuntime",
                 $"簡報配圖判斷：{(wantsImages ? "要配圖" : "不配圖")}（{illustrationReason}）");
@@ -2209,10 +2541,27 @@ namespace Cat5201
                 string fileName = pptxResult?.FileName ?? "Gamma 線上版";
                 orchestration.MarkSuccess("presentation_outline", $"{outline.SlideCount} 張 / {fileName}");
 
-                string note = $"已生成簡報大綱：{outline.SlideCount} 張投影片。";
+                // 節點上要看得出「做出了什麼檔案」，不是只有一句大綱張數。
+                // 最佳品質那條路會放 Claude 寫的說明，內建這條以前只留一行狀態，
+                // 兩邊落差大到使用者以為備註不見了（2026-10-27）。
+                string note = $"📄 已產出：{fileName}（完整內容在檔案裡，點一下就看得到）";
+                if (!string.IsNullOrWhiteSpace(outline.Title))
+                    note = outline.Title.Trim() + "\n" + note;
+                note += $"\n共 {DeckScene.CountPages(outline.Slides, coverImageBytes)} 頁。";
 
                 // 「檔案寫出來了」不等於「這份簡報可以拿出去」：字級、溢出、圖片比例都檢查一次，
                 // 有問題照實說，不要安靜交付一份版面壞掉的檔案。
+                // 為了守住指定頁數而砍掉的內容，要讓使用者看得到——
+                // 悄悄交出一份少了三分之二重點的簡報，比交出超頁的還糟（2026-10-28）。
+                var droppedHeadings = PresentationOutlineBuilder.DroppedHeadings(outlineBeforeTrim, outline);
+                if (droppedHeadings.Count > 0)
+                    note += "\n⚠ 下列主題未納入：" + string.Join("、", droppedHeadings.Take(6)) +
+                            (droppedHeadings.Count > 6 ? $" 等 {droppedHeadings.Count} 項" : "") + "。";
+
+                if (bulletsAfterTrim < bulletsBeforeTrim)
+                    note += $"\n⚠ 為符合「{requestedSlides} 頁」，已精簡內容：重點 {bulletsBeforeTrim} → {bulletsAfterTrim} 個。" +
+                            "需要完整內容請提高頁數或改用報告格式。";
+
                 string quality = DeckQuality.CheckAndLog(outline, coverImageBytes, fileName);
                 if (!string.IsNullOrWhiteSpace(quality))
                     note += "\n⚠ " + quality;
@@ -2276,7 +2625,7 @@ namespace Cat5201
                 {
                     InputText = contentText,
                     Title = outline.Title,
-                    NumCards = outline.RequestedSlideCount,
+                    NumCards = outline.RequestedSlideCount > 0 ? outline.RequestedSlideCount + 1 : 0,   // ＋1 頁資料來源
                     Language = "zh-tw"
                 }, ct);
 
@@ -2412,13 +2761,13 @@ namespace Cat5201
 
                 var imageService = new OpenAIImageService("gpt-image-2");
                 using var reservation = SpendReservations.TryReserveWithinBudget(
-                    "簡報封面圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                    "簡報封面圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, IllustrationQuality));
                 if (reservation == null)
                 {
                     NoteImageSkipped($"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
                     return (null, null);
                 }
-                var image = await imageService.GenerateAsync(prompt, DeckImageSize, ct);
+                var image = await imageService.GenerateAsync(prompt, DeckImageSize, ct, IllustrationQuality);
 
                 if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
                 {
@@ -2475,8 +2824,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "image-agent",
                 ActualAgentId = "image-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
+                ModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Illustration Brief",
@@ -2567,6 +2916,9 @@ namespace Cat5201
         /// <summary>簡報配圖的尺寸：版面上的圖欄是直的（約 3:4），用直式圖才不會裁掉一半。</summary>
         public const string DeckImageSize = "1024x1536";
 
+        /// <summary>配圖品質（個人化設定，見 <see cref="DeliveryOptions.IllustrationQuality"/>）。</summary>
+        public static string IllustrationQuality => DeliveryOptions.IllustrationQuality;
+
         // 配圖為什麼沒生出來（沒金鑰、沒有適合入畫的主體、API 失敗…）。
         // 生圖是並行的，所以要鎖；只留第一個原因，訊息才不會變成一串雜訊。
         private readonly object _imageSkipLock = new();
@@ -2594,6 +2946,8 @@ namespace Cat5201
             string instruction,
             CancellationToken ct)
         {
+            EnsureScopeFor(node);
+
             var slide = outline?.Slides?.FirstOrDefault(s => s.Order == slideOrder);
             if (slide == null)
                 return (null, "找不到這一頁。");
@@ -2625,11 +2979,11 @@ namespace Cat5201
 
                 var imageService = new OpenAIImageService("gpt-image-2");
                 using var reservation = SpendReservations.TryReserveWithinBudget(
-                    "單頁配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                    "單頁配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, IllustrationQuality));
                 if (reservation == null)
                     return (null, $"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
                 var image = await imageService.GenerateAsync(
-                    IllustrationStyle.Compose(brief, art, isCover), DeckImageSize, ct);
+                    IllustrationStyle.Compose(brief, art, isCover), DeckImageSize, ct, IllustrationQuality);
 
                 if (!image.Success || image.PngBytes == null || image.PngBytes.Length == 0)
                     return (null, FailureExplainer.Describe(image.ErrorMessage));
@@ -2694,7 +3048,7 @@ namespace Cat5201
                     try
                     {
                         using var reservation = SpendReservations.TryReserveWithinBudget(
-                            "簡報配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, "high"));
+                            "簡報配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, IllustrationQuality));
                         if (reservation == null)
                         {
                             // 這些工作是並行的，不是迴圈——這一張放棄就好，其餘各自會得到同樣結果。
@@ -2702,9 +3056,12 @@ namespace Cat5201
                             return;
                         }
                         var img = await imageService.GenerateAsync(
-                            IllustrationStyle.Compose(plan[slide.Order], art), DeckImageSize, ct);
+                            IllustrationStyle.Compose(plan[slide.Order], art), DeckImageSize, ct, IllustrationQuality);
                         if (img.Success && img.PngBytes != null && img.PngBytes.Length > 0)
+                        {
                             slide.ImageBytes = img.PngBytes;
+                            slide.ImageSubject = plan[slide.Order];
+                        }
                     }
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
@@ -2752,8 +3109,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "image-agent",
                 ActualAgentId = "image-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
+                ModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Illustration Plan",
@@ -2874,7 +3231,8 @@ namespace Cat5201
 
                 try
                 {
-                    var img = await imageService.GenerateAsync(IllustrationStyle.Compose(brief), "1024x1024", ct);
+                    var img = await imageService.GenerateAsync(
+                        IllustrationStyle.Compose(brief), "1024x1024", ct, IllustrationQuality);
                     if (!img.Success || img.PngBytes == null || img.PngBytes.Length == 0) continue;
 
                     System.IO.Directory.CreateDirectory(genDir);
@@ -2918,6 +3276,7 @@ namespace Cat5201
             if (lines == null || lines.Count == 0)
                 return Array.Empty<string>();
 
+            EnsureScopeFor(node);
             using var usagePurpose = UsageMeter.Purpose("單頁改字");
 
             var numbered = string.Join("\n", lines.Select((l, i) => $"{i + 1}. {l}"));
@@ -2935,8 +3294,8 @@ namespace Cat5201
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
+                ModelId = AiModelHelper.NormalizeNodeModel(_scope.DocumentAuthorModel(AiModels.Claude_Sonnet5)),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Slide Text Rewrite",
@@ -3004,12 +3363,17 @@ namespace Cat5201
                 "4. 風格預設為乾淨、現代、專業的示意插圖或攝影，留白充足、無浮水印。\n\n" +
                 "=== 使用者請求與背景資料 ===\n" + rawRequest;
 
+            // 手動模式由節點選的模型寫提示詞；不適合時（深度研究）直接用使用者原文。
+            string? briefModel = _scope.HelperModel(AiModels.Claude_Sonnet5);
+            if (briefModel == null)
+                return "";
+
             var briefDecision = new NodeExecutionDecision
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(briefModel),
+                ModelId = AiModelHelper.NormalizeNodeModel(briefModel),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Image Brief (Claude)",
@@ -3245,12 +3609,17 @@ namespace Cat5201
                 "規則：只輸出英文編輯指令本身，不要解釋 / 引號 / markdown；不要提到『影片』或任何與圖片編輯無關的字；不要捏造文字或商標。\n\n" +
                 "【使用者指令】\n" + (userInput ?? "").Trim();
 
+            // 手動模式由節點選的模型寫編輯指令；不適合時直接用使用者原文。
+            string? editModel = _scope.HelperModel(AiModels.Claude_Sonnet5);
+            if (editModel == null)
+                return "";
+
             var decision = new NodeExecutionDecision
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(editModel),
+                ModelId = AiModelHelper.NormalizeNodeModel(editModel),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Image Edit Prompt (Claude)",
@@ -3352,7 +3721,7 @@ namespace Cat5201
                 var tier = _main.GetVeoModelTier();
                 double estUsd = estSecondsTotal * VeoModels.UsdPerSecond(tier);
                 // 連貫模式走 I2V：多一張英雄圖（精確 9:16 或 16:9，高品質 ≈ US$0.25）當起始幀。
-                double heroUsd = fastCut ? 0 : ModelCostEstimator.ImageCostUsd(VideoPlanBuilder.HeroStillSizeFor("9:16"), "high");
+                double heroUsd = fastCut ? 0 : ModelCostEstimator.ImageCostUsd(VideoPlanBuilder.HeroStillSizeFor("9:16"), IllustrationQuality);
                 estUsd += heroUsd;
                 string modeLabel = fastCut ? $"快剪 {estShots} 鏡頭" : $"連貫 {estSecondsTotal} 秒";
                 string heroNote = heroUsd > 0 ? $" + I2V 英雄圖 US${heroUsd:F2}" : "";
@@ -3719,11 +4088,13 @@ namespace Cat5201
             try
             {
                 var engine = _main.GetPresentationEngine();
-                string authorModelId = PresentationEngineHelper.ToAuthorModelId(engine);
-                string engineName = PresentationEngineHelper.ToDisplayName(engine);
+                string authorModelId = _scope.DocumentAuthorModel(PresentationEngineHelper.ToAuthorModelId(engine));
+                string engineName = AuthorDisplayName(engine, authorModelId);
 
                 // 1) 研究（Perplexity）：best-effort，失敗 / 無金鑰就用空素材，作者改用自身知識。
-                node.SetLoadingHint("Perplexity 正在查資料");
+                //    手動模式下若節點選的不是 Sonar，這一步不呼叫任何模型（見 ResearchForPresentationAsync）。
+                if (!_scope.IsManual)
+                    node.SetLoadingHint("Perplexity 正在查資料");
                 string research = await ResearchForPresentationAsync(node, userInput, requestedSlides, ct);
 
                 // 2) 作者（選定生成器，必要時 fallback）：一次產出結構化 JSON deck。
@@ -3767,9 +4138,10 @@ namespace Cat5201
 
             try
             {
+                EnsureScopeFor(node);
                 var engine = _main.GetPresentationEngine();
-                string authorModelId = PresentationEngineHelper.ToAuthorModelId(engine);
-                string engineName = PresentationEngineHelper.ToDisplayName(engine);
+                string authorModelId = _scope.DocumentAuthorModel(PresentationEngineHelper.ToAuthorModelId(engine));
+                string engineName = AuthorDisplayName(engine, authorModelId);
 
                 node.SetLoadingHint($"{engineName} 正在重生第 {slideOrder} 張投影片");
                 string prompt = PresentationAuthor.BuildSingleSlidePrompt(outline, slideOrder, userInput);
@@ -3828,7 +4200,7 @@ namespace Cat5201
         {
             try
             {
-                string modelId = PresentationEngineHelper.ToAuthorModelId(_main.GetPresentationEngine());
+                string modelId = _scope.DocumentAuthorModel(PresentationEngineHelper.ToAuthorModelId(_main.GetPresentationEngine()));
                 var r = await RunAuthorStepAsync(node, prompt, modelId, label, ct).ConfigureAwait(false);
                 if (!r.IsSuccess || string.IsNullOrWhiteSpace(r.Text))
                     return null;
@@ -3842,6 +4214,13 @@ namespace Cat5201
         private async Task<string> ResearchForPresentationAsync(
             INodeContext node, string userInput, int requestedSlides, CancellationToken ct)
         {
+            // 手動模式：只有節點選的就是 Perplexity Sonar 時才做這一步。
+            // 其他模型的情況下，能力層的搜尋研究已經做過了，再叫 Sonar 來就是背後多一個模型。
+            if (_scope.IsManual &&
+                !string.Equals(AiModelHelper.NormalizeNodeModel(_scope.SelectedModelId),
+                               AiModels.Perplexity_Sonar, StringComparison.OrdinalIgnoreCase))
+                return "";
+
             using var usagePurpose = UsageMeter.Purpose("簡報研究");
             try
             {
@@ -3963,7 +4342,7 @@ namespace Cat5201
 
                 node.SetLoadingHint("正在生成英雄圖（I2V 起始幀）");
                 var img = new OpenAIImageService(); // 缺 OPENAI_API_KEY 會丟例外 → 下方 catch 退回 T2V
-                var result = await img.GenerateAsync(heroPrompt, size, ct);
+                var result = await img.GenerateAsync(heroPrompt, size, ct, IllustrationQuality);
                 node.SetLoadingHint(null);
 
                 if (result.Success && result.PngBytes.Length > 0)
@@ -3997,12 +4376,17 @@ namespace Cat5201
             using var usagePurpose = UsageMeter.Purpose("影片導演企劃");
             string directorPrompt = VideoPlanBuilder.BuildDirectorPrompt(prompt, targetSeconds, stylePrompt, treatment, cutMode);
 
+            // 手動模式由節點選的模型當導演；不適合時直接照使用者原文拍。
+            string? directorModel = _scope.HelperModel(AiModels.Claude_Sonnet5);
+            if (directorModel == null)
+                return VideoPlanBuilder.Parse("", prompt, targetSeconds);
+
             var directorDecision = new NodeExecutionDecision
             {
                 RequestedAgentId = "general-agent",
                 ActualAgentId = "general-agent",
-                RequestedModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
-                ModelId = AiModelHelper.NormalizeNodeModel(AiModels.Claude_Sonnet5),
+                RequestedModelId = AiModelHelper.NormalizeNodeModel(directorModel),
+                ModelId = AiModelHelper.NormalizeNodeModel(directorModel),
                 ActualModelId = "",
                 TaskMode = NodeTaskMode.Chat,
                 ResolverLabel = "Video Director (Claude)",
@@ -4026,7 +4410,8 @@ namespace Cat5201
         private static string BuildVideoPlanNote(VideoPlanPayload plan)
         {
             var sb = new System.Text.StringBuilder();
-            sb.Append("\n\n【影片計畫（Claude 導演）】");
+            // 導演不一定是 Claude 了（手動模式由節點選的模型擔任）；是誰做的看決策窗的「參與」欄。
+            sb.Append("\n\n【影片計畫】");
 
             if (!string.IsNullOrWhiteSpace(plan.Title))
                 sb.Append($"\n片名：{plan.Title}");

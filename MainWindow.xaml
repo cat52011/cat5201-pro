@@ -1583,6 +1583,43 @@ Margin="0,20,20,0"
                                          Checked="DownstreamMode_Checked"/>
                         </StackPanel>
 
+                        <!-- 配圖品質：這些圖是鋪在投影片上的，不是交付物本身，
+                             所以預設給 medium（價差四倍，在投影片尺寸下看不太出來）。
+                             選項文字含單價，由 SyncIllustrationQualityRadios 依價目表填，不寫死在這裡。 -->
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
+
+                        <TextBlock Text="配圖品質"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,14,0,2"/>
+                        <TextBlock Text="簡報、報告裡的配圖，還有影片的第一格。你自己指名要的圖片不受這個影響，一律用最高品質。"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+
+                        <StackPanel>
+                            <RadioButton x:Name="IllustrationQualityHigh"
+                                         GroupName="IllustrationQuality"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="IllustrationQuality_Checked"/>
+                            <RadioButton x:Name="IllustrationQualityMedium"
+                                         GroupName="IllustrationQuality"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="IllustrationQuality_Checked"/>
+                            <RadioButton x:Name="IllustrationQualityLow"
+                                         GroupName="IllustrationQuality"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="IllustrationQuality_Checked"/>
+                        </StackPanel>
+
                         <!-- 文件品質 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 

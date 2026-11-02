@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace Cat5201
 {
@@ -14,7 +14,7 @@ namespace Cat5201
         // Multi-Model v1：成本層級（UI 顯示 + 依能力/成本的 fallback 排序）。
         public AiCostTier CostTier { get; init; } = AiCostTier.Standard;
 
-        // Multi-Model v1：擴充點是否已啟用。休眠中的 provider（如 Gemini）設 false，
+        // Multi-Model v1：擴充點是否已啟用。休眠中的 provider 設 false，
         // 不會出現在模型選單，也不會被 fallback / capability 重導選到。
         public bool IsAvailable { get; init; } = true;
 

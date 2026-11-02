@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace Cat5201
@@ -52,5 +52,9 @@ namespace Cat5201
         // [JsonIgnore]：byte[] 不進 workspace artifact 的 JSON 序列化，避免 base64 撐爆存檔。
         [System.Text.Json.Serialization.JsonIgnore]
         public byte[]? ImageBytes { get; set; }
+
+        /// <summary>這張配圖畫的是什麼（配圖企劃寫的主體描述）。照片交給別的模型排版時，靠它對回正確的頁。</summary>
+        [System.Text.Json.Serialization.JsonIgnore]
+        public string? ImageSubject { get; set; }
     }
 }

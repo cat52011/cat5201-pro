@@ -54,6 +54,7 @@ namespace Cat5201
             Dictionary<string, string>? ProviderTopUp = null, // 各服務儲值金額："金額|起算日"（估算剩餘用）
             bool ShowApiBalancePanel = false,                // 右下角 API 餘額小面板
             bool CompanionPdfEnabled = true,                 // 產出檔案時是否同時附一份同內容 PDF
+            string IllustrationQuality = "medium",           // 配圖生成品質（high / medium / low）
             bool ShowDecisionPanel = true,                   // 右上角決策可視化視窗
             string GeneratedFilesDir = ""                    // 產出檔案存放位置（空＝預設的 _generated）
         );
@@ -145,6 +146,7 @@ namespace Cat5201
                     DailyBudgetTwd: _dailyBudgetTwd,
                     AutoConfirmSeconds: _autoConfirmSeconds,
                     CompanionPdfEnabled: DeliveryOptions.CompanionPdf,
+                    IllustrationQuality: DeliveryOptions.IllustrationQuality,
                     ShowDecisionPanel: _showDecisionPanel,
                     GeneratedFilesDir: _generatedFilesDirOverride,
                     GoogleAutoUploadDrive: _googleAutoUploadDrive,
@@ -220,6 +222,7 @@ namespace Cat5201
                 _readUpstreamAttachments = prefs.ReadUpstreamAttachments;
                 _showApiBalancePanel = prefs.ShowApiBalancePanel;
                 DeliveryOptions.CompanionPdf = prefs.CompanionPdfEnabled;
+                DeliveryOptions.IllustrationQuality = ImageQuality.Normalize(prefs.IllustrationQuality);
                 _showDecisionPanel = prefs.ShowDecisionPanel;
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
                 SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相

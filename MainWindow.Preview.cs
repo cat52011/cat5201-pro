@@ -568,7 +568,7 @@ namespace Cat5201
                 // 「這句話是不是在要圖」交給模型判斷——關鍵字表只認得繁體中文的講法，
                 // 使用者用簡體、英文、日文講同一件事就會被漏掉。API 不通時才退回關鍵字。
                 bool wantsImage = !string.IsNullOrWhiteSpace(instruction)
-                                  && await _nodeService.WantsIllustrationsAsync(instruction, cts.Token);
+                                  && await _nodeService.WantsIllustrationsAsync(instruction, cts.Token, node);
 
                 if (!string.IsNullOrWhiteSpace(instruction))
                 {
@@ -752,7 +752,13 @@ namespace Cat5201
               //（2026-10-15：「預覽還是沒圖片」——圖其實一直在，只是被一塊 #F2EEE6 蓋住）。
               // 兩者都是 position:absolute，z-index 留 auto 就會照 DOM 先後順序畫，
               // 而我們本來就是照 ShapeTree 順序輸出的。
-              .Append(".tx{position:absolute;overflow:hidden}")
+              // 不要 overflow:hidden。
+              //
+              // 文字框存的高度不一定是實際渲染高度：Claude 用 python-pptx 寫出來的標題框
+              // 多半帶 spAutoFit（依文字調整形狀大小），PowerPoint 開啟時會自己長高，
+              // 但檔案裡存的還是舊的 cy。照著那個高度裁，就會像 2026-10-27 第三頁那樣
+              // 把標題攔腰切掉——檔案沒問題，是預覽比 PowerPoint 還嚴格。
+              .Append(".tx{position:absolute}")
               .Append(".pic{position:absolute;object-fit:cover}")
               .Append(".pno{position:absolute;right:10px;bottom:8px;font:600 11px/1 'Segoe UI';color:#C9C9C2}")
               .Append("details{margin-top:10px;background:#fff;border:1px solid #DFDFDA;border-radius:6px;overflow:hidden}")
@@ -796,13 +802,19 @@ namespace Cat5201
 
             foreach (var slide in deck.Slides)
             {
-                sb.Append("<div class='slide'><div class='page'>");
+                sb.Append("<div class='slide'><div class='page'");
+                if (slide.BackgroundColor is string bg && System.Text.RegularExpressions.Regex.IsMatch(bg, "^#[0-9A-Fa-f]{6}$"))
+                    sb.Append(" style='background:").Append(bg).Append("'");
+                sb.Append('>');
 
                 foreach (var shape in slide.Shapes)
                 {
+                    // 有文字的形狀用 min-height：存的高度當成下限，文字比它高就讓它長出去
+                    // （PowerPoint 也是這樣畫的）。純色塊沒有文字，維持精確高度。
+                    string sizeRule = shape.Lines.Count > 0 ? "min-height" : "height";
                     string box =
                         $"left:{F(shape.XPt * scale)}px;top:{F(shape.YPt * scale)}px;" +
-                        $"width:{F(shape.WidthPt * scale)}px;height:{F(shape.HeightPt * scale)}px;";
+                        $"width:{F(shape.WidthPt * scale)}px;{sizeRule}:{F(shape.HeightPt * scale)}px;";
 
                     if (shape.Image != null)
                     {
@@ -911,7 +923,7 @@ namespace Cat5201
                   .Append("<div class='row'><button data-action='replaceImage'>換一張配圖</button>")
                   .Append("<button data-action='removeImage'>移除配圖</button>")
                   .Append("<span class='hint'>生成一張圖會實際呼叫圖片模型（")
-                  .Append(ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, "high"))
+                  .Append(ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, AgentRuntime.IllustrationQuality))
                   .Append("）；地圖、國旗、商標這類查得到正確答案的東西不會生成</span></div></div>");
             }
 
@@ -1306,21 +1318,11 @@ namespace Cat5201
                 .Where(File.Exists)
                 .ToList();
 
-            bool ok = forward
-                ? GeneratedFileHistory.RestoreNext(path)
-                : GeneratedFileHistory.RestorePrevious(path);
+            // 切版與重新配對在 Core（可測）：PDF 沒跟上時解除配對，預覽改用簡報本身，不會出現「簡報 v1、預覽 v2」。
+            var step = GeneratedFileHistory.StepWithCompanions(path, companions, forward);
 
-            if (ok)
+            if (step.Ok)
             {
-                foreach (var companion in companions)
-                {
-                    if (forward) GeneratedFileHistory.RestoreNext(companion);
-                    else GeneratedFileHistory.RestorePrevious(companion);
-                }
-
-                // 還原後重新建立配對（雜湊已經是這一版的那一組）。
-                if (companions.Count > 0)
-                    GeneratedFileCompanion.Register(path, companions[0]);
 
                 // 節點保存的大綱要跟著換，否則下次單頁重生會以另一版為底本。
                 if (_previewOwnerNode != null && path.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase))
@@ -1333,6 +1335,12 @@ namespace Cat5201
 
                 AppLog.Info("Preview", $"已切換到{label}：" + System.IO.Path.GetFileName(path));
                 OpenPreview(path, _previewOwnerNode);
+
+                // PDF 沒跟上：檔案本身還是另一版的內容，使用者打開它會看到不一致的東西，要講。
+                if (step.StaleCompanions.Count > 0)
+                    MenuConfirmDialog.ShowMessage(this, label,
+                        $"簡報已切換到{label}，但同資料夾的 PDF 沒有對應的版本，內容仍是切換前的那一版。\n" +
+                        "預覽改用簡報本身顯示；需要 PDF 請從 PowerPoint 另存一份。", this);
             }
             else
             {

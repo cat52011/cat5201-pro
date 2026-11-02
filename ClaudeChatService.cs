@@ -37,16 +37,57 @@ namespace Cat5201
         // 回應解析只挑 type=="text"/"text_delta"，思考區塊天然被忽略，不需改解析。
         private const int ThinkingMinOutputTokens = 4000;
 
-        private static object BuildThinking(int maxOutputTokens)
-            => maxOutputTokens >= ThinkingMinOutputTokens
-                ? new { type = "adaptive" }
-                : new { type = "disabled" };
+        // ===== 小預算呼叫怎麼「關思考」——每個型號不一樣（2026-10-29 補）=====
+        // 上面的策略寫於 Sonnet 5 / Opus 5 時代，當時 {type:"disabled"} 對兩者都合法。
+        // 但 2026-09-25 把 Claude_Opus5 升成 claude-opus-5-5 之後，這條路就壞了：
+        //   Opus 5.5 / Fable 5 / Fable 5.1：沒有關閉選項，disabled 在任何 effort 都回 400
+        //                                  → 只能不帶 thinking、把 effort 降到 low
+        //   Sonnet 5.5：disabled 回 400；關法是 {type:"between_tools"}，而且不得帶任何其他欄位
+        //              （effort 必須 ≤ high，所以 output_config 一律不送，用預設 high）
+        //   Sonnet 5 / Opus 5 / Haiku 5.5 / 4.x：disabled 合法（effort ≤ high）
+        // 小預算呼叫一旦 400，會被 fallback 默默換成別的模型重跑——不報錯，只是多花一次錢、
+        // 決策窗顯示的模型也跟使用者選的不一樣。所以這裡要依型號給出各自合法的設定。
+        internal enum SmallBudgetThinking { Disable, BetweenTools, LowEffortOnly }
 
-        // effort 只在開思考時送（disabled 時沿用預設，避免誤觸 disabled+xhigh/max 的 400）。
-        private static object? BuildOutputConfig(int maxOutputTokens)
-            => maxOutputTokens >= ThinkingMinOutputTokens
-                ? new { effort = "medium" }
+        internal static SmallBudgetThinking ResolveSmallBudgetThinking(string? model)
+        {
+            string m = (model ?? "").Trim().ToLowerInvariant();
+
+            if (m.StartsWith("claude-opus-5-5", StringComparison.Ordinal)
+                || m.StartsWith("claude-fable-5", StringComparison.Ordinal)
+                || m.StartsWith("claude-mythos-5", StringComparison.Ordinal))
+                return SmallBudgetThinking.LowEffortOnly;
+
+            if (m.StartsWith("claude-sonnet-5-5", StringComparison.Ordinal))
+                return SmallBudgetThinking.BetweenTools;
+
+            return SmallBudgetThinking.Disable;
+        }
+
+        internal static object? BuildThinking(string? model, int maxOutputTokens)
+        {
+            if (maxOutputTokens >= ThinkingMinOutputTokens)
+                return new { type = "adaptive" };
+
+            return ResolveSmallBudgetThinking(model) switch
+            {
+                SmallBudgetThinking.LowEffortOnly => null,                       // 不帶 thinking 欄位
+                SmallBudgetThinking.BetweenTools => new { type = "between_tools" },
+                _ => new { type = "disabled" },
+            };
+        }
+
+        // effort 只在開思考時送（disabled 時沿用預設，避免誤觸 disabled+xhigh/max 的 400）；
+        // 唯一例外是關不掉思考的型號，小預算時要明確送 low，否則思考會吃掉那幾百 token 的預算。
+        internal static object? BuildOutputConfig(string? model, int maxOutputTokens)
+        {
+            if (maxOutputTokens >= ThinkingMinOutputTokens)
+                return new { effort = "medium" };
+
+            return ResolveSmallBudgetThinking(model) == SmallBudgetThinking.LowEffortOnly
+                ? new { effort = "low" }
                 : null;
+        }
 
         private static readonly JsonSerializerOptions PayloadJsonOptions = new()
         {
@@ -101,8 +142,8 @@ namespace Cat5201
             {
                 model = _model,
                 max_tokens = maxOutputTokens,
-                thinking = BuildThinking(maxOutputTokens),
-                output_config = BuildOutputConfig(maxOutputTokens),
+                thinking = BuildThinking(_model, maxOutputTokens),
+                output_config = BuildOutputConfig(_model, maxOutputTokens),
                 system = instructions,
                 messages = new object[]
                 {
@@ -136,53 +177,46 @@ namespace Cat5201
             }
 
             string text = ExtractTextFromClaudeJson(body);
-            var (inTok, outTok) = ParseUsage(body, _model);
-            ReportUsage(inTok, outTok, instructions, text, onUsage);
+            var (inTok, outTok, cacheRead, cacheWrite) = ParseUsage(body, _model);
+            ReportUsage(inTok, outTok, instructions, text, onUsage, cacheRead: cacheRead, cacheWrite: cacheWrite);
             return text;
         }
 
         // 從非串流回應 JSON 的 usage 區塊取真實 token 數（input_tokens / output_tokens）；解析失敗回 (0,0)。
-        private static (int Input, int Output) ParseUsage(string json, string modelId)
+        private static (int Input, int Output, int CacheRead, int CacheWrite) ParseUsage(string json, string modelId)
         {
             if (string.IsNullOrWhiteSpace(json))
-                return (0, 0);
+                return (0, 0, 0, 0);
 
             try
             {
                 using var doc = JsonDocument.Parse(json);
                 if (!doc.RootElement.TryGetProperty("usage", out var usageEl) || usageEl.ValueKind != JsonValueKind.Object)
-                    return (0, 0);
+                    return (0, 0, 0, 0);
 
                 int input = usageEl.TryGetProperty("input_tokens", out var inEl) && inEl.TryGetInt32(out var iv) ? iv : 0;
                 int output = usageEl.TryGetProperty("output_tokens", out var outEl) && outEl.TryGetInt32(out var ov) ? ov : 0;
+                int cacheWrite = usageEl.TryGetProperty("cache_creation_input_tokens", out var w) && w.TryGetInt32(out var wv) ? wv : 0;
+                int cacheRead = usageEl.TryGetProperty("cache_read_input_tokens", out var r) && r.TryGetInt32(out var rv) ? rv : 0;
 
-                // Anthropic 的 input_tokens 不含快取部分；快取寫入/讀取是另外兩個欄位，也是要收錢的。
-                // 不加進來的話，只要之後開了 prompt caching，帳本就會比實際少算（餘額顯示偏高）。
-                input += ReadCacheTokens(usageEl, modelId);
-                return (input, output);
+                // 四個數字原樣往上傳，不在這裡折算。
+                // 快取要收錢沒錯，但把「乘過倍率的等值量」塞進 input_tokens，
+                // 顯示出來的「實際 token」就不是實際的了（2026-10-27 第三方審查）。
+                return (input, output, cacheRead, cacheWrite);
             }
             catch
             {
-                return (0, 0);
+                return (0, 0, 0, 0);
             }
-        }
-
-        // 快取 token：寫入 1.25x、讀取 0.1x 輸入單價。這裡換算成「等值的一般輸入 token」計入，
-        // 讓成本估算不必為了快取另外開一條路徑。
-        private static int ReadCacheTokens(JsonElement usageEl, string modelId)
-        {
-            int write = usageEl.TryGetProperty("cache_creation_input_tokens", out var w) && w.TryGetInt32(out var wv) ? wv : 0;
-            int read = usageEl.TryGetProperty("cache_read_input_tokens", out var r) && r.TryGetInt32(out var rv) ? rv : 0;
-            return (int)Math.Round(
-                write * ModelCostEstimator.CacheWriteMultiplier +
-                read * ModelCostEstimator.CacheReadMultiplier(modelId));
         }
 
         // 成本可稽查：每次呼叫完成當下記一筆帳（模型、用途、token、費用），再回報給呼叫端。
         private void ReportUsage(int input, int output, string? instructions, string text,
-            Action<int, int>? onUsage, string note = "")
+            Action<int, int>? onUsage, string note = "", int cacheRead = 0, int cacheWrite = 0)
         {
-            UsageMeter.RecordLlm(_model, input, output, instructions, text, note);
+            // Anthropic 的 input_tokens 不含快取，所以走「另計」這組參數。
+            UsageMeter.RecordLlm(_model, input, output, instructions, text, note,
+                cacheReadTokens: cacheRead, cacheWriteTokens: cacheWrite);
             if (onUsage != null && (input > 0 || output > 0))
                 onUsage(input, output);
         }
@@ -217,8 +251,8 @@ namespace Cat5201
             {
                 model = _model,
                 max_tokens = maxOutputTokens,
-                thinking = BuildThinking(maxOutputTokens),
-                output_config = BuildOutputConfig(maxOutputTokens),
+                thinking = BuildThinking(_model, maxOutputTokens),
+                output_config = BuildOutputConfig(_model, maxOutputTokens),
                 system = instructions,
                 stream = true,
                 messages = new object[]
@@ -301,12 +335,14 @@ namespace Cat5201
             catch (OperationCanceledException)
             {
                 // 取消時已產生的 token 照樣計費：用已知用量（或已收到的文字估算）記一筆再往外丟。
-                ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), null, "已取消（部分用量）");
+                ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), null, "已取消（部分用量）",
+                    cacheRead: usage.CacheRead, cacheWrite: usage.CacheWrite);
                 throw;
             }
 
             // 串流結束：記帳並把真實 token 用量回報給呼叫端。
-            ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), onUsage);
+            ReportUsage(usage.Input, usage.Output, instructions, finalText.ToString(), onUsage,
+                cacheRead: usage.CacheRead, cacheWrite: usage.CacheWrite);
 
             return finalText.ToString();
         }
@@ -316,6 +352,8 @@ namespace Cat5201
         {
             public int Input;
             public int Output;
+            public int CacheRead;
+            public int CacheWrite;
         }
 
         private static void ProcessSseEvent(
@@ -347,8 +385,11 @@ namespace Cat5201
                     if (startUsage.TryGetProperty("output_tokens", out var o) && o.TryGetInt32(out var ov))
                         usage.Output = ov;
 
-                    // 串流也一樣要把快取 token 算進來（跟非串流同一套換算）。
-                    usage.Input += ReadCacheTokens(startUsage, modelId);
+                    // 串流一樣原值分開記：快取量不併進 Input，否則顯示的「實際 token」就不是實際的。
+                    if (startUsage.TryGetProperty("cache_creation_input_tokens", out var cw) && cw.TryGetInt32(out var cwv))
+                        usage.CacheWrite = cwv;
+                    if (startUsage.TryGetProperty("cache_read_input_tokens", out var cr) && cr.TryGetInt32(out var crv))
+                        usage.CacheRead = crv;
                 }
 
                 // message_delta：output_tokens 為到目前為止的累計，取最後一筆即為最終輸出量。

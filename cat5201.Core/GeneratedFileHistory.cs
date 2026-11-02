@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -60,6 +60,42 @@ namespace Cat5201
         /// 成功回 true。
         /// </summary>
         public static bool RestoreNext(string? path) => Step(path, RedoDir(path), UndoDir(path));
+
+        /// <summary>簡報與它的對照 PDF 一起切版的結果。StaleCompanions＝沒跟上、仍停在原本那一版的檔案。</summary>
+        public sealed record StepResult(bool Ok, IReadOnlyList<string> RestoredCompanions, IReadOnlyList<string> StaleCompanions);
+
+        /// <summary>
+        /// 簡報切到上一版／下一版，對照 PDF 跟著切；PDF 切不動時解除配對，而不是假裝兩者一致。
+        ///
+        /// 2026-11-02 第三方審查（GPT）以暫存檔重現：簡報有上一版、PDF 沒有。
+        /// 簡報還原成功、PDF 還原回 false，但呼叫端不看結果，照樣把兩者重新登記成配對——
+        /// 雜湊對得上，預覽便顯示 PDF：「簡報是 v1、預覽是 v2」。
+        /// 這裡只把真的切過去的 PDF 登記回去；一份都沒有就登記成「無對照 PDF」，預覽改用簡報本身。
+        /// </summary>
+        /// <param name="companions">切版「之前」先問出來的對照 PDF（切完 pptx 雜湊就變了，問不出來）。</param>
+        public static StepResult StepWithCompanions(string path, IReadOnlyList<string> companions, bool forward)
+        {
+            bool ok = forward ? RestoreNext(path) : RestorePrevious(path);
+            if (!ok)
+                return new StepResult(false, Array.Empty<string>(), Array.Empty<string>());
+
+            var restored = new List<string>();
+            var stale = new List<string>();
+            foreach (var companion in companions ?? Array.Empty<string>())
+            {
+                bool moved = forward ? RestoreNext(companion) : RestorePrevious(companion);
+                (moved ? restored : stale).Add(companion);
+            }
+
+            // null＝解除配對：FindCompanionPdf 之後回 null，預覽不會再拿那份沒跟上的 PDF 出來。
+            GeneratedFileCompanion.Register(path, restored.FirstOrDefault());
+
+            if (stale.Count > 0)
+                AppLog.Warn("FileHistory",
+                    $"{Path.GetFileName(path)} 已切版，但 {stale.Count} 份對照 PDF 沒有對應的版本，已解除配對");
+
+            return new StepResult(true, restored, stale);
+        }
 
         /// <summary>
         /// 把 <paramref name="fromDir"/> 最新的一版蓋回原路徑，同時把原路徑現在的內容推進 <paramref name="toDir"/>。

@@ -43,14 +43,18 @@ namespace Cat5201
         /// <summary>
         /// 伺服器端清理舊工具結果的門檻（context editing）。
         ///
-        /// 沙箱迴圈每多跑一步，前面所有的 stdout、追蹤回溯、檔案清單就要再當作輸入送一次，
-        /// 費用隨步數平方成長——2026-10-15 一份京都簡報 12 分鐘 US$10.48，幾乎全是這樣堆出來的。
-        /// 超過門檻就把最舊的工具結果換成佔位字串（Claude 寫過的程式碼本身留著），
-        /// 只保留最近幾步；它要的是「我剛剛跑出什麼」，不是二十步前的那一段 stdout。
+        /// 這些數字是量出來的，不是猜的，而且方向跟直覺相反：
+        /// 清除看起來是在省「重複送舊 stdout」的錢，但每清一次就讓快取前綴失效、整段得重寫一遍。
+        /// 而讀快取只收一折、寫快取要收 1.25 倍——清掉 1 個 token 的讀取（省 0.1）
+        /// 要用重寫（付 1.25）去換，後面至少還要再跑十幾輪才回本。
+        ///
+        /// 2026-10-27 實測：門檻 6 萬時一趟清掉 84 萬 token，快取寫入從 133 萬暴增到 284 萬，
+        /// 整趟 US$4.64 → US$8.27。所以門檻拉高到接近上下文上限——
+        /// context editing 在這裡的價值是「不要撞到 100 萬的牆」，不是省錢。
         /// </summary>
-        private const int ContextEditTriggerTokens = 60_000;
-        private const int ContextEditKeepToolUses = 4;
-        private const int ContextEditClearAtLeastTokens = 10_000;
+        private const int ContextEditTriggerTokens = 400_000;
+        private const int ContextEditKeepToolUses = 6;
+        private const int ContextEditClearAtLeastTokens = 100_000;
 
         /// <summary>
         /// 一份文件（含重試）最多可以花多少錢。超過就停手，改用內建版型。
@@ -100,7 +104,11 @@ namespace Cat5201
         /// 也就是連線掛住，不是工作很久。總上限用來擋「真的跑很久」，擋不住「卡死」：
         /// 卡死要用「上一個事件到現在隔了多久」來判斷。
         /// </summary>
-        public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(150);
+        /// <remarks>
+        /// 從 150 秒放寬到 240 秒：計時器改成只有「真的有事件」才重設（ping 不算），
+        /// 沙箱裡一個跑比較久的步驟中間本來就會安靜一陣子，門檻太緊會誤殺。
+        /// </remarks>
+        public static readonly TimeSpan StallTimeout = TimeSpan.FromSeconds(240);
 
         /// <summary>
         /// 串流被中止時，用來補記「伺服器已經生成但我們看不到」的輸出量（token/秒）。
@@ -726,7 +734,8 @@ namespace Cat5201
         // ===== 內部 =====
 
         /// <summary>要帶進沙箱的檔案：已經上傳到 Files API，用 file_id 引用。</summary>
-        public sealed record ContainerFile(string FileId, string FileName);
+        /// <param name="Description">這個檔案是什麼（例如照片的主體），會寫進提示讓模型知道該放哪裡。</param>
+        public sealed record ContainerFile(string FileId, string FileName, string? Description = null);
 
         /// <summary>
         /// 這一次的失敗值得重來嗎。
@@ -744,7 +753,9 @@ namespace Cat5201
             string err = result.ErrorMessage ?? "";
             string[] permanent =
             {
-                "too long", "max_tokens", "invalid_request", "authentication", "費用上限",
+                // "too long" 不列永久失敗：整包過長多半是帶進去的檔案造成的，
+                // 呼叫端會改成不帶照片再試一次，那通常就過了（2026-10-27）。
+                "max_tokens", "invalid_request", "authentication", "費用上限",
                 "permission", "not_found", "拒絕", "找不到 ANTHROPIC_API_KEY",
             };
             foreach (var p in permanent)
@@ -776,13 +787,15 @@ namespace Cat5201
             // 而且之後每一輪還會以輸入的身分再被買一次。串流時它只出現在最後一個 message_delta。
             int thinking = ReadInt(usage["output_tokens_details"] as JsonObject, "thinking_tokens");
 
-            // 快取寫入 1.25 倍、讀取 0.1 倍輸入單價（Anthropic 官方計價）；沙盒時間每月 1,550 小時免費，超過 $0.05/小時，此處不計。
+            // 快取的計價交給 UsageMeter 統一處理（讀取 0.1 倍、寫入 1.25 倍），
+            // 這裡只負責把原值傳過去——token 數與費用分開，兩邊才不會各算各的。
+            // 沙盒時間每月 1,550 小時免費，超過 $0.05/小時，此處不計。
             string modelId = ModelCostEstimator.ResolvePricingModelId((string?)message["model"] ?? _model);
-            double cacheUsd =
-                ModelCostEstimator.FromUsage(modelId, cacheWrite, 0).UsdCost * ModelCostEstimator.CacheWriteMultiplier +
-                ModelCostEstimator.FromUsage(modelId, cacheRead, 0).UsdCost * ModelCostEstimator.CacheReadMultiplier(modelId);
 
-            var record = UsageMeter.RecordLlm(modelId, input, output, note: note, extraUsd: cacheUsd + Math.Max(0, extraUsd));
+            var record = UsageMeter.RecordLlm(modelId, input, output, note: note,
+                extraUsd: Math.Max(0, extraUsd),
+                cacheReadTokens: cacheRead,
+                cacheWriteTokens: cacheWrite);
 
             int cleared = 0;
             if (message["context_management"]?["applied_edits"] is JsonArray edits)
@@ -890,9 +903,19 @@ namespace Cat5201
             {
                 var probe = body.DeepClone().AsObject();
                 // count_tokens 不收 container（2026-10-15 實測 400：container: Extra inputs are not permitted），
-                // 所以量到的是「我們自己送的內容」，不含伺服器端的技能注入。
+                // 也不收 container_upload 這類檔案參照（2026-10-27 實測 400：File sources are not supported）。
+                // 兩者拿掉之後量到的是「我們自己打的字」，不含技能注入與照片——
+                // 擋不到技能爆量，但擋得到附件或上游內容把請求撐爆的情況。
                 foreach (var field in new[] { "max_tokens", "stream", "fallbacks", "cache_control", "container" })
                     probe.Remove(field);
+
+                foreach (var message in probe["messages"] as JsonArray ?? new JsonArray())
+                {
+                    if (message is not JsonObject m || m["content"] is not JsonArray blocks) continue;
+                    for (int i = blocks.Count - 1; i >= 0; i--)
+                        if ((string?)blocks[i]?["type"] == "container_upload")
+                            blocks.RemoveAt(i);
+                }
 
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(30));
@@ -944,8 +967,11 @@ namespace Cat5201
             private readonly Dictionary<int, StringBuilder> _partialJson = new();
 
             /// <param name="onActivity">
-            /// 每讀到一行就呼叫一次。呼叫端用它重設「沒動靜就放棄」的計時器——
-            /// 沒有這個回報，就只能用一個很長的總上限去等，而卡死跟工作很久看起來一模一樣。
+            /// 有**實質進展**時才呼叫（收到一個不是 ping 的事件）。呼叫端用它重設「沒動靜就放棄」的計時器。
+            ///
+            /// 2026-10-27 修正：原本是「每讀到一行就呼叫」，但伺服器會固定送 ping 保持連線，
+            /// 於是計時器被 ping 一直往後推，永遠不會到期——那次是 13.3 分鐘、1 輪 0 步、什麼都沒產出，
+            /// 從頭到尾只有 ping。心跳不是進展。
             /// </param>
             public async Task ReadAsync(TextReader reader, CancellationToken ct, Action? onActivity = null)
             {
@@ -962,12 +988,16 @@ namespace Cat5201
                     if (line == null)
                         break;
 
-                    onActivity?.Invoke();
-
                     if (line.Length == 0)
                     {
                         if (data.Length > 0)
+                        {
+                            // ping 是保持連線用的心跳，不代表模型有在產出任何東西。
+                            if (!string.Equals(eventName, "ping", StringComparison.OrdinalIgnoreCase))
+                                onActivity?.Invoke();
+
                             Apply(eventName, data.ToString());
+                        }
                         eventName = null;
                         data.Clear();
                         continue;
@@ -1075,6 +1105,12 @@ namespace Cat5201
                             foreach (var kv in du)
                                 mu[kv.Key] = kv.Value?.DeepClone();
                         }
+
+                        // context editing 的結果（applied_edits）跟 usage 一樣掛在事件最上層，不在 delta 裡。
+                        // 只撿 delta 與 usage 的話，就算伺服器真的清掉了舊工具結果，我們也永遠看不到
+                        // ——那等於開了一個功能卻無法確認它有沒有在跑。
+                        if (e["context_management"] is JsonObject cm)
+                            Message["context_management"] = cm.DeepClone();
                         break;
 
                     case "error":

@@ -74,7 +74,12 @@ namespace Cat5201
             ("nature", new[]
             {
                 "旅遊", "旅行", "自然", "生態", "海島", "島嶼", "海岸", "山林", "森林", "國家公園", "環境", "永續", "氣候", "農業", "野生",
-                "travel", "nature", "island", "ecology", "wildlife", "sustainable", "climate", "tourism"
+                // 天象與地貌：2026-10-27「冰島極光」一個關鍵字都沒中，落到 modern，
+                // 於是配圖變成棚拍玻璃雕塑。極光、冰川、火山這些本來就是該拍成照片的主體。
+                "極光", "星空", "夜空", "銀河", "天文", "冰川", "冰河", "火山", "峽灣", "瀑布", "湖泊",
+                "山脈", "高原", "沙漠", "草原", "風景", "景觀", "地貌", "季節", "候鳥", "海洋",
+                "travel", "nature", "island", "ecology", "wildlife", "sustainable", "climate", "tourism",
+                "aurora", "northern lights", "glacier", "volcano", "fjord", "landscape", "scenery", "stargazing"
             }),
             ("finance", new[]
             {

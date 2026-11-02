@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Text.RegularExpressions;
 
@@ -21,16 +21,31 @@ namespace Cat5201
             "No text, no words, no letters, no numbers, no watermark, no logo. " +
             "Not hand-drawn, not a sketch, not a doodle, not cartoon, not clip art, not a flat vector icon illustration.";
 
-        /// <summary>預設風格（無藝術方向時）：克制的抽象構成，不是資訊示意圖。</summary>
+        /// <summary>
+        /// 預設風格：先看主體是什麼，再決定要拍它還是隱喻它。
+        ///
+        /// 2026-10-27 修正：原本一律是「材質靜物／棚拍抽象構成」，於是一份冰島極光簡報
+        /// 生出了三張棚拍玻璃雕塑——畫質很好，但沒有一張是極光。
+        /// 極光、冰川、食物、建築這些本來就拍得到的主體，讀者期待的是那個東西的照片；
+        /// 抽象材質靜物只該用在「成長、流程、風險」這種拍不到的概念上。
+        /// 排除廉價畫風（手繪、卡通、clip art）的規則不變，那條當初是對的。
+        /// </summary>
         public const string StyleSuffix =
-            "Art-directed abstract composition for a professional presentation: one clear subject built from real materials, " +
-            "form and light — paper, glass, metal, stone, fabric or architectural geometry. Controlled studio lighting, " +
-            "restrained palette, generous negative space, high production value, editorial magazine quality. " + NoTextTail;
+            "If the subject above is something real that could be photographed — a place, a natural phenomenon, " +
+            "weather or sky, an animal, a plant, food, a building, an object or a material — then produce a high-end " +
+            "photograph of that subject itself, in the manner of a magazine feature or fine-art print. " +
+            "Only when the subject is an abstract idea with nothing to photograph should you instead build an " +
+            "art-directed still life from real materials (paper, glass, metal, stone, fabric) or architectural geometry. " +
+            "Either way: considered lighting, restrained palette, generous negative space, high production value, " +
+            "editorial magazine quality. " + NoTextTail;
 
         /// <summary>給「圖片 brief 萃取」LLM 的風格指示（中文，讓 Claude 寫出符合此風格的具體畫面）。</summary>
         public const string BriefStyleGuidance =
-            "風格固定為：有美術指導的『材質靜物 / 光影 / 幾何構成』畫面，用真實材質（紙、金屬、玻璃、石材、布料）或建築式幾何表達單一核心概念，" +
-            "棚拍級的光線控制、克制的色彩、大量留白、雜誌級質感；" +
+            "先判斷這一頁的主體是不是「拍得到的東西」（地點、自然現象、天象、動植物、食物、建築、器物、材質）：" +
+            "是的話就直接把那個主體寫成一張雜誌級攝影作品的畫面描述，不要繞成隱喻；" +
+            "只有當主體是拍不到的抽象概念（成長、流程、風險、策略）時，才改用有美術指導的『材質靜物 / 光影 / 幾何構成』" +
+            "（真實材質：紙、金屬、玻璃、石材、布料）來表達。" +
+            "兩者都要：講究的光線、克制的色彩、大量留白、雜誌級質感；" +
             "禁止手繪、草圖、卡通、扁平向量圖示、clip art 這類廉價畫風，也不要資訊圖表式的符號拼貼；畫面中不要出現任何文字。";
 
         /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -19,18 +19,25 @@ namespace Cat5201
             _router = router;
         }
 
-        public async Task<OutputIntent> ResolveAsync(string topText, CancellationToken ct = default)
+        /// <param name="scope">
+        /// 手動模式下用使用者選的模型判斷（2026-10-29 使用者指示）；
+        /// 那個模型不適合做這種短判斷時（例如 Deep Research），改走關鍵字，不換模型。
+        /// </param>
+        public async Task<OutputIntent> ResolveAsync(
+            string topText, CancellationToken ct = default, ModelScope? scope = null)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
+
+            string? model = (scope ?? ModelScope.Auto).HelperModel(AiModels.OpenAi_Gpt56);
+            if (model == null)
+                return OutputIntent.FromKeywords(topText);
 
             string raw;
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("輸出意圖判斷");
-                raw = await _router
-                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
-                    .GenerateAsync(BuildSystemPrompt(), BuildUserPrompt(topText), 200, ct);
+                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText), 200, ct);
             }
             catch
             {
@@ -57,17 +64,22 @@ namespace Cat5201
         /// 單獨判斷一段話有沒有「要配圖」的意思（預覽裡的單頁修改要求用）。
         /// 一樣是語意判斷：使用者用哪種語言講都要認得。API 不通才退回關鍵字。
         /// </summary>
-        public async Task<bool> WantsIllustrationsAsync(string? text, CancellationToken ct = default)
+        public async Task<bool> WantsIllustrationsAsync(
+            string? text, CancellationToken ct = default, ModelScope? scope = null)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return false;
+
+            string? model = (scope ?? ModelScope.Auto).HelperModel(AiModels.OpenAi_Gpt56);
+            if (model == null)
+                return AgentRuntime.PresentationWantsCoverImage(text);
 
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("配圖意圖判斷");
                 string raw = await _router
-                    .GetOpenAiService(AiModels.OpenAi_Gpt56)
-                    .GenerateAsync(
+                    .GenerateTextAsync(
+                        model,
                         "你判斷一句話有沒有『要求在文件／投影片裡加入圖片』的意思（配圖、插圖、照片、換一張圖…）。" +
                         "使用者可能用任何語言。明說不要圖時回 false。只輸出 JSON：{\"illustrations\": true/false}",
                         $"這句話：\n{text}\n\n請輸出 JSON。", 60, ct);

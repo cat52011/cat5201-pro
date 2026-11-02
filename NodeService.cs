@@ -289,8 +289,27 @@ namespace Cat5201
         /// <summary>
         /// 一段話有沒有「要配圖」的意思。語意判斷（任何語言都認得），API 不通才退回關鍵字。
         /// </summary>
-        public Task<bool> WantsIllustrationsAsync(string? text, CancellationToken ct)
-            => _outputIntentResolver.WantsIllustrationsAsync(text, ct);
+        public Task<bool> WantsIllustrationsAsync(string? text, CancellationToken ct, NodeControl? node = null)
+            => _outputIntentResolver.WantsIllustrationsAsync(text, ct, ScopeFor(node));
+
+        /// <summary>
+        /// 這個節點這次執行可以呼叫哪些模型。手動模式＝先用使用者選的那一個；
+        /// 確定失敗時才換，並告知使用者（2026-10-29 使用者指示）。
+        /// 沒有節點可參照時（例如預覽裡的單句判斷沒帶節點）退回 Auto 的行為。
+        /// </summary>
+        private ModelScope ScopeFor(NodeControl? node)
+        {
+            if (node == null) return ModelScope.Auto;
+
+            // 協作模式也算使用者選定：幫手只用協作名單的第一個模型。
+            var collaborators = _main.GetNodeCollaborationModels(node);
+            if (ModelCollaboration.IsActive(collaborators))
+                return ModelScope.Manual(ModelCollaboration.Normalize(collaborators)[0]);
+
+            return _main.IsAutoModelSelectionEnabled()
+                ? ModelScope.Auto
+                : ModelScope.Manual(_main.GetNodeSelectedModel(node));
+        }
 
         // 單頁配圖：預覽裡替某一頁重新生成／新增配圖（失敗時 Error 是可直接顯示的中文原因）。
         public async Task<(byte[]? Png, string Error)> RegenerateSlideImageAsync(
@@ -302,7 +321,7 @@ namespace Cat5201
 
         // §6 第一層輸出判斷：先跑一次（便宜的）API 決定要簡報/報告/表格之中哪幾個。
         // 只有「看起來要產出檔案」時才呼叫，純聊天不浪費一次 API。
-        private async Task<OutputIntent?> ResolveOutputIntentAsync(string topText, CancellationToken ct)
+        private async Task<OutputIntent?> ResolveOutputIntentAsync(string topText, ModelScope scope, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
@@ -313,7 +332,7 @@ namespace Cat5201
             // 做語意判斷；它輸出極小、只送使用者那句話，成本可忽略。LLM 失敗才退回關鍵字。
             try
             {
-                return await _outputIntentResolver.ResolveAsync(topText, ct);
+                return await _outputIntentResolver.ResolveAsync(topText, ct, scope);
             }
             catch
             {
@@ -323,7 +342,7 @@ namespace Cat5201
 
         public async Task<string> GenerateAsync(NodeControl node, string topText, CancellationToken ct)
         {
-            if (_main.TryBuildInputFromFirstUpstream(node, out var injectedTopText))
+            if (_main.TryBuildInputFromUpstreams(node, out var injectedTopText))
                 topText = injectedTopText;
 
             if (string.IsNullOrWhiteSpace(topText))
@@ -338,20 +357,23 @@ namespace Cat5201
                 var workspace = new AgentWorkspace();
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(topText, ct);
+                var outputIntentTask = ResolveOutputIntentAsync(topText, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
                     Node = node,
                     Agent = agent,
                     TopText = topText,
+                    OwnInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText),
                     UseStreaming = false,
                     OnDelta = null,
                     CancellationToken = ct,
                     SkipCapabilities = ShouldSkipCapabilities(topText),
                     Workspace = workspace,
                     PreferenceBlock = _memoryService.GetPreferenceBlock(),
-                    OutputIntentTask = outputIntentTask
+                    OutputIntentTask = outputIntentTask,
+                    // 協作模式：這個節點指定由哪幾個模型一起回答。
+                    CollaborationModels = _main.GetNodeCollaborationModels(node)
                 });
 
                 // 這時候一定已經完成（AgentRuntime 內部先 await 過），拿來做決策窗顯示。
@@ -476,7 +498,7 @@ namespace Cat5201
             Action<string> onDelta,
             CancellationToken ct)
         {
-            if (_main.TryBuildInputFromFirstUpstream(node, out var injectedTopText))
+            if (_main.TryBuildInputFromUpstreams(node, out var injectedTopText))
                 topText = injectedTopText;
 
             if (string.IsNullOrWhiteSpace(topText))
@@ -504,7 +526,7 @@ namespace Cat5201
             string input = last?.OriginalInput ?? "";
 
             if (string.IsNullOrWhiteSpace(input) &&
-                _main.TryBuildInputFromFirstUpstream(node, out var injected))
+                _main.TryBuildInputFromUpstreams(node, out var injected))
             {
                 input = injected;
             }
@@ -588,20 +610,23 @@ namespace Cat5201
             {
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(topText, ct);
+                var outputIntentTask = ResolveOutputIntentAsync(topText, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
                     Node = node,
                     Agent = agent,
                     TopText = topText,
+                    OwnInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText),
                     UseStreaming = true,
                     OnDelta = onDelta,
                     CancellationToken = ct,
                     SkipCapabilities = skipCapabilities,
                     Workspace = workspace,
                     PreferenceBlock = _memoryService.GetPreferenceBlock(),
-                    OutputIntentTask = outputIntentTask
+                    OutputIntentTask = outputIntentTask,
+                    // 協作模式：這個節點指定由哪幾個模型一起回答。
+                    CollaborationModels = _main.GetNodeCollaborationModels(node)
                 });
 
                 // 這時候一定已經完成（AgentRuntime 內部先 await 過），拿來做決策窗顯示。
@@ -839,6 +864,9 @@ namespace Cat5201
                 decision.TaskMode,
                 applyUserCostBlock);
 
+            // 手動模式：所選模型確定失敗時仍會往下換可用的模型，但一定告知使用者
+            // （2026-10-29 使用者指示）。告知由 AgentRuntime 包住這個執行器統一處理，
+            // 見 AgentRuntime.RecordModelSwitch——這裡維持原本的候選鏈。
             if (decision.ForceSingleModel)
             {
                 var forcedModel = AiModelHelper.NormalizeNodeModel(decision.ModelId);
@@ -1398,8 +1426,16 @@ namespace Cat5201
             if (flowContext.StepCount >= AutoFlowMaxSteps)
                 return;
 
-            var downstreamNodes = _main.GetDownstreamNodes(currentNode);
-            if (downstreamNodes == null || downstreamNodes.Count == 0)
+            // 流動連線（藍色虛線）由 MainWindow.RunFlowWorkflowAsync 負責，這裡不碰。
+            // 2026-11-02 第二輪手測：匯流節點 C 連跑兩次（各 34 秒、各搜尋一次）。
+            // B 跑完時，這個迴圈先沿流動連線把 C 跑完一遍；回到 NodeControl 後，
+            // 流動排程又把 B 當起點、把已完成的 A 當成滿足條件，再跑一遍 C。
+            // 兩條路各自都只放行一次，但加起來就是兩次——同一條連線只能有一個主人。
+            var flowOwned = _main.GetFlowDownstreamNodes(currentNode);
+            var downstreamNodes = (_main.GetDownstreamNodes(currentNode) ?? Array.Empty<NodeControl>())
+                .Where(n => !flowOwned.Contains(n))
+                .ToList();
+            if (downstreamNodes.Count == 0)
                 return;
 
             foreach (var nextNode in downstreamNodes)
@@ -1426,6 +1462,21 @@ namespace Cat5201
 
                 if (!_main.NodeAcceptsAutoFlowInput(nextNode))
                     continue;
+
+                // 匯流：下游還有其他上游沒跑完（或正在跑）時先不啟動，等最後一個上游完成再由它觸發。
+                // 2026-10-29 實測：A 一跑完就把匯流節點 C 叫起來，C 的輸入只有 A（B 還在跑），
+                // B 跑完又再叫一次——C 前後跑了兩遍，第一遍根本沒看到 B。流動排程有這道閘門，這條路沒有。
+                var otherUpstreams = _main.GetUpstreamNodes(nextNode)
+                    .Where(u => !ReferenceEquals(u, currentNode))
+                    .ToList();
+                var notReady = otherUpstreams
+                    .Where(u => u.IsGenerating || !string.Equals(u.GetRunStatusKey(), "success", StringComparison.Ordinal))
+                    .ToList();
+                if (notReady.Count > 0)
+                {
+                    AppLog.Info("Flow", $"匯流節點還在等其他上游（{notReady.Count} 個），這次先不啟動");
+                    continue;
+                }
 
                 bool prepared = _main.TryPrepareAutoFlowInput(currentNode, nextNode);
                 if (!prepared)

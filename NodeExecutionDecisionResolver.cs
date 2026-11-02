@@ -40,6 +40,31 @@ namespace Cat5201
             string selectedModel = _main.GetNodeSelectedModel(node);
             var attachments = _main.GetAttachmentsForNode(node);
 
+            // ===== 協作：使用者指定了一起回答的模型，不再問 Auto 該用誰 =====
+            // （Auto 的模型自動選擇本身會呼叫 GPT——協作節點限定了模型，名單外的不該進來。）
+            var collaborators = _main.GetNodeCollaborationModels(node);
+            if (ModelCollaboration.IsActive(collaborators))
+            {
+                var collab = ModelCollaboration.Normalize(collaborators);
+                return new NodeExecutionDecision
+                {
+                    RequestedAgentId = selectedAgent.Id,
+                    ActualAgentId = selectedAgent.Id,
+                    RequestedModelId = collab[0],
+                    ModelId = collab[0],
+                    TaskMode = NodeTaskModeHelper.Normalize(_main.GetNodeTaskMode(node)),
+                    ResolverLabel = "Collaboration",
+                    StatusLabel = "Collaboration",
+                    Confidence = 1.0,
+                    ResolverReason = "協作模式：" + string.Join("、",
+                        collab.Select(id => AiModelRegistry.Find(id)?.DisplayName ?? id)) + " 一起回答。",
+                    ResolverKeywords = Array.Empty<string>(),
+                    UsedApiResolver = false,
+                    UsedFallbackToRules = false,
+                    UseStreaming = true
+                };
+            }
+
             // ===== Manual：保留原本手動 agent =====
             if (!_main.IsAutoModelSelectionEnabled())
             {

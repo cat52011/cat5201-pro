@@ -51,6 +51,12 @@ namespace Cat5201
         {
             string originalQuery = context.TopText ?? "";
 
+            // 手動模式：搜尋研究先用使用者選的那個模型（2026-10-29 使用者指示）。
+            // 以前這裡一律用建構時寫死的 openai/gpt-5.6-sol，選 Claude 的人背後其實是 GPT 在做研究，而且沒講。
+            // 所選模型在搜尋服務上沒有、或它的搜尋確定失敗時，改用預設模型完成，並在答案最上方告知。
+            var scope = context.Scope ?? ModelScope.Auto;
+            var (agentModel, switchNotice) = ResolveSearchModel(scope, _service.AgentModelId);
+
             try
             {
                 // 只有真正的財經意圖（財報 / 股價 / 營收…）或 cashtag 才走報價卡財經研究。
@@ -58,8 +64,29 @@ namespace Cat5201
                 bool financeQuery = FinanceTaskDetector.IsFinanceFocused(originalQuery);
 
                 if (financeQuery)
-                    return await ExecuteAuthoritativeFinanceResearchAsync(originalQuery, ct);
+                {
+                    AgentCapabilityResult finance;
+                    try
+                    {
+                        finance = await ExecuteAuthoritativeFinanceResearchAsync(originalQuery, agentModel, ct);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException &&
+                                               !string.Equals(agentModel, _service.AgentModelId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        // 所選模型的搜尋確定失敗（例如該型號不支援搜尋工具）：換預設模型重做一次，並且講。
+                        AppLog.Warn("Search", $"所選模型 {agentModel} 搜尋失敗，改用 {_service.AgentModelId}", ex);
+                        switchNotice = ModelSwitchNotice.ForSearch(
+                            scope.SelectedModelId, _service.AgentModelId, "執行失敗（" + Shorten(ex.Message, 80) + "）");
+                        agentModel = _service.AgentModelId;
+                        finance = await ExecuteAuthoritativeFinanceResearchAsync(originalQuery, agentModel, ct);
+                    }
 
+                    finance.Notice = switchNotice ?? "";
+                    return finance;
+                }
+
+                // 一般研究走 Perplexity Search API：回傳的是連結清單，沒有語言模型參與，
+                // 所以不受「手動只用所選模型」限制——讀這些結果、寫答案的仍是使用者選的模型。
                 return await ExecuteGeneralSearchAsync(originalQuery, ct);
             }
             catch (OperationCanceledException)
@@ -72,9 +99,23 @@ namespace Cat5201
                 // 但明確標 Status=service_failed：下游（FreshDataAssessment）據此交付部分結果、決策窗顯示未查證，
                 // 不能因為「有 search_summary 物件」就被當成已取得即時資料。
                 AppLog.Warn("Search", "搜尋服務失敗", ex);
-                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                return AgentCapabilityResult.WithData("search_summary", modelId: agentModel, value: Unavailable(
                     originalQuery, SearchStatus.ServiceFailed, Shorten(ex.Message, 160)));
             }
+        }
+
+        /// <summary>
+        /// 這次搜尋研究用哪個模型；所選模型在搜尋服務上沒有時改用預設，並附上要給使用者看的說明。
+        /// 說明為 null＝沒有換。
+        /// </summary>
+        internal static (string Model, string? Notice) ResolveSearchModel(ModelScope scope, string defaultAgentModel)
+        {
+            string? chosen = (scope ?? ModelScope.Auto).SearchAgentModel(defaultAgentModel);
+            if (chosen != null)
+                return (chosen, null);
+
+            return (defaultAgentModel,
+                ModelSwitchNotice.ForSearch(scope!.SelectedModelId, defaultAgentModel, "無法在搜尋服務上執行"));
         }
 
         private static SearchSummaryPayload Unavailable(string query, string status, string detail)
@@ -94,6 +135,7 @@ namespace Cat5201
 
         private async Task<AgentCapabilityResult> ExecuteAuthoritativeFinanceResearchAsync(
             string originalQuery,
+            string agentModel,
             CancellationToken ct)
         {
             string tickers = string.Join(", ", DetectTickers(originalQuery));
@@ -191,18 +233,20 @@ Quote Source:
                 userText: originalQuery,
                 enableWebSearch: true,
                 maxOutputTokens: 4000,
-                ct: ct);
+                ct: ct,
+                modelOverride: agentModel);
 
             if (string.IsNullOrWhiteSpace(answer))
             {
                 // 舊版在這裡直接把一句英文錯誤當成節點最終答案、還標成功。改成「沒有結果」讓主流程交付部分結果。
-                return AgentCapabilityResult.WithData("search_summary", Unavailable(
+                return AgentCapabilityResult.WithData("search_summary", modelId: agentModel, value: Unavailable(
                     originalQuery, SearchStatus.NoResults, "金融研究沒有回傳任何內容"));
             }
 
             return await BuildAuthoritativeFinanceResultAsync(
                 originalQuery,
                 answer,
+                agentModel,
                 ct);
         }
 
@@ -250,6 +294,8 @@ Quote Source:
                 Items = items
             };
 
+            // Search API 只回連結清單，沒有語言模型參與——產物不掛任何模型 id，
+            // 決策窗的「模型」欄才不會又多出一個沒有跑過的模型（今天稍早我自己就把它標錯了）。
             var result = AgentCapabilityResult.WithData("search_summary", payload);
 
             var verifiedFacts = BuildVerifiedFacts(originalQuery, items);
@@ -262,6 +308,7 @@ Quote Source:
         private async Task<AgentCapabilityResult> BuildAuthoritativeFinanceResultAsync(
             string query,
             string answer,
+            string agentModel,
             CancellationToken ct)
         {
             string now = DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss 'UTC'");
@@ -277,6 +324,7 @@ Quote Source:
                     query ?? "",
                     cleanedAnswer,
                     officialFactRequests,
+                    agentModel,
                     ct);
 
                 if (!string.IsNullOrWhiteSpace(repairAnswer))
@@ -301,6 +349,7 @@ Quote Source:
                     query ?? "",
                     cleanedAnswer,
                     quoteFactRequests,
+                    agentModel,
                     ct);
 
                 if (!string.IsNullOrWhiteSpace(quoteRepairAnswer))
@@ -343,7 +392,7 @@ Quote Source:
                 Facts = facts
             };
 
-            var result = AgentCapabilityResult.WithData("verified_facts", verifiedPayload);
+            var result = AgentCapabilityResult.WithData("verified_facts", verifiedPayload, agentModel);
             result.Data["search_summary"] = searchPayload;
 
             return result;
@@ -432,6 +481,7 @@ Quote Source:
             string query,
             string firstAnswer,
             IReadOnlyList<string> missingFacts,
+            string agentModel,
             CancellationToken ct)
         {
             if (missingFacts == null || missingFacts.Count == 0)
@@ -497,7 +547,8 @@ Official Earnings Source:
                 userText: query,
                 enableWebSearch: true,
                 maxOutputTokens: 2500,
-                ct: ct);
+                ct: ct,
+                modelOverride: agentModel);
         }
 
         /// <summary>
@@ -544,6 +595,7 @@ Official Earnings Source:
             string query,
             string firstAnswer,
             IReadOnlyList<string> missingQuotes,
+            string agentModel,
             CancellationToken ct)
         {
             if (missingQuotes == null || missingQuotes.Count == 0)
@@ -610,7 +662,8 @@ Quote Source:
                 userText: query,
                 enableWebSearch: true,
                 maxOutputTokens: 1800,
-                ct: ct);
+                ct: ct,
+                modelOverride: agentModel);
         }
 
         private static IReadOnlyList<string> BuildMissingQuoteFactRequests(
@@ -984,6 +1037,7 @@ Quote Source:
                     : evidence.Trim(),
                 SourceUrl = ExtractUrl(evidence),
                 Confidence = ResolveConfidence(evidence),
+                SourceVerification = ResolveSourceVerification(evidence),
                 OwnerAgentId = FactOwnership.ResearchAgent,
                 OwnerCapabilityId = FactOwnership.SearchCapability,
                 AuthorityLevel = ResolveFinanceAuthority(factType, evidence),
@@ -1011,6 +1065,14 @@ Quote Source:
                 "; pre_market_price=" + AvailabilityLabel(preMarketPrice) +
                 "; realtime_price=not_available";
 
+            // 四個時段全部沒取得，這筆就不是「報價資料」，只是一句「沒有報價」。
+            // 2026-10-27 第三方審查實測：它照樣掛 market_quote，於是上層把整次查詢判成
+            // 已查證（verified）——一筆資料都沒有，卻告訴使用者查證過了。
+            bool anyQuote =
+                AvailabilityLabel(regularClosePrice) == "available" ||
+                AvailabilityLabel(afterHoursPrice) == "available" ||
+                AvailabilityLabel(preMarketPrice) == "available";
+
             facts.Add(new VerifiedFactItem
             {
                 Subject = subject.Trim(),
@@ -1020,10 +1082,12 @@ Quote Source:
                 AsOf = now,
                 SourceTitle = "Perplexity Sonar finance research",
                 SourceUrl = "",
-                Confidence = "high",
+                Confidence = anyQuote ? "high" : "low",
                 OwnerAgentId = FactOwnership.ResearchAgent,
                 OwnerCapabilityId = FactOwnership.SearchCapability,
-                AuthorityLevel = FactOwnership.AuthorityMarketQuote,
+                AuthorityLevel = anyQuote
+                    ? FactOwnership.AuthorityMarketQuote
+                    : FactOwnership.AuthoritySearchContext,
                 UsageRole = FactOwnership.UsageBackgroundContext
             });
         }
@@ -1037,24 +1101,113 @@ Quote Source:
 
         /// <summary>
         /// 這類數字「最高」可以掛到哪一級，以及實際掛到哪一級。
-        /// factType 只決定上限；沒有可點開的來源網址時一律降到 search_context——
-        /// 說「官方來源」卻拿不出那份官方文件，等於在替沒查證的數字背書。
+        ///
+        /// factType 只決定上限。實際等級取決於來源網址：
+        ///  · 沒有可點開的網址 → search_context
+        ///  · 有網址但不是官方網域 → 最高只到 trusted_news
+        ///  · 是官方網域（IR 站、交易所、主管機關）→ 才可以掛到 factType 的上限
+        ///
+        /// 2026-10-27 第三方審查實測：來源填 https://untrusted.example/blog 的營收數字
+        /// 會被標成 official / high。「有網址」不等於「那份文件支持這個數字」，
+        /// 而使用者看到「官方來源」就會降低戒心——標籤比證據更肯定，決策窗反而害人。
         /// </summary>
         internal static string ResolveFinanceAuthority(string factType, string evidence)
-            => string.IsNullOrWhiteSpace(ExtractUrl(evidence))
-                ? FactOwnership.AuthoritySearchContext
-                : ResolveFinanceAuthority(factType);
+        {
+            string url = ExtractUrl(evidence);
+            if (string.IsNullOrWhiteSpace(url))
+                return FactOwnership.AuthoritySearchContext;
+
+            string ceiling = ResolveFinanceAuthority(factType);
+
+            // 身分驗證得出來（白名單）才給 factType 允許的上限。
+            if (IsOfficialSourceUrl(url))
+                return ceiling;
+
+            // 其餘一律 search_context：我們只知道「模型引了一個網址」，
+            // 既不知道那是誰的網站，也不知道那一頁是否支持這個數字。
+            // 上一版給到 trusted_news，等於把「有網址」當成「可信」——那一步跳太快。
+            return FactOwnership.AuthoritySearchContext;
+        }
+
+        /// <summary>
+        /// 這個網址的「身分」是不是驗證得出來。
+        ///
+        /// 關鍵認知：網址字串**不能**證明網站屬於誰，更不能證明頁面支持那個數字。
+        /// 2026-10-28 AI 輔助審查用四個合成網址打穿了上一版的外觀規則：
+        ///   untrusted.example/investor/fake  → 路徑含 /investor 就當官方
+        ///   investor.untrusted.example/fake  → 子網域叫 investor 就當官方
+        ///   sec.gov.untrusted.example/fake   → 主機名含 .gov. 就當官方（典型的後綴比對寫錯）
+        /// 所以這裡改成唯一誠實的作法：**只信一份寫死的名單**（主管機關與交易所，身分可查），
+        /// 而且用真正的網域後綴比對。名單外一律不給官方等級——寧可低估。
+        ///
+        /// 這只回答「這個主機是不是那個機關」，仍然沒有回答「這一頁是否支持這個數字」。
+        /// 後者需要抓取原文並比對，屬於未完成的工作，見報告的研究限制一節。
+        /// </summary>
+        internal static bool IsOfficialSourceUrl(string? url)
+        {
+            if (string.IsNullOrWhiteSpace(url))
+                return false;
+
+            if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsed))
+                return false;
+
+            if (parsed.Scheme != Uri.UriSchemeHttp && parsed.Scheme != Uri.UriSchemeHttps)
+                return false;
+
+            string host = parsed.Host.ToLowerInvariant().TrimEnd('.');
+            return OfficialHosts.Any(d => HostIsUnder(host, d));
+        }
+
+        /// <summary>主機是不是這個網域本身或它的子網域（不是「含有這段字」）。</summary>
+        internal static bool HostIsUnder(string host, string domain)
+            => string.Equals(host, domain, StringComparison.Ordinal)
+               || host.EndsWith("." + domain, StringComparison.Ordinal);
+
+        /// <summary>
+        /// 可以掛「官方」的網域白名單：主管機關與交易所。
+        /// 公司自己的 IR 站不在此列——我們無法從網址確認 investor.某某.com 真的屬於那家公司。
+        /// </summary>
+        private static readonly string[] OfficialHosts =
+        {
+            "sec.gov", "investor.gov", "federalreserve.gov",
+            "twse.com.tw", "tpex.org.tw", "mops.twse.com.tw", "sfb.gov.tw",
+            "jpx.co.jp", "edinet-fsa.go.jp", "fsa.go.jp",
+            "hkex.com.hk", "sgx.com", "londonstockexchange.com", "nasdaq.com", "nyse.com",
+        };
 
         /// <summary>
         /// 證據強度 → 信心標籤。
-        /// high＝有可點開的網址；medium＝有來源敘述但沒有網址；low＝完全沒有來源。
+        ///
+        /// high＝來源身分驗證得出來（白名單網域）；
+        /// medium＝有可點開的網址，但不知道是誰的；
+        /// low＝連網址都沒有。
+        ///
+        /// 上一版只要有網址就給 high，於是一個部落格連結也是「高信心」——
+        /// 信心標籤講的應該是證據強度，不是「有沒有附連結」。
         /// </summary>
         internal static string ResolveConfidence(string evidence)
         {
-            if (!string.IsNullOrWhiteSpace(ExtractUrl(evidence)))
-                return "high";
+            string url = ExtractUrl(evidence);
+            if (string.IsNullOrWhiteSpace(url))
+                return string.IsNullOrWhiteSpace(evidence) ? "low" : "medium";
 
-            return string.IsNullOrWhiteSpace(evidence) ? "low" : "medium";
+            // 白名單只證明網域歸屬，不證明那一頁存在、也不證明它支持這個數字
+            //（https://www.sec.gov/not-a-real-document 一樣會通過網域比對）。
+            // 所以信心由證據階段封頂：沒核對過原文，就不給 high。
+            string raw = IsOfficialSourceUrl(url) ? "high" : "medium";
+            return FactOwnership.CapConfidence(raw, ResolveSourceVerification(evidence));
+        }
+
+        /// <summary>這段來源敘述的證據走到哪一階段。目前最高只到「網域在白名單上」。</summary>
+        internal static string ResolveSourceVerification(string? evidence)
+        {
+            string url = ExtractUrl(evidence);
+            if (string.IsNullOrWhiteSpace(url))
+                return FactOwnership.SourceUnverified;
+
+            return IsOfficialSourceUrl(url)
+                ? FactOwnership.SourceDomainAllowlisted
+                : FactOwnership.SourceUnverified;
         }
 
         /// <summary>從來源欄位原文裡抓出第一個網址；沒有就回空字串。</summary>

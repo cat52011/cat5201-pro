@@ -54,9 +54,11 @@ namespace Cat5201.Tests
         [Fact]
         public void PerplexityAgentGpt56_UsesProviderListPrice_NotOpenAiPromo()
         {
-            // Perplexity 官方：第三方模型依原廠直售價（$5/$30），不是 OpenAI 直連的促銷價 $4/$20。
+            // 2026-09-17 讀到的是 $5/$30；2026-10-29 Perplexity Agent API 型號頁列的是 $4/$20（≤272k 輸入）。
+            // 舊值讓 2026-10-29 九次評測的搜尋成本高估約兩成五。
+            // 有 API 回報金額時一律用回報值，這個價目只是後備估算。
             var e = ModelCostEstimator.FromUsage(ModelCostEstimator.ResolvePricingModelId("openai/gpt-5.6-sol"), 1_000_000, 1_000_000);
-            Assert.Equal(35.0, e.UsdCost, 6);
+            Assert.Equal(24.0, e.UsdCost, 6);
         }
 
         [Fact]

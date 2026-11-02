@@ -50,11 +50,14 @@ namespace Cat5201.Tests
             public string GetAttachmentsRootDir() => Dir;
             public string GetGeneratedFilesDir() => Dir;
             public void SetLiveDecisionResolving(INodeContext node, NodeExecutionDecision decision) { }
-            public Task<bool> ConfirmGenerationAsync(OrchestrationTaskType t, OutputIntent? i)
+            public Task<GenerationApproval> ConfirmGenerationAsync(
+                OrchestrationTaskType t, OutputIntent? i, GenerationChoices choices)
             {
                 ConfirmCalls++;
-                return Task.FromResult(true);
+                return Task.FromResult(GenerationApproval.Accepted);
             }
+
+            public string GetNodeSelectedModel(INodeContext node) => "";
         }
 
         private sealed class FakeResolver : IExecutionDecisionResolver

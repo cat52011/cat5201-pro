@@ -51,7 +51,8 @@ namespace Cat5201
         public async Task<ImageResult> GenerateAsync(
             string prompt,
             string size = "1024x1024",
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            string quality = ImageQuality.High)
         {
             if (string.IsNullOrWhiteSpace(prompt))
             {
@@ -65,9 +66,9 @@ namespace Cat5201
             bool isDalle3 = _model.StartsWith("dall-e-3", StringComparison.OrdinalIgnoreCase);
 
             object payload = isGptImage
-                ? new { model = _model, prompt, n = 1, size, quality = "high" }
+                ? new { model = _model, prompt, n = 1, size, quality = ImageQuality.Normalize(quality) }
                 : isDalle3
-                    ? (object)new { model = _model, prompt, n = 1, size, quality = "hd" }
+                    ? (object)new { model = _model, prompt, n = 1, size, quality = ImageQuality.ToDalle3(quality) }
                     : new { model = _model, prompt, n = 1, size };
 
             try
@@ -109,7 +110,7 @@ namespace Cat5201
                 }
 
                 // API 回了圖＝已計費（之後下載失敗也一樣），此刻入帳。gpt-image 以尺寸/品質估價。
-                RecordImageUsage(_model, size, "圖片生成", prompt);
+                RecordImageUsage(_model, size, "圖片生成", prompt, quality);
 
                 var first = data[0];
 
@@ -173,12 +174,16 @@ namespace Cat5201
             }
         }
 
-        private static void RecordImageUsage(string model, string size, string defaultPurpose, string? prompt = null)
+        private static void RecordImageUsage(
+            string model, string size, string defaultPurpose, string? prompt = null, string quality = ImageQuality.High)
         {
             // 呼叫端有標用途（例：I2V 英雄圖、報告配圖）就用它；沒有才用預設。
             string? purpose = UsageMeter.CurrentPurpose == UsageMeter.DefaultPurpose ? defaultPurpose : null;
+
+            // 品質一定要跟著傳進來：這裡以前寫死 "high"，改用 medium 之後帳面就會比實際貴四倍。
             UsageMeter.RecordMetered(UsageKinds.Image, model, 1, "張",
-                ModelCostEstimator.ImageCallCostUsd(size, "high", prompt), isActual: false, note: size, purpose: purpose);
+                ModelCostEstimator.ImageCallCostUsd(size, quality, prompt), isActual: false,
+                note: size + "/" + ImageQuality.Normalize(quality), purpose: purpose);
         }
 
         /// <summary>

@@ -52,6 +52,7 @@ namespace Cat5201
             {
                 "API Auto" => "API Auto",
                 "Auto" => "Rule Auto",
+                "Collaboration" => "協作",
                 _ => "Manual"
             };
 
@@ -197,6 +198,10 @@ namespace Cat5201
             if (!string.IsNullOrWhiteSpace(log.OutputIntentSummary))
                 lines.Add($"🎯 想要的輸出：{Safe(log.OutputIntentSummary)}");
 
+            // 各步驟實際收到了什麼——「要求有沒有傳到」要能查，不能只靠設計上應該如此。
+            foreach (string line in BuildStepInputLines(log))
+                lines.Add(line);
+
             var recall = log.MemoryRecall ?? MemoryRecallStats.Empty;
             if (recall.Suppressed)
                 lines.Add("🧠 記憶：本次略過");
@@ -291,12 +296,45 @@ namespace Cat5201
         }
 
         /// <summary>
+        /// 「各步驟實際收到了什麼」的顯示行。
+        /// 每一步：用途、模型、字數、有沒有完整包含這個節點的原始要求、內容雜湊。
+        /// 雜湊對得上完整內容檔，才算證明——不然就只是一句「有傳到」。
+        /// </summary>
+        internal static IEnumerable<string> BuildStepInputLines(AiExecutionLogEntry log)
+        {
+            var steps = log?.StepInputs ?? Array.Empty<StepInputRecord>();
+            if (steps.Count == 0)
+                yield break;
+
+            int missing = steps.Count(s => !s.ContainsOriginalRequest);
+            yield return missing == 0
+                ? $"📥 各步驟收到的內容：{steps.Count} 步，每一步都完整包含原始要求"
+                : $"📥 各步驟收到的內容：{steps.Count} 步，其中 {missing} 步**沒有完整包含**原始要求";
+
+            foreach (var s in steps)
+            {
+                string model = string.IsNullOrWhiteSpace(s.ModelId) ? "—" : ParticipantLabel(s.ModelId);
+                yield return $"　· {s.Step}｜{model}｜{s.Chars:N0} 字｜" +
+                             (s.ContainsOriginalRequest ? "含原始要求 ✓" : "未完整包含原始要求 ✗") +
+                             $"｜{s.Sha256}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(log!.StepInputLogPath))
+                yield return $"　完整內容：{log.StepInputLogPath}";
+        }
+
+        /// <summary>
         /// 參與清單專用的模型標籤。GetModelLabel 對「不在 LLM 名錄裡」的 ID（圖片、影片、搜尋服務）
         /// 會退回預設模型的名字——那等於把 gpt-image-2 寫成一個語言模型的名字，是假資訊。
         /// 這裡認不得就照實顯示原始 ID。
         /// </summary>
         private static string ParticipantLabel(string modelId)
         {
+            // 經 Perplexity Agent API 跑的模型（例如 anthropic/claude-sonnet-5-5）：
+            // 模型就是使用者認得的那一個，只是搜尋是透過 Perplexity 的服務做的——兩件事都照實寫。
+            if (ModelScope.IsAgentApiModel(modelId))
+                return ParticipantLabel(ModelScope.FromAgentApiModel(modelId)) + " 經 Perplexity";
+
             var legacy = AiModelRegistry.TryGetLegacyDisplayName(modelId);
             if (legacy != null) return legacy;
 
@@ -368,6 +406,22 @@ namespace Cat5201
             }
 
             Add(primaryModelLabel);
+
+            // 有逐筆帳目就以帳目為準：真的被呼叫、真的計費的每一個模型都列出來。
+            // 2026-10-29 使用者回報：協作模式兩個模型一起回答，「模型」欄卻只寫 GPT-5.6 Sol——
+            // 原本這一欄只看「主模型＋產出物上掛的模型」，協作的第二個模型、Auto 的模型自動選擇、
+            // 文件技能、配圖模型都不在裡面。搜尋 API 回傳的是連結清單、不是模型，不列。
+            var usage = (log.UsageRecords ?? Array.Empty<UsageRecord>())
+                .Where(u => u != null && !string.IsNullOrWhiteSpace(u.ModelId) &&
+                            !string.Equals(u.Kind, UsageKinds.Search, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            if (usage.Count > 0)
+            {
+                foreach (var u in usage)
+                    Add(ParticipantLabel(ModelScope.FromAgentApiModel(u.ModelId)));
+                return labels;
+            }
+
             foreach (var a in log.WorkspaceArtifacts ?? Array.Empty<AgentWorkspaceArtifactRecord>())
             {
                 if (a == null || string.IsNullOrWhiteSpace(a.ModelId))
@@ -1164,6 +1218,10 @@ namespace Cat5201
 
         private static string GetModelLabel(string? modelId)
         {
+            // Agent API 的 id 先轉回內部 id：GetDefinition 查不到時會退回預設模型的名字，
+            // 那會讓手動選 Claude 的執行顯示成「Claude Sonnet 5.5 + GPT-5.6 Sol」。
+            modelId = ModelScope.FromAgentApiModel(modelId);
+
             // 歷史紀錄照實顯示當時跑的舊世代模型（GetDefinition 會把舊 ID 路由到後繼模型，標籤不能跟著改寫）。
             var legacyName = AiModelRegistry.TryGetLegacyDisplayName(modelId);
             if (legacyName != null)

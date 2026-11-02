@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Xunit;
 
 namespace Cat5201.Tests
@@ -22,9 +22,12 @@ namespace Cat5201.Tests
             };
 
         [Fact]
-        public void 提示太長不重試()
+        public void 提示太長要重試一次()
         {
-            Assert.False(ClaudeDocumentSkillsService.IsRetryable(
+            // 2026-10-27 改變行為：整包太長多半是帶進去的照片造成的
+            //（我們自己送的字只有 8,000 token，伺服器卻回 123 萬），
+            // 呼叫端會改成不帶照片再試一次。判死＝使用者挑了最佳品質卻拿到內建版型。
+            Assert.True(ClaudeDocumentSkillsService.IsRetryable(
                 Fail("Claude 文件技能串流錯誤：prompt is too long: 1112319 tokens > 1000000 maximum")));
         }
 

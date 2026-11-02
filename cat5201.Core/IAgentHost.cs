@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace Cat5201
@@ -28,6 +28,15 @@ namespace Cat5201
 
         // ── UI / 互動 ──
         void SetLiveDecisionResolving(INodeContext node, NodeExecutionDecision decision);
-        Task<bool> ConfirmGenerationAsync(OrchestrationTaskType taskType, OutputIntent? outputIntent);
+
+        /// <summary>
+        /// 產檔／媒體前的確認。choices 決定確認框要不要讓使用者選撰寫者與配圖；
+        /// 回傳使用者的回答（含改選的撰寫者）。手動模式下所選模型以外的模型只能從這裡進來。
+        /// </summary>
+        Task<GenerationApproval> ConfirmGenerationAsync(
+            OrchestrationTaskType taskType, OutputIntent? outputIntent, GenerationChoices choices);
+
+        /// <summary>節點上使用者選的模型（手動模式的「所選模型」）。</summary>
+        string GetNodeSelectedModel(INodeContext node);
     }
 }
