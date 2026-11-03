@@ -1070,9 +1070,27 @@ namespace Cat5201
                         if (reportPdf != null)
                             await ShowWebPreviewAsync(reportPdf, targetFull);
                         else
+                        {
+                            // 沒有配對 PDF：先顯示文字版（立刻有東西看），電腦上有 LibreOffice 就在背景轉一份 PDF，
+                            // 轉好時使用者還停在這份檔案，就換成跟實際一樣的版面（2026-11-03 使用者要求）。
                             await ShowHtmlContentAsync(
                                 ArtifactHtmlRenderer.BuildDocxHtml(ArtifactTextExtractor.ExtractDocx(targetFull)),
                                 targetFull);
+                            if (OfficePdfConverter.FindSoffice() != null)
+                            {
+                                string cacheDir = System.IO.Path.Combine(
+                                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                                    "cat5201-pro", "preview-cache");
+                                string? converted = await OfficePdfConverter.ToPdfAsync(targetFull, cacheDir);
+                                if (converted != null &&
+                                    string.Equals(_previewPath, targetFull, StringComparison.OrdinalIgnoreCase) &&
+                                    PreviewOverlay.Visibility == Visibility.Visible)
+                                {
+                                    HideAllPreviewRenderers();
+                                    await ShowWebPreviewAsync(converted, targetFull);
+                                }
+                            }
+                        }
                         break;
 
                     case "pptx":
@@ -1096,7 +1114,13 @@ namespace Cat5201
                             targetFull);
                         break;
 
-                    case "txt": case "md": case "csv":
+                    // Markdown 照排版顯示（審查清單、AI 使用紀錄都是表格，純文字看不懂）。
+                    case "md":
+                        await ShowHtmlContentAsync(
+                            ArtifactHtmlRenderer.BuildDocxHtml(File.ReadAllText(targetFull)), targetFull);
+                        break;
+
+                    case "txt": case "csv":
                         ShowTextPreview(File.ReadAllText(targetFull));
                         break;
 

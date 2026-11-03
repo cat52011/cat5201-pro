@@ -56,7 +56,9 @@ namespace Cat5201
             bool CompanionPdfEnabled = true,                 // 產出檔案時是否同時附一份同內容 PDF
             string IllustrationQuality = "medium",           // 配圖生成品質（high / medium / low）
             bool ShowDecisionPanel = true,                   // 右上角決策可視化視窗
-            string GeneratedFilesDir = ""                    // 產出檔案存放位置（空＝預設的 _generated）
+            string GeneratedFilesDir = "",                   // 產出檔案存放位置（空＝預設的 _generated）
+            bool MobileMirrorReadOnly = true,                // 手機鏡像只能看、不能操作（預設開；舊偏好檔沒有這欄也是唯讀）
+            bool IndependentReviewEnabled = true             // 產出報告後跑獨立審查（預設開）
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -142,6 +144,8 @@ namespace Cat5201
                     VideoModelTier: VeoModels.ToStorageValue(_videoModelTier),
                     ReadUpstreamAttachments: _readUpstreamAttachments,
                     MobileMirrorEnabled: _mobileMirrorEnabled,
+                    MobileMirrorReadOnly: _mobileMirrorReadOnly,
+                    IndependentReviewEnabled: DeliveryOptions.IndependentReview,
                     Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
                     DailyBudgetTwd: _dailyBudgetTwd,
                     AutoConfirmSeconds: _autoConfirmSeconds,
@@ -225,6 +229,8 @@ namespace Cat5201
                 DeliveryOptions.IllustrationQuality = ImageQuality.Normalize(prefs.IllustrationQuality);
                 _showDecisionPanel = prefs.ShowDecisionPanel;
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
+                _mobileMirrorReadOnly = prefs.MobileMirrorReadOnly;
+                DeliveryOptions.IndependentReview = prefs.IndependentReviewEnabled;
                 SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
                 _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
                 // Core 端要在「預留的同一刻」比對上限，所以預算也要同步過去。

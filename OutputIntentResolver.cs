@@ -45,7 +45,8 @@ namespace Cat5201
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("輸出意圖判斷");
-                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText, attachments), 200, ct);
+                // 多了 no_illustrations、quality、topic 三欄，200 不夠放（JSON 被截斷就整個判斷作廢）。
+                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText, attachments), 320, ct);
             }
             catch
             {
@@ -119,6 +120,15 @@ namespace Cat5201
 - illustrations：使用者有沒有要求『產出的文件裡要有圖』（配圖、插圖、照片、圖文並茂、每頁一張圖…）。
   這與 image 不同：image 是要一張獨立的圖檔，illustrations 是簡報／報告裡面要配圖。
   使用者明說『不要圖』『純文字』時一律 false。
+- no_illustrations：使用者有沒有『明確表示不要圖』（不配圖、不要放圖、純文字、no images…，任何說法、任何語言）。
+  沒提到圖就是 false——沒提到不等於不要。
+- quality：使用者有沒有指定『製作方式』。
+  要快、簡單做、快速版、趕時間、不用太精緻 → ""fast""；
+  要最佳品質、精緻、高品質、做漂亮一點 → ""best""；
+  沒有講 → """"。只看使用者有沒有講，不要自己推測。
+- topic：這次產出的檔名標題，跟存檔自動命名同一套規則：" + ShortTitle.Rules + @"
+  例如「做一份 3 頁關於BMI簡報（快速版、不配圖）」→ ""BMI 身體質量指數""；
+  「Make a deck about French fine dining」→ ""法式高級料理""。沒有可產出的東西時填空字串。
 - slides：使用者有沒有指定投影片張數。有就填數字，沒有填 0。『約五頁』『5 頁左右』也算指定（填 5）。
 - language：使用者這次有沒有明確指定輸出語言（例如「用英文寫」「日本語で」「make it in English」）。
   有就填語言名稱（繁體中文 / English / 日本語…），沒有明確指定就填空字串。
@@ -133,6 +143,9 @@ namespace Cat5201
   ""image"": true/false,
   ""video"": true/false,
   ""illustrations"": true/false,
+  ""no_illustrations"": true/false,
+  ""quality"": """",
+  ""topic"": """",
   ""slides"": 0,
   ""language"": """"
 }
@@ -162,7 +175,11 @@ namespace Cat5201
 - 「Make me a 7-slide deck about French fine dining, must include images」
   → presentation=true、illustrations=true、slides=7。
 - 「做一份简报，配上图片」 → presentation=true、illustrations=true、slides=0。
-- 「做一份簡報，不要放圖」 → presentation=true、illustrations=false。
+- 「做一份簡報，不要放圖」 → presentation=true、illustrations=false、no_illustrations=true。
+- 「做一份 3 頁關於BMI簡報（快速版、不配圖）」
+  → presentation=true、slides=3、illustrations=false、no_illustrations=true、quality=""fast""、topic=""BMI 身體質量指數""。
+- 「時間不多，簡單幫我做份台積電的報告就好」 → report=true、quality=""fast""、topic=""台積電公司分析""。
+- 「Please make the best-looking deck you can about Kyoto」 → presentation=true、quality=""best""、topic=""京都旅遊介紹""。
 
 附件：
 - 使用者可能附上檔案（作業說明、範本、資料）。使用者要你『完成』附件裡的作業、照範本做、或照附件的要求交件時，
@@ -208,7 +225,10 @@ $@"使用者輸入：
                     WantsTable = GetBool(root, "table"),
                     WantsImage = GetBool(root, "image"),
                     WantsVideo = GetBool(root, "video"),
-                    WantsIllustrations = GetBool(root, "illustrations"),
+                    WantsIllustrations = GetBool(root, "illustrations") && !GetBool(root, "no_illustrations"),
+                    DeclinesIllustrations = GetBool(root, "no_illustrations"),
+                    Quality = RequestedQuality.Parse(GetString(root, "quality")),
+                    Topic = GetString(root, "topic"),
                     RequestedSlides = GetInt(root, "slides"),
                     RequestedLanguage = GetString(root, "language"),
                     Source = "api:" + raw.Trim()

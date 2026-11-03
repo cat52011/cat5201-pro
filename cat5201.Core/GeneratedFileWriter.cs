@@ -35,8 +35,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "report";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}{extension}";
+                string fileName = $"{baseName}{extension}";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 // 確保最終路徑仍在 outputDir 之內（防止清理後殘留的路徑分隔符逃逸）。
@@ -88,8 +87,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "report";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}.docx";
+                string fileName = $"{baseName}.docx";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -140,8 +138,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "report";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}.pdf";
+                string fileName = $"{baseName}.pdf";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -192,8 +189,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "presentation";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}.pptx";
+                string fileName = $"{baseName}.pptx";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -244,8 +240,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "report";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}.xlsx";
+                string fileName = $"{baseName}.xlsx";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -297,8 +292,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "image";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}{extension}";
+                string fileName = $"{baseName}{extension}";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -350,8 +344,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(baseName))
                     baseName = "video";
 
-                string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                string fileName = $"{baseName}_{stamp}{extension}";
+                string fileName = $"{baseName}{extension}";
                 string fullPath = Path.GetFullPath(Path.Combine(outputDir, fileName));
 
                 string rootFull = Path.GetFullPath(outputDir);
@@ -410,9 +403,9 @@ namespace Cat5201
             {
                 string baseName = SanitizeFileName(title);
                 if (string.IsNullOrWhiteSpace(baseName)) baseName = "code";
-                folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}"));
+                folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}"));
                 for (int k = 2; Directory.Exists(folder); k++)
-                    folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}-{k}"));
+                    folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}_{k}"));
                 Directory.CreateDirectory(folder);
             }
             catch (Exception ex)
@@ -504,7 +497,7 @@ namespace Cat5201
 
             for (int n = 2; n < 1000; n++)
             {
-                string candidate = Path.Combine(dir, $"{stem}-{n}{ext}");
+                string candidate = Path.Combine(dir, $"{stem}_{n}{ext}");
                 if (!File.Exists(candidate))
                     return candidate;
             }

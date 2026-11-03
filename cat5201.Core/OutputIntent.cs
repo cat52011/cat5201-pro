@@ -23,6 +23,25 @@ namespace Cat5201
         /// </summary>
         public bool WantsIllustrations { get; init; }
 
+        /// <summary>
+        /// 使用者明確說不要圖（不配圖、純文字、no images…）。跟「沒提到圖」是兩回事：
+        /// 沒提到時由內容決定要不要配圖；明說不要就一定不配。
+        /// 2026-11-03：關鍵字規則把「不配圖」讀成「要配圖」，簡報被生了封面照片——這件事只能交給語意判斷。
+        /// </summary>
+        public bool DeclinesIllustrations { get; init; }
+
+        /// <summary>
+        /// 使用者這次指定的製作方式：快速版或最佳品質（沒講＝None，照個人化的設定）。
+        /// 2026-11-03：要求寫「快速版」，個人化設最佳品質，結果照個人化走了最佳品質。這一次明講的優先。
+        /// </summary>
+        public RequestedQuality.Level Quality { get; init; }
+
+        /// <summary>
+        /// 這份產出的主題，當檔名用（例如「BMI」）。由模型從整句話抽出，不含指令與格式詞；
+        /// 以前用刪字清單，檔名常留下「BMI（快速版、不）」這種殘字。空字串＝沒判斷出來，改用舊的清理方式。
+        /// </summary>
+        public string Topic { get; init; } = "";
+
         /// <summary>使用者指定的投影片張數；0＝沒指定，由內容決定。</summary>
         public int RequestedSlides { get; init; }
 

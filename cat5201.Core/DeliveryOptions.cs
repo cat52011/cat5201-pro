@@ -15,6 +15,12 @@
         public static bool CompanionPdf { get; set; } = true;
 
         /// <summary>
+        /// 產出書面報告後要不要跑獨立審查（ReportReview）。預設開。
+        /// 2026-11-03：GPT 審查一份約 NT$10，用自己金鑰的人要能關掉。
+        /// </summary>
+        public static bool IndependentReview { get; set; } = true;
+
+        /// <summary>
         /// 配圖（簡報、報告、影片首幀）的生成品質。
         ///
         /// 1024×1536 一張：high US$0.165、medium US$0.041、low US$0.005。

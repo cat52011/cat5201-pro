@@ -80,5 +80,66 @@ namespace Cat5201.Tests
             Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
             Assert.Equal("ok", await resp.Content.ReadAsStringAsync()); // 連線測試端點只回 ok，不洩漏任何狀態
         }
+
+        // ── 唯讀（2026-11-03）：區網明碼、權杖在網址裡，拿到網址就能操作，而重跑與下指令會花錢 ──
+
+        private Task<HttpResponseMessage> PostCommand(string json)
+            => _http.PostAsync(Url($"/api/command?t={_token}"),
+                new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
+
+        [Fact]
+        public async Task ReadOnly_IsTheDefault_AndRejectsEveryAction_EvenWithTheRightToken()
+        {
+            Assert.True(new MobileMirrorServer().ReadOnly);
+
+            int calls = 0;
+            _server.CommandHandler = _ => { calls++; return Task.FromResult(new MirrorCommandResult { Ok = true }); };
+
+            foreach (var json in new[]
+                     {
+                         """{"action":"stop","nodeId":"x"}""",
+                         """{"action":"rerun","nodeId":"x"}""",
+                         """{"action":"newnode","nodeId":"","text":"寫一份報告"}""",
+                         """{"action":"confirm","nodeId":""}""",
+                     })
+            {
+                var resp = await PostCommand(json);
+                Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+                Assert.Contains("唯讀", await resp.Content.ReadAsStringAsync());
+            }
+
+            Assert.Equal(0, calls);   // 一個都不能碰到 handler
+
+            // 查看照常可以
+            Assert.Equal(HttpStatusCode.OK, (await _http.GetAsync(Url($"/api/snapshot?t={_token}"))).StatusCode);
+        }
+
+        [Fact]
+        public async Task TurningReadOnlyOff_TakesEffectImmediately_WithoutRestart()
+        {
+            bool handlerCalled = false;
+            _server.CommandHandler = _ => { handlerCalled = true; return Task.FromResult(new MirrorCommandResult { Ok = true }); };
+
+            _server.ReadOnly = false;
+            var resp = await PostCommand("""{"action":"stop","nodeId":"x"}""");
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.True(handlerCalled);
+
+            handlerCalled = false;
+            _server.ReadOnly = true;
+            resp = await PostCommand("""{"action":"stop","nodeId":"x"}""");
+            Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+            Assert.False(handlerCalled);
+        }
+
+        [Fact]
+        public async Task PhonePage_HidesActionsWhenTheSnapshotSaysReadOnly()
+        {
+            string html = await (await _http.GetAsync(Url($"/?t={_token}"))).Content.ReadAsStringAsync();
+            Assert.Contains("const ro = !!snap.readOnly;", html);
+            Assert.Contains("n.canRerun && !ro", html);
+            Assert.Contains("n.canStop && !ro", html);
+            Assert.Contains("唯讀模式：請在電腦上回答", html);
+        }
     }
 }

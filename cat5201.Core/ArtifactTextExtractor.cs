@@ -167,10 +167,36 @@ namespace Cat5201
             if (rows.Count == 0)
                 return;
 
+            // 每一格的段落（巢狀表格裡的段落也算進那一格）。
+            var grid = rows
+                .Select(r => r.Elements<W.TableCell>()
+                    .Select(c => (IReadOnlyList<string>)c.Descendants<W.Paragraph>()
+                        .Select(p => p.InnerText.Trim()).Where(t => t.Length > 0).ToList())
+                    .ToList())
+                .ToList();
+
+            // 排版用的表格（分欄、卡片）照段落顯示，不當資料表。
+            if (IsLayoutTable(grid))
+            {
+                foreach (var row in rows)
+                    foreach (var cell in row.Elements<W.TableCell>())
+                        foreach (var para in cell.Descendants<W.Paragraph>())
+                        {
+                            string line = ParagraphToMarkdown(para);
+                            if (line.Trim().Length == 0) continue;
+                            sb.AppendLine(line);
+                            if (!line.StartsWith("- ", StringComparison.Ordinal))
+                                sb.AppendLine();
+                        }
+                sb.AppendLine();
+                return;
+            }
+
             for (int r = 0; r < rows.Count; r++)
             {
-                var cells = rows[r].Elements<W.TableCell>()
-                    .Select(c => c.InnerText.Trim().Replace("|", "\\|"))
+                // 同一格的多個段落用空白隔開：直接接起來會變成「18.5 – 24健康體重」。
+                var cells = grid[r]
+                    .Select(paras => string.Join(" ", paras).Replace("|", "\\|"))
                     .ToList();
                 if (cells.Count == 0)
                     continue;
@@ -184,6 +210,27 @@ namespace Cat5201
                 }
             }
             sb.AppendLine();
+        }
+
+        /// <summary>
+        /// 這個表格是拿來排版（分欄、做卡片），還是真的資料表？
+        ///
+        /// 2026-11-03：Claude 的 Word 技能常用表格排版——一格放「標題＋整段說明」，中間夾一欄空白當間隔。
+        /// 當成資料表轉出來，整段文字擠在一格、段落黏在一起，預覽完全看不懂。
+        /// 判斷（看的是表格的結構，不是內容的字詞）：
+        ///   1. 任何一格超過 3 段，或超過 120 字——資料表的儲存格很少這麼長；
+        ///   2. 有一整欄是空的（當間隔用），而別的格子裡放了好幾段——資料表不會這樣排。
+        /// </summary>
+        internal static bool IsLayoutTable(IReadOnlyList<IReadOnlyList<IReadOnlyList<string>>> grid)
+        {
+            var cells = grid.SelectMany(row => row).ToList();
+            if (cells.Any(cell => cell.Count > 3 || cell.Sum(p => p.Length) > 120))
+                return true;
+
+            int columns = grid.Count == 0 ? 0 : grid.Max(row => row.Count);
+            bool spacerColumn = columns >= 2 && Enumerable.Range(0, columns)
+                .Any(c => grid.All(row => c >= row.Count || row[c].Count == 0));
+            return spacerColumn && cells.Any(cell => cell.Count >= 2);
         }
 
         /// <summary>PPTX → 逐張投影片的文字行（每張一個清單，第一行通常是標題），供卡片渲染用。</summary>
@@ -360,6 +407,40 @@ namespace Cat5201
                 Math.Max(0, headerRow),
                 FindStyledRow(styles, sheetData, IsTotalRow, last: true),
                 ReadChart(wsPart));
+        }
+
+        /// <summary>
+        /// XLSX → 每個工作表的名稱與逐列文字（獨立審查用：結果檔常分好幾張表，例如清理步驟、模型比較）。
+        /// 儲存格照顯示格式讀，跟使用者在 Excel 看到的一樣。
+        /// </summary>
+        public static List<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)> ExtractXlsxSheets(
+            string path, int maxSheets = 12, int maxRowsPerSheet = 200)
+        {
+            var result = new List<(string, IReadOnlyList<IReadOnlyList<string>>)>();
+
+            using var docFile = ReadOnlyOfficeFile.Xlsx(path);
+            var wbPart = docFile.Document.WorkbookPart;
+            if (wbPart?.Workbook?.Sheets == null)
+                return result;
+
+            var sst = wbPart.SharedStringTablePart?.SharedStringTable;
+            var styles = wbPart.WorkbookStylesPart?.Stylesheet;
+            foreach (var sheet in wbPart.Workbook.Sheets.Elements<S.Sheet>().Take(maxSheets))
+            {
+                if (sheet.Id?.Value == null || wbPart.GetPartById(sheet.Id.Value) is not WorksheetPart wsPart)
+                    continue;
+                var sheetData = wsPart.Worksheet?.Elements<S.SheetData>().FirstOrDefault();
+                if (sheetData == null)
+                    continue;
+
+                var rows = sheetData.Elements<S.Row>()
+                    .Take(maxRowsPerSheet)
+                    .Select(r => (IReadOnlyList<string>)r.Elements<S.Cell>().Select(c => ReadCell(c, sst, styles).Text).ToList())
+                    .ToList();
+                result.Add((sheet.Name?.Value ?? $"工作表{result.Count + 1}", rows));
+            }
+
+            return result;
         }
 
         /// <summary>

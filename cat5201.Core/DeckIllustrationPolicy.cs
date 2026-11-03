@@ -77,13 +77,22 @@ namespace Cat5201
             "比較表", "試算", "敏感度",
         };
 
-        /// <summary>使用者明講不要的說法。</summary>
+        /// <summary>
+        /// 關鍵字後援：只在第一層語意判斷失敗時用（OutputIntent.FromKeywords → AgentRuntime.PresentationWantsCoverImage）。
+        /// 平常要不要配圖由語意判斷決定——關鍵字換個說法、換個語言就認不出來（2026-11-03 使用者再次要求）。
+        /// </summary>
         private const string DeclinePattern =
             @"(不要|不用|不需要|無需|別|勿)[^。，,\n]{0,6}(圖片|照片|插圖|插畫|配圖|附圖|圖)";
 
-        /// <summary>使用者明講要的說法。</summary>
-        private const string AskPattern =
-            @"圖片|照片|插畫|插圖|配圖|附圖|示意圖|圖像|圖文並茂|視覺素材";
+        /// <summary>關鍵字後援用：使用者明講不要圖。平常不要用這個，用語意判斷的 OutputIntent.DeclinesIllustrations。</summary>
+        public static bool UserDeclined(string? request)
+        {
+            string text = request ?? "";
+            return System.Text.RegularExpressions.Regex.IsMatch(text, DeclinePattern)
+                   || text.Contains("純文字", StringComparison.Ordinal)
+                   || text.Contains("no image", StringComparison.OrdinalIgnoreCase)
+                   || text.Contains("text only", StringComparison.OrdinalIgnoreCase);
+        }
 
         /// <summary>
         /// 這份簡報要不要配圖。
@@ -103,23 +112,20 @@ namespace Cat5201
             PresentationOutlinePayload? outline,
             bool explicitFromResolver,
             out Reason reason,
-            string? contentText = null)
+            string? contentText = null,
+            bool declinedFromResolver = false)
         {
             string request = userInput ?? "";
 
-            if (System.Text.RegularExpressions.Regex.IsMatch(request, DeclinePattern)
-                || request.Contains("純文字", StringComparison.Ordinal)
-                || request.Contains("no image", StringComparison.OrdinalIgnoreCase)
-                || request.Contains("text only", StringComparison.OrdinalIgnoreCase))
+            // 使用者講了要或不要，一律以第一層語意判斷為準（任何說法、任何語言）。
+            // 以前這裡還會拿請求原文比對關鍵字，結果「不配圖」裡的「配圖」被當成要圖。
+            if (declinedFromResolver)
             {
                 reason = Reason.UserDeclined;
                 return false;
             }
 
-            if (explicitFromResolver
-                || System.Text.RegularExpressions.Regex.IsMatch(request, AskPattern)
-                || System.Text.RegularExpressions.Regex.IsMatch(
-                       request, @"[一二三四五六七八九十兩幾些\d]+\s*[張幅]\s*圖(?!表)"))
+            if (explicitFromResolver)
             {
                 reason = Reason.UserAsked;
                 return true;

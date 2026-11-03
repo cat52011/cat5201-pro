@@ -129,6 +129,7 @@ namespace Cat5201
         private DispatcherTimer? _mirrorPump;
         private string? _lastMirrorContentKey; // 快照去重：內容沒變就不重新序列化推送
         private bool _mobileMirrorEnabled; // 個人化偏好：是否啟用手機鏡像（存 _preferences.json，啟動自動開）
+        private bool _mobileMirrorReadOnly = true; // 個人化偏好：手機只能看（預設開）
         // §17 階段二遠端二次確認：目前開著的「要不要產生」對話框 + 內容；手機回答時設其 DialogResult 即可關閉。
         private Window? _pendingGenConfirmWindow;
         private string? _pendingGenConfirmWhat;
@@ -154,6 +155,23 @@ namespace Cat5201
                 await StopMobileMirrorAsync();
         }
 
+        /// <summary>
+        /// 唯讀開關（預設開）。區網明碼 HTTP、權杖在網址裡，拿到網址的人就能停止、重跑或下指令，
+        /// 而重跑和下指令會花錢——所以預設只能看，要操作得在電腦上明確打開（2026-11-03）。
+        /// 切換立即生效，不必重開伺服器。
+        /// </summary>
+        private void MobileMirrorReadOnlySwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            _mobileMirrorReadOnly = MobileMirrorReadOnlySwitch?.IsChecked == true;
+            SavePreferences();
+            if (_mirrorServer != null)
+                _mirrorServer.ReadOnly = _mobileMirrorReadOnly;
+            AppLog.Info("MobileMirror", _mobileMirrorReadOnly ? "手機鏡像改為唯讀" : "手機鏡像允許操作");
+            BuildAndPublishMirrorSnapshot();   // 手機下一次更新就看到按鈕出現或消失
+        }
+
         // 啟動時若個人化已開啟手機鏡像，自動把 server 拉起來（開關同步是 gated 的、不會觸發，故明確呼叫）。
         private async Task AutoStartMobileMirrorIfEnabledAsync()
         {
@@ -166,6 +184,7 @@ namespace Cat5201
             try
             {
                 _mirrorServer ??= new MobileMirrorServer();
+                _mirrorServer.ReadOnly = _mobileMirrorReadOnly;
                 _mirrorServer.CommandHandler = HandleMirrorCommandAsync; // 手機輕操控（§17 階段二）
                 _mirrorServer.NodeTextProvider = nodeId =>               // §17：手機看完整輸出（丟回 UI 執行緒讀）
                     Dispatcher.InvokeAsync(() =>
@@ -292,6 +311,7 @@ namespace Cat5201
                 }
 
                 snap.NodeCount = snap.Nodes.Count;
+                snap.ReadOnly = _mobileMirrorReadOnly;
                 snap.AnyRunning = snap.Nodes.Any(n => n.Status == "running");
                 snap.Models = AiModelRegistry.Available
                     .Select(m => new MirrorModelOption { Id = m.Id, Name = m.DisplayName })
@@ -306,7 +326,7 @@ namespace Cat5201
                     };
 
                 // 去重：內容（節點+待確認）沒變就不推送——畫布閒置時省序列化與手機流量。
-                string contentKey = JsonSerializer.Serialize(new { snap.Nodes, snap.Pending }, MirrorJsonOptions);
+                string contentKey = JsonSerializer.Serialize(new { snap.Nodes, snap.Pending, snap.ReadOnly }, MirrorJsonOptions);
                 if (contentKey == _lastMirrorContentKey)
                     return;
                 _lastMirrorContentKey = contentKey;

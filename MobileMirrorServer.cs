@@ -53,6 +53,17 @@ namespace Cat5201
                 _snapshotJson = json;
         }
 
+        private volatile bool _readOnly = true;
+
+        /// <summary>唯讀模式（預設開）：手機只能查看，所有操作指令都會被拒絕。可在執行中切換，立即生效。</summary>
+        public bool ReadOnly
+        {
+            get => _readOnly;
+            set => _readOnly = value;
+        }
+
+        public const string ReadOnlyMessage = "唯讀模式：手機只能查看。要在手機上操作，請到電腦的「個人化」→「手機鏡像」關閉唯讀。";
+
         /// <summary>啟動 server。失敗（埠被占用/防火牆）會丟例外，呼叫端顯示友善訊息。</summary>
         public async Task StartAsync(int port = DefaultPort)
         {
@@ -98,6 +109,10 @@ namespace Cat5201
             {
                 if (!Authorized(ctx))
                     return Results.Unauthorized();
+                // 唯讀：手機只能看。停止、重跑、下指令、回答確認框一律拒絕——
+                // 連線是區網明碼 HTTP，拿到網址的人就能操作，而重跑和下指令會花錢（2026-11-03）。
+                if (ReadOnly)
+                    return Results.Json(new MirrorCommandResult { Ok = false, Message = ReadOnlyMessage }, statusCode: 403);
                 var handler = CommandHandler;
                 if (handler == null)
                     return Results.Json(new MirrorCommandResult { Ok = false, Message = "尚未就緒" });
@@ -276,7 +291,7 @@ namespace Cat5201
   </div>
 
   <div class="toast" id="toast"></div>
-  <footer>手機鏡像 · 每 1.5 秒更新 · 可下指令／停止／重跑</footer>
+  <footer id="footer">手機鏡像 · 每 1.5 秒更新</footer>
 
   <!-- §17 階段三：手機直接下指令 → 桌面畫布建節點並執行；可選連接節點與模型 -->
   <div class="cmdbar">
@@ -302,6 +317,11 @@ namespace Cat5201
 
   function render(snap){
     syncSelects(snap);
+    // 唯讀：不顯示任何操作（伺服器端也會拒絕，這裡只是不讓人按到沒反應的按鈕）。
+    const ro = !!snap.readOnly;
+    document.querySelector('.cmdbar').style.display = ro ? 'none' : '';
+    document.getElementById('footer').textContent =
+      '手機鏡像 · 每 1.5 秒更新 · ' + (ro ? '唯讀（只能查看）' : '可下指令／停止／重跑');
     const list = document.getElementById('list');
     const nodes = snap.nodes || [];
     document.getElementById('meta').textContent =
@@ -313,15 +333,18 @@ namespace Cat5201
 
     const pendingCount = (snap.pending && snap.pending.remainingSeconds >= 0)
       ? `<div class="cb-count">⏳ 約 ${snap.pending.remainingSeconds} 秒後未回應將自動執行</div>` : '';
+    const pendingActions = ro
+      ? `<div class="cb-count">唯讀模式：請在電腦上回答</div>`
+      : `<div class="cb-actions">
+          <button class="btn ok" onclick="cmd('','confirm')">是，執行</button>
+          <button class="btn" onclick="cmd('','reject')">否，只要文字</button>
+        </div>`;
     const pendingHtml = snap.pending ? `
       <div class="confirm-banner">
         <div class="cb-title">📎 要產生檔案／媒體嗎？</div>
         <div class="cb-what">偵測到即將產生：${esc(snap.pending.what)}</div>
         ${pendingCount}
-        <div class="cb-actions">
-          <button class="btn ok" onclick="cmd('','confirm')">是，執行</button>
-          <button class="btn" onclick="cmd('','reject')">否，只要文字</button>
-        </div>
+        ${pendingActions}
       </div>` : '';
 
     if (!nodes.length){ list.innerHTML = pendingHtml + '<div class="empty">畫布上還沒有節點</div>'; return; }
@@ -340,8 +363,8 @@ namespace Cat5201
         ? `<div class="preview" style="cursor:pointer" onclick="viewFull('${n.id}','${esc((n.title||'').slice(0,24)).replace(/'/g,'')}')">${esc(n.outputPreview)}<div style="color:#6f7dff;font-size:11px;margin-top:6px">點一下看完整輸出 ▸</div></div>`
         : '';
       const acts = [];
-      if (n.canStop)  acts.push(`<button class="btn stop"  onclick="cmd('${n.id}','stop')">■ 停止</button>`);
-      if (n.canRerun) acts.push(`<button class="btn rerun" onclick="cmd('${n.id}','rerun')">↻ 重跑</button>`);
+      if (n.canStop && !ro)  acts.push(`<button class="btn stop"  onclick="cmd('${n.id}','stop')">■ 停止</button>`);
+      if (n.canRerun && !ro) acts.push(`<button class="btn rerun" onclick="cmd('${n.id}','rerun')">↻ 重跑</button>`);
       const actions = acts.length ? `<div class="actions">${acts.join('')}</div>` : '';
       return `<div class="card ${st}">
         <div class="row1">

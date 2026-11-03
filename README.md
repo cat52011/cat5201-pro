@@ -116,7 +116,9 @@ cat5201-pro 是一個 Windows 桌面程式，用「節點」把多個 AI 模型�
 
 - **記憶與偏好**：在節點上按右鍵 →「將此節點加入記憶」，把長期事實記下來。回答的語言和風格在設定 →「個人化」→「記憶與偏好」調整。
 - **技能（Skills）**：設定 →「Skills」，把常用的指示或格式模板存成技能，每次執行時自動帶入；也可以貼上 GitHub 上 SKILL.md 的連結直接匯入。
-- **手機鏡像**：設定 →「個人化」→「手機鏡像」。手機連上同一個 Wi-Fi 後掃 QR code，就能在手機上看執行進度、停止或重跑節點、回答確認框。
+- **獨立審查**：產出書面報告後，由沒有參與撰寫的模型對照報告裡的數字與表格、找前後矛盾，另存一份「審查清單」（Auto 模式換一家廠商審查；手動模式只用你選的模型，另開一次獨立呼叫）。程式也會先免費檢查 nan、#DIV/0!、沒填完的模板字。只列問題與建議，不會修改報告。由 Claude 審查一份約 NT$1，由 GPT 審查約 NT$10（實測），可在設定 →「個人化」→「報告完成後獨立審查」關閉。
+- **AI 使用紀錄**：決策窗右上角「匯出紀錄」，把最近一次執行整理成一份 Markdown：哪些決策是你做的、哪些是系統做的、每一步由哪個模型完成、花了多少、產出哪些檔案。內容由程式依執行帳目產生，不經 AI 改寫，可以直接附在需要揭露 AI 使用的作業或報告上。
+- **手機鏡像**：設定 →「個人化」→「手機鏡像」。手機連上同一個 Wi-Fi 後掃 QR code，就能在手機上看執行進度。預設是唯讀；關閉「唯讀」後，手機才能停止或重跑節點、下指令、回答確認框。
 - **Google Drive**：在「API」分頁連結 Google 帳戶後，產出的檔案可以自動上傳到你的 Drive。
 - **存檔與最近刪除**：左側列表是你的存檔。刪掉的存檔連同附件會保留 7 天，可以在「最近刪除」救回。
 
@@ -132,6 +134,8 @@ cat5201-pro 是一個 Windows 桌面程式，用「節點」把多個 AI 模型�
 - 程式內的簡報預覽是近似版面，陰影、漸層等效果以 PowerPoint 開啟為準。
 - Gemini 不能做即時搜尋。選 Gemini 時，程式會改用其他模型查資料，並在答案最上方註明。
 - 數字單位檢查（例如 billion 被寫成「億」）只比對聊天中的回答，不檢查產出的簡報或報告檔案。
+- 只支援 Windows。畫面是 WPF；核心 `cat5201.Core`（模型路由、成本、任務編排、審查、使用紀錄）以 net8.0 撰寫，不引用 WPF，所以要做 macOS、Linux 或網頁版，主要是重寫介面層。核心目前還有兩處綁 Windows，移植時要替換：金鑰加密用的 DPAPI，以及簡報圖片處理用的 System.Drawing。
+- 手機鏡像走區網、未加密的 HTTP，存取權杖在網址裡。預設唯讀；只在信任的 Wi-Fi 上關閉唯讀，用完就關掉鏡像。
 
 ### 給開發者
 
@@ -141,7 +145,7 @@ cat5201-pro 是一個 Windows 桌面程式，用「節點」把多個 AI 模型�
 # 執行
 dotnet run --project cat5201.csproj
 
-# 測試（xUnit，973 項）
+# 測試（xUnit，1015 項）
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # 打包成單一 exe，輸出到 publish\win-x64\
@@ -153,7 +157,8 @@ dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 ```
 cat5201.Core/    與介面無關的核心（net8.0）：模型註冊與路由、成本估算、任務編排、
                  決策紀錄、輸出判斷。執行核心只依賴 IAgentHost / INodeContext 介面，
-                 不引用任何 WPF 型別。
+                 不引用任何 WPF 型別。執行核心 AgentRuntime 依職責分成多個檔案：
+                 主流程、文件、簡報、配圖、圖片與影片、資料分析、獨立審查、最終整合、程式修改。
 cat5201.csproj   WPF 桌面前端（net8.0-windows）：畫布、節點、決策窗、手機鏡像伺服器
 tests/           xUnit 測試；評測題目等測試資料在 tests/cat5201.Tests/TestData/
 ```
@@ -273,7 +278,9 @@ Approximate costs from my own testing:
 
 - **Memory and preferences**: right-click a node and choose "將此節點加入記憶" (add to memory) to keep a long-term fact. Answer language and style are set under Personalization, "記憶與偏好" (memory and preferences).
 - **Skills**: gear icon, "Skills" tab. Save instructions or format templates you use often; they are added to every run. You can also paste a link to a SKILL.md file on GitHub to import it.
-- **Phone mirror**: Personalization, "手機鏡像" (phone mirror). With your phone on the same Wi-Fi, scan the QR code to watch progress, stop or rerun nodes, and answer confirmation dialogs from the phone.
+- **Independent review**: after a written report is produced, a model that took no part in writing it checks the numbers in the text against the tables, looks for contradictions, and saves a separate "審查清單" (review checklist). In Auto mode the reviewer comes from a different provider; in manual mode only your chosen model is used, in a separate call. A free program check for nan, #DIV/0! and unfilled template text runs first. It only lists problems and suggestions and never edits the report. About NT$1 per report when Claude reviews, about NT$10 when GPT does (measured); turn it off under Personalization, "報告完成後獨立審查" (review after the report is done).
+- **AI usage record**: "匯出紀錄" (export record) at the top right of the decision panel turns the latest run into a Markdown file: which decisions were yours and which were the system's, which model did each step, what it cost, and which files it produced. It is assembled by the program from the run's ledger, not written by AI, so you can attach it wherever AI use has to be disclosed.
+- **Phone mirror**: Personalization, "手機鏡像" (phone mirror). With your phone on the same Wi-Fi, scan the QR code to watch progress. It is read-only by default; turn off "唯讀" (read-only) to stop or rerun nodes, issue commands, and answer confirmation dialogs from the phone.
 - **Google Drive**: after linking a Google account in the "API" tab, generated files can be uploaded to your Drive automatically.
 - **Projects and recently deleted**: the list on the left holds your projects. Deleted projects, with their attachments, are kept for 7 days under "最近刪除" (recently deleted).
 
@@ -289,6 +296,8 @@ All app data (projects, attachments, logs) lives in `%LOCALAPPDATA%\cat5201-pro`
 - The in-app deck preview is an approximation; shadows and gradients look right only in PowerPoint.
 - Gemini cannot do live search. When Gemini is selected, another model does the searching and the answer says so at the top.
 - The number-unit check (for example "billion" written as the wrong Chinese unit) only looks at the chat answer, not at generated deck or report files.
+- Windows only. The UI is WPF; the core, `cat5201.Core` (model routing, costs, task orchestration, review, usage records), targets net8.0 and references no WPF, so a macOS, Linux or web version mainly means rewriting the UI layer. Two parts of the core are still tied to Windows and would need replacing: DPAPI for key encryption, and System.Drawing for deck image processing.
+- The phone mirror uses unencrypted HTTP on the local network, with the access token in the URL. It is read-only by default; only turn read-only off on a Wi-Fi network you trust, and switch the mirror off when you are done.
 
 ### For developers
 
@@ -298,7 +307,7 @@ Requires the .NET 8 SDK.
 # Run
 dotnet run --project cat5201.csproj
 
-# Test (xUnit, 973 tests)
+# Test (xUnit, 1015 tests)
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # Build a single-file exe into publish\win-x64\
@@ -311,6 +320,9 @@ Project layout:
 cat5201.Core/    UI-independent core (net8.0): model registry and routing, cost estimates,
                  task orchestration, decision records, output detection. The runtime depends
                  only on the IAgentHost / INodeContext interfaces and references no WPF types.
+                 The runtime, AgentRuntime, is split into files by responsibility: main flow,
+                 documents, decks, illustrations, images and video, data analysis, independent
+                 review, final synthesis, and code edits.
 cat5201.csproj   WPF desktop front end (net8.0-windows): canvas, nodes, decision panel,
                  phone mirror server
 tests/           xUnit tests; fixtures such as evaluation tasks are in tests/cat5201.Tests/TestData/

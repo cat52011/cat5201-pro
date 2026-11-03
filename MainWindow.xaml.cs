@@ -4264,11 +4264,8 @@ namespace Cat5201
             string instructions = "你是一個善於替筆記自動命名的助手。";
 
             string user =
-$@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短標題/關鍵字」：
-- 使用繁體中文
-- 盡量 6~16 字
-- 只輸出標題本身，不要加引號、不要加編號、不要加任何解釋
-- 不要包含檔案副檔名
+$@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
+只輸出標題本身，不要任何解釋。
 
 內容：
 {Truncate(topText.Trim(), 800)}";
@@ -4323,27 +4320,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             return "";
         }
 
-        private static string NormalizeKeywordForFileName(string raw)
-        {
-            if (string.IsNullOrWhiteSpace(raw)) return "";
-
-            var s = raw.Trim();
-
-            s = s.Trim('\"', '“', '”', '\'', '『', '』', '「', '」');
-            s = Regex.Replace(s, @"\s+", " ");
-
-            foreach (var ch in System.IO.Path.GetInvalidFileNameChars())
-                s = s.Replace(ch, '_');
-
-            s = s.Trim().TrimEnd('.');
-            s = s.Trim('_');
-
-            const int maxLen = 28;
-            if (s.Length > maxLen)
-                s = s.Substring(0, maxLen).Trim();
-
-            return s;
-        }
+        // 存檔與產出檔共用同一套整理規則（ShortTitle）。
+        private static string NormalizeKeywordForFileName(string raw) => ShortTitle.Normalize(raw);
 
         private string EnsureUniquePath(string desiredFullPath)
         {
@@ -5571,6 +5549,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     BlockDeepResearchSwitch.IsChecked = AiAutoCostPolicy.BlockDeepResearch;
                 if (CompanionPdfSwitch != null)
                     CompanionPdfSwitch.IsChecked = DeliveryOptions.CompanionPdf;
+                if (IndependentReviewSwitch != null)
+                    IndependentReviewSwitch.IsChecked = DeliveryOptions.IndependentReview;
                 if (DecisionPanelSwitch != null)
                     DecisionPanelSwitch.IsChecked = _showDecisionPanel;
                 if (TimeoutInput != null)
@@ -5584,6 +5564,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                     ApiBalancePanelSwitch.IsChecked = _showApiBalancePanel;
                 if (MobileMirrorSwitch != null)
                     MobileMirrorSwitch.IsChecked = _mobileMirrorEnabled;
+                if (MobileMirrorReadOnlySwitch != null)
+                    MobileMirrorReadOnlySwitch.IsChecked = _mobileMirrorReadOnly;
                 if (DailyBudgetInput != null)
                     DailyBudgetInput.Text = _dailyBudgetTwd > 0 ? _dailyBudgetTwd.ToString() : "";
                 if (AutoConfirmSecondsInput != null)
@@ -5635,6 +5617,15 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
             if (_syncingCostControls)
                 return;
             DeliveryOptions.CompanionPdf = CompanionPdfSwitch?.IsChecked == true;
+            SaveState();
+        }
+
+        /// <summary>產出報告後要不要跑獨立審查（要另外花錢，用自己金鑰的人要能關掉）。</summary>
+        private void IndependentReviewSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            DeliveryOptions.IndependentReview = IndependentReviewSwitch?.IsChecked == true;
             SaveState();
         }
 

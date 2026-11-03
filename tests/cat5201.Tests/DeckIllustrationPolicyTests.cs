@@ -91,7 +91,8 @@ namespace Cat5201.Tests
             var outline = Outline("京都美食地圖", "拉麵與街區", "甜點與咖啡");
 
             bool yes = DeckIllustrationPolicy.ShouldIllustrate(
-                "做一份京都美食簡報，不要圖片。", outline, explicitFromResolver: false, out var reason);
+                "做一份京都美食簡報，不要圖片。", outline, explicitFromResolver: false, out var reason,
+                declinedFromResolver: true);   // 「不要圖」由第一層語意判斷認出（2026-11-03 起不比對關鍵字）
 
             Assert.False(yes);
             Assert.Equal(DeckIllustrationPolicy.Reason.UserDeclined, reason);
@@ -103,7 +104,7 @@ namespace Cat5201.Tests
             // 第一層判斷說「要圖」也擋得住：使用者的明確指示永遠最大。
             Assert.False(DeckIllustrationPolicy.ShouldIllustrate(
                 "純文字就好", Outline("京都美食地圖", "拉麵與街區"),
-                explicitFromResolver: true, out var reason));
+                explicitFromResolver: true, out var reason, declinedFromResolver: true));
             Assert.Equal(DeckIllustrationPolicy.Reason.UserDeclined, reason);
         }
 
@@ -113,7 +114,7 @@ namespace Cat5201.Tests
             var outline = Outline("營收與毛利分析", "EPS 與現金流", "估值");
 
             bool yes = DeckIllustrationPolicy.ShouldIllustrate(
-                "做一份財報簡報，附配圖。", outline, explicitFromResolver: false, out var reason);
+                "做一份財報簡報，附配圖。", outline, explicitFromResolver: true, out var reason);   // 「附配圖」由語意判斷認出
 
             Assert.True(yes);
             Assert.Equal(DeckIllustrationPolicy.Reason.UserAsked, reason);

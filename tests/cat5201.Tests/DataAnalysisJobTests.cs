@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
 using Cat5201;
@@ -137,6 +137,7 @@ namespace Cat5201.Tests
             Assert.Contains("不得估計、不得編造", DataAnalysisJob.SystemPrompt);
             Assert.Contains("圖上的標題、座標軸、圖例一律用英文", DataAnalysisJob.SystemPrompt);
             Assert.Contains("個人資料一律留空白", DataAnalysisJob.SystemPrompt);
+            Assert.Contains("不要出現 nan", DataAnalysisJob.SystemPrompt);   // 2026-11-03 兩次實測比較表都有 nan
             Assert.Contains(ClaudeDocumentSkillsService.DeliverRule, DataAnalysisJob.SystemPrompt);
         }
 

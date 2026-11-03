@@ -18,7 +18,8 @@ namespace Cat5201
         private static readonly MarkdownPipeline _pipeline =
             // CJK 友善的粗體：「**敘述統計：**總價…」這種全形標點後面緊接中文的寫法，
             // 標準 Markdown 不認，預覽會直接露出 ** 符號（2026-11-03 沙箱報告預覽）。
-            new MarkdownPipelineBuilder().UseAdvancedExtensions().UseCjkFriendlyEmphasis().Build();
+            // DisableHtml：內容來自 Word 檔或模型輸出，裡面的 <script>、<iframe> 只能當文字顯示，不能在預覽裡執行。
+            new MarkdownPipelineBuilder().UseAdvancedExtensions().UseCjkFriendlyEmphasis().DisableHtml().Build();
 
         private const string BaseCss = @"
             :root { color-scheme: light; }

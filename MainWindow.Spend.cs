@@ -56,7 +56,9 @@ namespace Cat5201
             // 影片以最短可用長度估；真正的秒數要等導演企劃完才知道，寧可低估也不要在這裡嚇人。
             double videoUsd = VeoModels.UsdPerSecondForModel(GetEffectiveVeoModel()) * 8;
             // 文件：最佳品質模式會讓 Claude 在沙盒裡實際寫程式排版，來回數分鐘。
-            double documentUsd = _documentEngine == DocumentEngine.ClaudeSkills ? 3.0 : 0.05;
+            // 這一次實際用哪個引擎：要求裡明講快速版／最佳品質就照講的（語意判斷的結果），沒講才用個人化設定。
+            var engine = RequestedQuality.Apply(outputIntent?.Quality ?? RequestedQuality.Level.None, _documentEngine);
+            double documentUsd = engine == DocumentEngine.ClaudeSkills ? 3.0 : 0.05;
 
             switch (taskType)
             {
@@ -70,7 +72,7 @@ namespace Cat5201
                     AddTarget("圖片編輯", ModelCostEstimator.ImageUnitCostText(), imageUsd);
                     break;
                 case OrchestrationTaskType.Presentation:
-                    AddTarget("簡報", DocumentDetail(DeckFormats()), documentUsd);
+                    AddTarget("簡報", DocumentDetail(DeckFormats(), engine), documentUsd);
                     break;
                 case OrchestrationTaskType.GenerateFile:
                     AddTarget("檔案", "");
@@ -79,9 +81,9 @@ namespace Cat5201
 
             if (outputIntent != null)
             {
-                if (outputIntent.WantsPresentation) AddTarget("簡報", DocumentDetail(DeckFormats()), documentUsd);
-                if (outputIntent.WantsReport) AddTarget("書面報告", DocumentDetail(WithPdf("Word")), documentUsd);
-                if (outputIntent.WantsTable) AddTarget("表格", DocumentDetail(WithPdf("Excel")), documentUsd);
+                if (outputIntent.WantsPresentation) AddTarget("簡報", DocumentDetail(DeckFormats(), engine), documentUsd);
+                if (outputIntent.WantsReport) AddTarget("書面報告", DocumentDetail(WithPdf("Word"), engine), documentUsd);
+                if (outputIntent.WantsTable) AddTarget("表格", DocumentDetail(WithPdf("Excel"), engine), documentUsd);
                 if (outputIntent.WantsImage) AddTarget("圖片", ModelCostEstimator.ImageUnitCostText(), imageUsd);
                 if (outputIntent.WantsVideo) AddTarget("影片", "依秒計費，需較長時間", videoUsd);
             }
@@ -153,8 +155,8 @@ namespace Cat5201
 
         // 文件類產出的確認框說明：最佳品質模式要讓使用者事先知道會花幾分鐘、費用較高。
         // 不寫「文件技能」——那是實作名稱，使用者在個人化裡看到的選項叫「最佳品質」。
-        private string DocumentDetail(string formats)
-            => _documentEngine == DocumentEngine.ClaudeSkills
+        private static string DocumentDetail(string formats, DocumentEngine engine)
+            => engine == DocumentEngine.ClaudeSkills
                 ? $"{formats}・最佳品質模式，約需數分鐘"
                 : $"{formats}・快速版";
 

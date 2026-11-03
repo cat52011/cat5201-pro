@@ -32,6 +32,16 @@ namespace Cat5201.Tests
         }
 
         [Fact]
+        public void RawHtmlInContent_IsShownAsText_NotExecuted()
+        {
+            // 內容來自 Word 檔或模型輸出；預覽裡不能執行其中的 <script>。
+            string html = ArtifactHtmlRenderer.BuildDocxHtml("報告\n\n<script>alert(1)</script>\n\n<iframe src=x></iframe>");
+            Assert.DoesNotContain("<script>alert", html);
+            Assert.DoesNotContain("<iframe", html);
+            Assert.Contains("&lt;script&gt;", html);
+        }
+
+        [Fact]
         public void BoldNextToChinesePunctuation_IsRenderedAsBold_NotAsAsterisks()
         {
             // 「**敘述統計：**總價…」：標準 Markdown 不認全形標點後緊接中文的粗體，預覽會露出 **。
@@ -84,6 +94,53 @@ namespace Cat5201.Tests
             Assert.Contains("<strong>清理步驟與剩餘筆數：</strong>", html);
             Assert.Contains("<li>第二點</li>", html);
             Assert.Contains("<p>清單後面的一般段落。</p>", html);
+        }
+
+        [Fact]
+        public void LayoutTables_ShowAsParagraphs_DataTablesKeepTheirCellsApart()
+        {
+            // 2026-11-03 BMI 報告（Claude 文件技能）用表格排版：一格放「標題＋整段說明」、中間一欄空白當間隔。
+            // 當成資料表轉出來，整段文字擠在一格；同一格的兩段還黏成「18.5 – 24健康體重」。
+            static DocumentFormat.OpenXml.Wordprocessing.Paragraph P(string text, bool bold = false)
+            {
+                var run = new DocumentFormat.OpenXml.Wordprocessing.Run(
+                    new DocumentFormat.OpenXml.Wordprocessing.Text(text) { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+                if (bold) run.PrependChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(new DocumentFormat.OpenXml.Wordprocessing.Bold()));
+                return new DocumentFormat.OpenXml.Wordprocessing.Paragraph(run);
+            }
+            static DocumentFormat.OpenXml.Wordprocessing.TableCell Cell(params DocumentFormat.OpenXml.Wordprocessing.Paragraph[] ps)
+                => new(ps.Length == 0 ? new[] { new DocumentFormat.OpenXml.Wordprocessing.Paragraph() } : ps);
+
+            string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".docx");
+            using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(path, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+            {
+                var main = doc.AddMainDocumentPart();
+                string longText = "BMI（Body Mass Index，身體質量指數）是國際常用的體位評估指標，用以初步判斷體重相對於身高是否落在健康範圍。計算簡單、不需特殊儀器，廣泛用於學校健康檢查。";
+                main.Document = new DocumentFormat.OpenXml.Wordprocessing.Document(new DocumentFormat.OpenXml.Wordprocessing.Body(
+                    new DocumentFormat.OpenXml.Wordprocessing.Table(new DocumentFormat.OpenXml.Wordprocessing.TableRow(
+                        Cell(P("01  前言", bold: true), P(longText)),
+                        Cell(),                                                        // 空白間隔欄
+                        Cell(P("02  計算公式", bold: true), P("BMI ＝ 體重 ÷ 身高²"), P("例：60 ÷ 1.7² ≈ 20.8")))),
+                    new DocumentFormat.OpenXml.Wordprocessing.Table(new DocumentFormat.OpenXml.Wordprocessing.TableRow(
+                        Cell(P("< 18.5"), P("體重過輕")),
+                        Cell(P("18.5 – 24"), P("健康體重"))))));
+                main.Document.Save();
+            }
+
+            string md = ArtifactTextExtractor.ExtractDocx(path);
+            string html = ArtifactHtmlRenderer.BuildDocxHtml(md);
+            File.Delete(path);
+
+            // 排版表格：每一段各自成段，不是一格塞一整段
+            Assert.Contains("<strong>01  前言</strong>", html);
+            Assert.Contains("<p>" + "BMI（Body Mass Index", html);
+            Assert.Contains("<p>例：60 ÷ 1.7² ≈ 20.8</p>", html);
+            Assert.DoesNotContain("前言BMI", md);
+
+            // 資料表格：照樣是表格，同一格的兩段用空白隔開
+            Assert.Contains("18.5 – 24 健康體重", md);
+            Assert.DoesNotContain("18.5 – 24健康體重", md);
+            Assert.Contains("<table>", html);
         }
 
         [Fact]

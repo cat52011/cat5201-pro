@@ -717,6 +717,7 @@ Margin="0,20,20,0"
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                             <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Text="決策可視化"
@@ -725,8 +726,33 @@ Margin="0,20,20,0"
                        Foreground="#303030"
                        VerticalAlignment="Center"/>
 
-                        <Button x:Name="DecisionPanelToggleButton"
+                        <!-- 匯出 AI 使用紀錄（2026-11-03）：誰做了哪一段、哪些決策是誰提的、花了多少 -->
+                        <Button x:Name="DecisionExportButton"
                                 Grid.Column="1"
+                                Height="24"
+                                Margin="0,0,6,0"
+                                Padding="8,0"
+                                Background="#F3F4F6"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                FontSize="12"
+                                Foreground="#4A4A4A"
+                                Content="匯出紀錄"
+                                ToolTip="匯出這個節點最近一次執行的 AI 使用紀錄（誰做了哪一段、哪些決策是誰提的、花了多少）"
+                                Click="DecisionExportButton_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+
+                        <Button x:Name="DecisionPanelToggleButton"
+                                Grid.Column="2"
                                 Width="26"
                                 Height="24"
                                 Margin="0,0,8,0"
@@ -757,7 +783,7 @@ Margin="0,20,20,0"
                         </Button>
 
                         <Border x:Name="DecisionStatusBadge"
-                    Grid.Column="2"
+                    Grid.Column="3"
                     Background="#EEF7EA"
                     CornerRadius="999"
                     Padding="10,4">
@@ -1593,7 +1619,7 @@ Margin="0,20,20,0"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="簡報、報告裡的配圖，還有影片的第一格。你自己指名要的圖片不受這個影響，一律用最高品質。"
+                        <TextBlock Text="簡報、報告以及影片第一格之配圖，單純圖片不受限制"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1627,15 +1653,7 @@ Margin="0,20,20,0"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
-                                   Margin="0,14,0,2"/>
-
-                        <!-- 差別是「誰來排版」，不只是快慢——而這會一路影響到預覽與單頁編輯。 -->
-                        <TextBlock Text="最佳品質：Claude 親自設計每一頁。慢、貴，預覽是近似版面，單頁只能改文字。&#10;快速版：內建版型。快、便宜，預覽完全重現，單頁可連版面一起重做。&#10;沒金鑰或失敗時自動改用快速版。"
-                                   FontSize="11.5"
-                                   Foreground="#9A9A9E"
-                                   TextWrapping="Wrap"
-                                   Margin="0,0,0,8"/>
-
+                                   Margin="0,14,0,8"/>
                         <StackPanel>
                             <RadioButton x:Name="DocumentEngineSkills"
                                          GroupName="DocumentEngine"
@@ -1783,6 +1801,22 @@ Margin="0,20,20,0"
                                       Checked="CompanionPdfSwitch_Changed"
                                       Unchecked="CompanionPdfSwitch_Changed"/>
                         </Grid>
+                        <!-- 獨立審查（2026-11-04）：要另外花錢，用自己金鑰的人要能關掉 -->
+                        <Grid Margin="0,12,0,0" ToolTip="產出書面報告後，由沒有參與撰寫的模型核對數字與文字、找出矛盾，另存一份審查清單；不會修改報告。每份約 NT$1（Claude 審查）到 NT$10（GPT 審查）。">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="報告完成後獨立審查"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <CheckBox x:Name="IndependentReviewSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="IndependentReviewSwitch_Changed"
+                                      Unchecked="IndependentReviewSwitch_Changed"/>
+                        </Grid>
 
                         <!-- 存放位置：產出的檔案本來就不隨聊天刪除消失（它們在所有存檔共用的資料夾），
                              但使用者看不出這件事，也會想把成品放到自己的位置（雲端同步、交作業的資料夾）。 -->
@@ -1870,7 +1904,7 @@ Margin="0,20,20,0"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,0"/>
-                        <TextBlock Text="只影響自動選模型（Auto）；手動選的不受影響。"
+                        <TextBlock Text="手動選擇不受影響"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1937,7 +1971,7 @@ Margin="0,20,20,0"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="設定範圍 30～1800 秒（留空＝自動）"
+                        <TextBlock Text="設定範圍 30～1800 秒"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1965,11 +1999,6 @@ Margin="0,20,20,0"
                                        Margin="8,0,0,0"
                                        FontSize="12.5"
                                        Foreground="#666"/>
-                            <TextBlock Text="（留空＝自動）"
-                                       VerticalAlignment="Center"
-                                       Margin="10,0,0,0"
-                                       FontSize="11.5"
-                                       Foreground="#A8A8AC"/>
                         </StackPanel>
 
                         <!-- 花錢安全：今日累計花費 + 每日上限（0/留空 = 不限制） -->
@@ -2127,7 +2156,7 @@ Margin="0,20,20,0"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="手機連接同一 Wi-Fi 時，可在手機上操作"
+                        <TextBlock Text="手機連接同一 Wi-Fi 時，可在手機上查看執行狀態"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -2139,10 +2168,8 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="啟用手機唯讀鏡像"
+                                <TextBlock Text="鏡像模式"
                                            FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="關閉時不開任何對外連線埠"
-                                           FontSize="11" Foreground="#A8A8AC"/>
                             </StackPanel>
                             <CheckBox x:Name="MobileMirrorSwitch"
                                       Grid.Column="1"
@@ -2152,6 +2179,25 @@ Margin="0,20,20,0"
                                       Unchecked="MobileMirrorSwitch_Changed"/>
                         </Grid>
 
+                        <!-- 唯讀（2026-11-03）：預設開。區網明碼連線，拿到網址的人就能操作，而重跑和下指令會花錢。 -->
+                        <Grid Margin="0,6,0,3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="唯讀模式"
+                                           FontSize="12.5" Foreground="#333"/>
+                            </StackPanel>
+                            <CheckBox x:Name="MobileMirrorReadOnlySwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Margin="8,0,0,0"
+                                      Checked="MobileMirrorReadOnlySwitch_Changed"
+                                      Unchecked="MobileMirrorReadOnlySwitch_Changed"/>
+                        </Grid>
+
                         <Border x:Name="MobileMirrorUrlBox"
                                 Visibility="Collapsed"
                                 Background="#F4F5FB"
@@ -2159,7 +2205,7 @@ Margin="0,20,20,0"
                                 Padding="12,10"
                                 Margin="0,8,0,0">
                             <StackPanel>
-                                <TextBlock Text="手機相機掃這個 QR 直接進，或手打下方網址："
+                                <TextBlock Text="手機端掃描QRcode或輸入網址"
                                            FontSize="11.5" Foreground="#777" Margin="0,0,0,8"/>
                                 <Border HorizontalAlignment="Center"
                                         Background="White"

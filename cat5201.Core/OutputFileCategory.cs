@@ -24,12 +24,20 @@ namespace Cat5201
         private static readonly Category Web = new("網頁", 4);   // .html 也是程式碼產出，排在一起
         private static readonly Category Image = new("圖片", 5);
         private static readonly Category Video = new("影片", 6);
+        private static readonly Category Review = new("審查", 7);
+        private static readonly Category Disclosure = new("紀錄", 7);
         private static readonly Category Text = new("文字", 7);
         private static readonly Category Other = new("檔案", 8);
 
         public static Category Of(string? fileName)
         {
             string ext = Path.GetExtension(fileName ?? "").ToLowerInvariant();
+            string name = Path.GetFileName(fileName ?? "");
+
+            // 獨立審查清單與 AI 使用紀錄也是 .md，但不是「文字」產出，分開列（2026-11-03）。
+            if (ext == ".md" && name.Contains("審查清單", StringComparison.Ordinal)) return Review;
+            if (ext == ".md" && name.Contains("AI使用紀錄", StringComparison.Ordinal)) return Disclosure;
+
             return ext switch
             {
                 ".pptx" => Deck,

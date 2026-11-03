@@ -21,6 +21,9 @@ namespace Cat5201
 
         public int NodeCount { get; set; }
 
+        /// <summary>唯讀模式：手機只顯示狀態，不顯示任何操作按鈕（伺服器端也會拒絕操作）。</summary>
+        public bool ReadOnly { get; set; }
+
         public List<NodeSnapshot> Nodes { get; set; } = new();
 
         /// <summary>目前有一個「要不要產生檔案／媒體」的二次確認在等回答（§17 階段二）；null = 沒有。</summary>
