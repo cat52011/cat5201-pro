@@ -759,7 +759,7 @@
                                             ToolTip="點擊預覽"
                                             MouseLeftButtonDown="OutputFileItem_MouseLeftButtonDown">
                                         <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="檔案："
+                                            <TextBlock Text="{Binding CategoryLabel}"
                                                        FontSize="14"
                                                        Foreground="#9E9E9E"
                                                        VerticalAlignment="Center"/>

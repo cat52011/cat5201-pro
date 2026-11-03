@@ -141,7 +141,7 @@ cat5201-pro 是一個 Windows 桌面程式，用「節點」把多個 AI 模型�
 # 執行
 dotnet run --project cat5201.csproj
 
-# 測試（xUnit，901 項）
+# 測試（xUnit，973 項）
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # 打包成單一 exe，輸出到 publish\win-x64\
@@ -298,7 +298,7 @@ Requires the .NET 8 SDK.
 # Run
 dotnet run --project cat5201.csproj
 
-# Test (xUnit, 901 tests)
+# Test (xUnit, 973 tests)
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # Build a single-file exe into publish\win-x64\

@@ -1063,6 +1063,10 @@ namespace Cat5201
                         codeAssessment));
             }
 
+            // 要寫程式時，程式碼存成檔案（見 CodeFileExtractor）。修改附件程式碼走 diff 流程，不在這裡處理。
+            bool wantsCodeFiles = request.DelegationDepth == 0 && !hasCodeDiffDraft &&
+                                  CodeFileExtractor.WantsCodeFiles(intentText, decision.TaskMode);
+
             // 三段 finalInput 組裝都用同一套 code 指令區塊，避免漏掉某條路徑。
             void AddCodeInstructionBlocks(List<string> parts)
             {
@@ -1071,6 +1075,9 @@ namespace Cat5201
 
                 if (hasCodeDiffDraft)
                     parts.Add(BuildCodeDiffOutputInstructionBlock());
+
+                if (wantsCodeFiles)
+                    parts.Add(CodeFileExtractor.PromptBlock);
 
                 if (codeAssessment != null &&
                     !string.Equals(codeAssessment.RiskLevel, "low", StringComparison.OrdinalIgnoreCase))
@@ -1209,7 +1216,24 @@ namespace Cat5201
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageGeneration &&
                 orchestrationPlan.TaskType != OrchestrationTaskType.ImageEdit;
 
-            if (collaborating)
+            // 附了資料檔又要交報告／表格：在沙箱裡實際執行，一趟做完（DataAnalysisJob）。
+            // 成功就不再跑主回覆——那一步每輪續寫都要重送整份資料，又產不出真實數字（2026-11-03 機器學習作業）。
+            DataAnalysisOutcome? analysis = null;
+            if (!collaborating && request.DelegationDepth == 0 && allowGeneration &&
+                !hasCodeDiffDraft && outputIntent != null)
+            {
+                analysis = await TryRunDataAnalysisAsync(
+                    node, topText, workspace, orchestrationPlan, orchestration, outputIntent,
+                    request.PreferenceBlock, request.CancellationToken);
+            }
+
+            if (analysis != null)
+            {
+                execution = analysis.Execution;
+                if (request.UseStreaming && request.OnDelta != null)
+                    request.OnDelta(execution.Text);
+            }
+            else if (collaborating)
             {
                 // 協作：每個模型各自回答同一份輸入（相同的搜尋結果與背景）→ 互看後交叉檢視 → 共識與分歧。
                 // 每次呼叫都鎖定單一模型，失敗就標「未回應」，不找別的模型頂替。
@@ -1408,10 +1432,58 @@ namespace Cat5201
                                     || OutputFormatDetector.WantsPresentation(capabilityAugmentedText)
             };
 
+            // 程式碼存成檔案：排在報告、簡報之前。
+            // 同時要求程式與報告時，報告拿到的是「程式碼已換成檔案參照」的文字——
+            // 程式碼歸程式碼檔、報告只放說明，不會把原始碼整段抄進 Word 或投影片（2026-11-03 使用者要求分類好）。
+            // 不花額外的 API 呼叫，所以不經過產檔確認框。
+            var codeFiles = new List<GeneratedFilePayload>();
+            // 要求裡沒提到寫程式、但答案本身在交付程式（例如作業要求寫在附件裡）也算——見 LooksLikeCodeDeliverable。
+            bool extractCode = execution.IsSuccess && !string.IsNullOrWhiteSpace(execution.Text) &&
+                               (wantsCodeFiles ||
+                                (request.DelegationDepth == 0 && !hasCodeDiffDraft &&
+                                 CodeFileExtractor.LooksLikeCodeDeliverable(execution.Text)));
+            if (extractCode)
+            {
+                var extracted = CodeFileExtractor.Extract(execution.Text);
+                if (extracted.Files.Count > 0)
+                {
+                    var written = GeneratedFileWriter.WriteCodeFiles(
+                        _main.GetGeneratedFilesDir(),
+                        DeriveCleanTitle(intentText, "程式碼"),
+                        extracted.Files,
+                        $"{orchestrationPlan.PipelineId} / {execution.ActualModelId}");
+
+                    foreach (var file in written.Where(f => f.Success))
+                    {
+                        workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
+                            workspace, node, runtimeAgent.Id, "generated_file", file, modelId: execution.ActualModelId));
+                        codeFiles.Add(file);
+                    }
+
+                    // 全部寫成功才把程式碼從文字裡拿掉；有任何一個沒寫成，就保留原文——不能讓程式碼兩邊都不見。
+                    if (codeFiles.Count == extracted.Files.Count)
+                    {
+                        execution = ReplaceExecutionText(execution, extracted.Text);
+                        AppLog.Info("AgentRuntime", $"程式碼已存成 {codeFiles.Count} 個檔案");
+                    }
+                    else
+                    {
+                        AppLog.Warn("AgentRuntime",
+                            $"程式碼存檔不完整（{codeFiles.Count}/{extracted.Files.Count}），程式碼保留在答案裡");
+                    }
+                }
+            }
+
+            // 沙箱執行已經交出的報告、表格與程式，不再重做一次。
+            if (analysis != null)
+                codeFiles.AddRange(analysis.CodeFiles);
+
             // 意圖閘門：未獲准產出（純手動 / 確認框選「否」）時，一律不產報告/表格/簡報。
-            bool doReport = allowGeneration && intent.WantsReport;
-            bool doTable = allowGeneration && intent.WantsTable;
-            bool doDeck = allowGeneration && intent.WantsPresentation;
+            // 沙箱逾時（Stopped）：已經告訴使用者沒做完，不再另外產出沒有真實數字的報告。
+            bool analysisStopped = analysis?.Stopped ?? false;
+            bool doReport = allowGeneration && intent.WantsReport && !(analysis?.ReportDone ?? false) && !analysisStopped;
+            bool doTable = allowGeneration && intent.WantsTable && !(analysis?.TableDone ?? false) && !analysisStopped;
+            bool doDeck = allowGeneration && intent.WantsPresentation && !analysisStopped;
 
             // 文件技能（個人化預設）：簡報 / 報告 / 表格交給 Claude 用官方技能一次做完（與 Claude App 同一套機制）。
             // 成功產出的類型就不再走內建流程；沒金鑰、失敗、或某類型沒產出時，該類型照舊由下方內建流程補上。
@@ -1541,6 +1613,17 @@ namespace Cat5201
                     execution,
                     orchestration,
                     request.CancellationToken);
+            }
+
+            // 同時產了報告／簡報時，答案會被換成「已產出：報告.docx…」的摘要，程式碼的參照跟著不見。
+            // 程式碼檔另列一行，跟文件分開——使用者一眼分得出哪些是程式、哪些是文件。
+            if (codeFiles.Count > 0 && execution.IsSuccess)
+            {
+                string text = execution.Text ?? "";
+                if (codeFiles.Any(f => !text.Contains(f.FileName, StringComparison.Ordinal)))
+                    execution = ReplaceExecutionText(execution,
+                        text.TrimEnd() + "\n\n程式碼檔案：" + string.Join("、", codeFiles.Select(f => f.FileName)) +
+                        "（在節點下方點開即可預覽）");
             }
 
             orchestration.MarkSuccess("write_workspace", $"artifacts: {workspace.GetAll().Count}");
@@ -1701,6 +1784,311 @@ namespace Cat5201
         }
 
         private sealed record SkillsOutcome(AiFallbackExecutionResult Execution, bool Deck, bool Report, bool Table);
+
+        private sealed record DataAnalysisOutcome(
+            AiFallbackExecutionResult Execution, bool ReportDone, bool TableDone, IReadOnlyList<GeneratedFilePayload> CodeFiles,
+            bool Stopped = false);
+
+        /// <summary>
+        /// 附了資料檔又要交報告／表格：在 Claude 的沙箱裡實際執行分析，一趟交出報告與程式（見 DataAnalysisJob）。
+        /// 沒有資料檔、不用 Claude、沒金鑰、超出預算或沒做出來時回 null，照原本的流程走。
+        /// </summary>
+        private async Task<DataAnalysisOutcome?> TryRunDataAnalysisAsync(
+            INodeContext node,
+            string userInput,
+            AgentWorkspace workspace,
+            OrchestrationPlanPayload orchestrationPlan,
+            OrchestrationStateMachine orchestration,
+            OutputIntent intent,
+            string preferenceBlock,
+            CancellationToken ct)
+        {
+            var attachments = _main.GetEffectiveAttachmentsForNode(node) ?? Array.Empty<AttachmentInfo>();
+            if (!DataAnalysisJob.Applies(attachments.Select(a => a.FileName), intent))
+                return null;
+
+            // 手動模式選了 Claude 以外的撰寫者時，不能為了執行程式改用 Claude（跟最佳品質文件同一條規則）。
+            string? model = _scope.SkillsModel(DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus));
+            if (model == null)
+            {
+                AppLog.Info("DataAnalysis", "這次的撰寫者不是 Claude，不在沙箱執行，照原本流程產出");
+                return null;
+            }
+
+            var service = new ClaudeDocumentSkillsService(model);
+            if (!service.IsConfigured)
+            {
+                AppLog.Info("DataAnalysis", "未設定 ANTHROPIC_API_KEY，不在沙箱執行");
+                return null;
+            }
+
+            using var reservation = SpendReservations.TryReserveWithinBudget("資料分析（沙箱執行）", DataAnalysisJob.JobBudgetUsd);
+            if (reservation == null)
+            {
+                AppLog.Info("Spend", $"資料分析未啟動：會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                return null;
+            }
+
+            using var usagePurpose = UsageMeter.Purpose("資料分析（沙箱）");
+            string root = _main.GetAttachmentsRootDir();
+            string FullPath(AttachmentInfo a) => System.IO.Path.Combine(root, a.RelativePath ?? "");
+
+            // 1) 資料檔整份放進沙箱；說明圖片附在訊息裡讓 Claude 看得到；Word 範本也放進沙箱（照格式填寫用）。
+            var uploads = new List<ClaudeDocumentSkillsService.ContainerFile>();
+            var dataNames = new List<string>();
+            var imageNames = new List<string>();
+            var documents = new List<(string FileName, string Text)>();
+            var templateNames = new List<string>();
+            var originalNames = new Dictionary<string, string>();
+            int uploadIndex = 0;
+
+            node.SetLoadingHint("把資料檔放進沙箱…");
+            foreach (var a in attachments)
+            {
+                ct.ThrowIfCancellationRequested();
+                string path = FullPath(a);
+                if (!System.IO.File.Exists(path)) continue;
+
+                bool isData = DataAnalysisJob.IsDataFile(a.FileName);
+                bool isImage = DataAnalysisJob.IsImage(a.FileName);
+                bool isDoc = DataAnalysisJob.IsDocument(a.FileName);
+
+                if (isDoc)
+                {
+                    string? docText = AttachmentTextCache.TryGetText(path, a.FileName, a.MimeType);
+                    if (!string.IsNullOrWhiteSpace(docText)) documents.Add((a.FileName, docText!));
+                }
+
+                bool upload = isData || isImage || a.FileName.EndsWith(".docx", StringComparison.OrdinalIgnoreCase);
+                if (!upload) continue;
+
+                try
+                {
+                    if (new System.IO.FileInfo(path).Length > DataAnalysisJob.MaxUploadBytes)
+                    {
+                        AppLog.Warn("DataAnalysis", $"附件太大，沒有放進沙箱：{a.FileName}");
+                        continue;
+                    }
+
+                    byte[] bytes = await System.IO.File.ReadAllBytesAsync(path, ct);
+                    // 中文檔名上傳會被拒，改用英數檔名；原檔名寫進提示，.py 才會用使用者電腦上的名稱讀檔。
+                    string sandboxName = ClaudeFilesApi.SafeUploadName(a.FileName, ++uploadIndex);
+                    string? id = await ClaudeFilesApi.UploadAsync(bytes, sandboxName, DataAnalysisJob.MimeFor(a.FileName), ct);
+                    if (string.IsNullOrWhiteSpace(id))
+                    {
+                        // 資料檔上傳失敗就沒得分析；圖片與範本失敗只是少一份參考（範本文字已經在提示裡）。
+                        if (isData)
+                        {
+                            AppLog.Warn("DataAnalysis", $"資料檔上傳失敗，改走原本流程：{a.FileName}");
+                            return null;
+                        }
+                        continue;
+                    }
+
+                    uploads.Add(new ClaudeDocumentSkillsService.ContainerFile(id!, sandboxName, AsImage: isImage));
+                    if (sandboxName != a.FileName) originalNames[sandboxName] = a.FileName;
+                    if (isData) dataNames.Add(sandboxName);
+                    else if (isImage) imageNames.Add(sandboxName);
+                    else templateNames.Add(sandboxName);
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("DataAnalysis", $"附件上傳失敗：{a.FileName}", ex);
+                    if (isData) return null;
+                }
+            }
+
+            if (dataNames.Count == 0)
+                return null;
+
+            var job = new DataAnalysisJob.Request
+            {
+                UserInput = userInput,
+                PreferenceBlock = preferenceBlock ?? "",
+                DataFiles = dataNames,
+                Images = imageNames,
+                Documents = documents,
+                Templates = templateNames,
+                OriginalNames = originalNames,
+                WantsReport = intent.WantsReport,
+                WantsTable = intent.WantsTable,
+                Language = intent.RequestedLanguage ?? "",
+            };
+
+            if (job.WantsReport) orchestration.MarkRunning("generate_file");
+
+            // 2) 執行。跟最佳品質文件一樣：一輪可能好幾分鐘，自己每 10 秒報一次進度；沒交出檔案就帶著原因重試一次。
+            var started = DateTime.UtcNow;
+            var budget = DataAnalysisJob.TimeBudget;
+            int steps = 0;
+            void ShowProgress() => node.SetLoadingHint(
+                $"在沙箱執行分析中（{(DateTime.UtcNow - started).TotalMinutes:0.0} / {budget.TotalMinutes:0} 分鐘" +
+                (steps > 0 ? $"，已完成 {steps} 個步驟" : "") + "）");
+
+            using var ticker = new System.Threading.PeriodicTimer(TimeSpan.FromSeconds(10));
+            using var tickerStop = new CancellationTokenSource();
+            async Task TickAsync()
+            {
+                try { while (await ticker.WaitForNextTickAsync(tickerStop.Token)) ShowProgress(); }
+                catch (OperationCanceledException) { }
+            }
+
+            ShowProgress();
+            var ticking = TickAsync();
+
+            var result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = "尚未開始" };
+            double spent = 0;
+            try
+            {
+                for (int attempt = 1; attempt <= 2; attempt++)
+                {
+                    var remaining = started + budget - DateTime.UtcNow;
+                    double remainingUsd = DataAnalysisJob.JobBudgetUsd - spent;
+                    if (remaining < TimeSpan.FromSeconds(45) || remainingUsd <= 0.25)
+                        break;
+
+                    string retryNote = attempt == 1 ? "" :
+                        "\n\n【重要】上一次沒有把最終檔案輸出。這一次請務必把報告與程式存成檔案，最後複製到 \"$OUTPUT_DIR\" 並在同一個指令裡 ls 確認。";
+
+                    try
+                    {
+                        result = await service.GenerateAsync(
+                            DataAnalysisJob.SystemPrompt,
+                            DataAnalysisJob.BuildUserPrompt(job),
+                            Array.Empty<string>(),          // 不掛技能：python-docx 等都已預裝，Word 技能光注入就上百萬 token
+                            DataAnalysisJob.WantedExtensions(job.WantsReport, job.WantsTable),
+                            (round, s) => { steps = s; ShowProgress(); },
+                            ct,
+                            remaining,
+                            uploads,
+                            remainingUsd,
+                            retryNote);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        AppLog.Warn("DataAnalysis", $"沙箱執行第 {attempt} 次拋出例外", ex);
+                        result = new ClaudeDocumentSkillsService.Result { Success = false, ErrorMessage = ex.Message };
+                    }
+
+                    spent += result.UsdCost;
+                    // 已經在沙箱裡做過事（有步驟）就不整趟重來：沒交到檔案的情況，服務裡已經沿用同一個沙箱補交過一次。
+                    if (result.Success || result.TimedOut || result.ToolSteps > 0 ||
+                        !ClaudeDocumentSkillsService.IsRetryable(result))
+                        break;
+
+                    AppLog.Warn("DataAnalysis", $"第 {attempt} 次沒有交出檔案（{result.ToolSteps} 步）：{result.ErrorMessage}　→ 重試");
+                    steps = 0;
+                }
+            }
+            finally
+            {
+                tickerStop.Cancel();
+                await ticking;
+                node.SetLoadingHint(null);
+                AppLog.Info("DataAnalysis",
+                    $"沙箱分析結束：{(DateTime.UtcNow - started).TotalMinutes:0.0} 分鐘，US${spent:0.000}，{(result.Success ? "成功" : "未完成")}");
+            }
+
+            if (!result.Success && (result.TimedOut || result.ToolSteps > 0))
+            {
+                // 沙箱已經實際做過事（逾時，或做完卻沒交到檔案）：不再退回原本流程。
+                // 2026-11-03 兩次實測都是這樣——退回原本流程又花了 8～12 分鐘、US$1～1.9，
+                // 交出的還是沒有真實數字的報告，等於多花一倍時間換一份使用者原本就不要的東西。
+                AppLog.Warn("DataAnalysis", $"沙箱分析沒有完成，停止，不退回原本流程：{result.ErrorMessage}");
+                orchestration.MarkFailed("generate_file", result.TimedOut ? "沙箱執行逾時" : "沙箱沒有交出檔案");
+                return new DataAnalysisOutcome(
+                    new AiFallbackExecutionResult
+                    {
+                        IsSuccess = true,
+                        Text = result.TimedOut
+                            ? DataAnalysisJob.TimedOutMessage(DataAnalysisJob.TimeBudget, spent)
+                            : DataAnalysisJob.NoFilesMessage(spent),
+                        ActualModelId = model,
+                        Summary = "沙箱執行逾時",
+                        Attempts = new List<AiFallbackAttempt> { new() { AttemptIndex = 1, ModelId = model, Success = false } },
+                    },
+                    ReportDone: false, TableDone: false, CodeFiles: Array.Empty<GeneratedFilePayload>(), Stopped: true);
+            }
+
+            if (!result.Success)
+            {
+                AppLog.Warn("DataAnalysis", $"沙箱分析沒有完成，改走原本流程：{result.ErrorMessage}");
+                return null;
+            }
+
+            // 3) 收檔：報告、表格照一般產出寫檔；程式放進程式碼資料夾（分類成「程式碼」、可預覽）。
+            string genDir = _main.GetGeneratedFilesDir();
+            string title = DeriveCleanTitle(userInput, "分析報告");
+            string sourceSummary = $"{orchestrationPlan.PipelineId} / 沙箱執行 {model}";
+            var produced = new List<string>();
+            bool reportDone = false, tableDone = false, resultTableDone = false;
+            var codeFiles = new List<GeneratedFilePayload>();
+
+            void Emit(GeneratedFilePayload payload, string agentId)
+            {
+                if (payload == null || !payload.Success) return;
+                workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(workspace, node, agentId, "generated_file", payload, modelId: model));
+                produced.Add(payload.FileName);
+            }
+
+            foreach (var f in result.Files)
+            {
+                switch (f.Extension.ToLowerInvariant())
+                {
+                    case ".docx" when job.WantsReport && !reportDone:
+                        var docx = GeneratedFileWriter.WriteDocx(genDir, title, f.Bytes, sourceSummary);
+                        Emit(docx, "report-agent");
+                        reportDone = docx.Success;
+                        break;
+                    case ".xlsx" when !tableDone && !resultTableDone:
+                        // 沒被要求表格時也收：報告常引用「完整結果見 xxx.xlsx」，丟掉會讓報告指向不存在的檔案。
+                        var xlsx = GeneratedFileWriter.WriteXlsx(genDir, title + (job.WantsTable ? "（表格）" : "（結果表）"), f.Bytes, sourceSummary);
+                        Emit(xlsx, "table-agent");
+                        if (job.WantsTable) tableDone = xlsx.Success;
+                        else resultTableDone = xlsx.Success;
+                        break;
+                    case ".py" when codeFiles.Count == 0:
+                        string code = System.Text.Encoding.UTF8.GetString(f.Bytes).TrimStart('﻿');
+                        var written = GeneratedFileWriter.WriteCodeFiles(genDir, title,
+                            new[] { new CodeFileExtractor.CodeFile(System.IO.Path.GetFileName(f.FileName), "python", code) },
+                            sourceSummary);
+                        foreach (var w in written.Where(w => w.Success))
+                        {
+                            Emit(w, "code-agent");
+                            codeFiles.Add(w);
+                        }
+                        break;
+                }
+            }
+
+            if (!reportDone && !tableDone)
+            {
+                AppLog.Warn("DataAnalysis", "沙箱沒有交出報告或表格，改走原本流程");
+                return null;
+            }
+
+            if (reportDone || tableDone)
+                orchestration.MarkSuccess("generate_file", "沙箱執行 / " + string.Join(" / ", produced));
+
+            string summary = string.IsNullOrWhiteSpace(result.Summary)
+                ? $"已在沙箱實際執行分析，產出：{string.Join("、", produced)}。"
+                : result.Summary.Trim();
+            string text = summary + "\n\n" + DataAnalysisJob.ChartLanguageNote;
+
+            AppLog.Info("DataAnalysis", $"產出 {produced.Count} 個檔案：{string.Join("、", produced)}");
+            return new DataAnalysisOutcome(
+                new AiFallbackExecutionResult
+                {
+                    IsSuccess = true,
+                    Text = text,
+                    ActualModelId = model,
+                    Summary = "沙箱執行",
+                    Attempts = new List<AiFallbackAttempt> { new() { AttemptIndex = 1, ModelId = model, Success = true } },
+                },
+                reportDone, tableDone, codeFiles);
+        }
 
         /// <summary>
         /// Claude 文件技能：一次呼叫產出所有要求的文件（pptx / docx / xlsx ＋ 各自的 PDF）。
@@ -1885,7 +2273,7 @@ namespace Cat5201
                 string retryNote = attempt == 1 ? "" :
                     result.ToolSteps > 0
                         ? "\n\n【重要】上一次你執行了步驟，但沒有把最終檔案輸出成可下載的檔案。" +
-                          "這一次請務必把成品存成檔案並輸出，不要只在訊息裡描述內容。"
+                          "這一次請務必把成品存成檔案，最後複製到 \"$OUTPUT_DIR\" 並在同一個指令裡 ls 確認，不要只在訊息裡描述內容。"
                         : "\n\n【重要】上一次這個請求沒有回應。請直接開始動手做，不要先寫長篇說明。";
 
                 try

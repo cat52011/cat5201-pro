@@ -126,7 +126,8 @@ namespace Cat5201
         }
 
 
-        private const int MainReplyMaxOutputTokens = 8000;
+        // 每輪輸出上限：8,000 讓長答案分好幾輪、每輪重送整包（見 NodeExecutionCoreService.MaxOutputFor）。
+        private const int MainReplyMaxOutputTokens = 16000;
         private const int ContinuationMaxRounds = 5;
         private const int SegmentDiscoveryMaxTokens = 1200;
         private const int SegmentTranslationMaxTokens = 8000;
@@ -321,10 +322,24 @@ namespace Cat5201
 
         // §6 第一層輸出判斷：先跑一次（便宜的）API 決定要簡報/報告/表格之中哪幾個。
         // 只有「看起來要產出檔案」時才呼叫，純聊天不浪費一次 API。
-        private async Task<OutputIntent?> ResolveOutputIntentAsync(string topText, ModelScope scope, CancellationToken ct)
+        private async Task<OutputIntent?> ResolveOutputIntentAsync(NodeControl node, string topText, ModelScope scope, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
+
+            // 要交什麼常常寫在附件裡（作業說明、範本）——附件的檔名與文件開頭一起交給判斷（見 AttachmentIntentHints）。
+            IReadOnlyList<AttachmentIntentHints.Hint> attachments = Array.Empty<AttachmentIntentHints.Hint>();
+            try
+            {
+                string root = _main.GetAttachmentsRootDir();
+                attachments = AttachmentIntentHints.Build(
+                    _main.GetEffectiveAttachmentsForNode(node)
+                        .Select(a => (a.FileName, (string?)System.IO.Path.Combine(root, a.RelativePath ?? ""))));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("OutputIntent", "讀取附件給輸出判斷失敗（照常只看輸入文字）", ex);
+            }
 
             // 2026-07-04（使用者指示）：不再用關鍵字預審決定「要不要問第一層 AI」——
             // 關鍵字白名單永遠有漏（「給我一張關於這間公司的圖」的「圖」就不在清單裡），
@@ -332,11 +347,11 @@ namespace Cat5201
             // 做語意判斷；它輸出極小、只送使用者那句話，成本可忽略。LLM 失敗才退回關鍵字。
             try
             {
-                return await _outputIntentResolver.ResolveAsync(topText, ct, scope);
+                return await _outputIntentResolver.ResolveAsync(topText, ct, scope, attachments);
             }
             catch
             {
-                return OutputIntent.FromKeywords(topText);
+                return AttachmentIntentHints.ApplyTemplateRule(OutputIntent.FromKeywords(topText), topText, attachments);
             }
         }
 
@@ -357,7 +372,7 @@ namespace Cat5201
                 var workspace = new AgentWorkspace();
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(topText, ScopeFor(node), ct);
+                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
@@ -610,7 +625,7 @@ namespace Cat5201
             {
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(topText, ScopeFor(node), ct);
+                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {

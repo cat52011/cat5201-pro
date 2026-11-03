@@ -19,6 +19,74 @@ namespace Cat5201.Tests
         }
 
         [Fact]
+        public void WideReportTables_ScrollInsideThePage_InsteadOfSpillingOut()
+        {
+            // 2026-11-03：沙箱報告的敘述統計（9 欄）在預覽裡超出頁面右邊。
+            string html = ArtifactHtmlRenderer.BuildDocxHtml(
+                "| 變數 | count | mean | std | min | 25% | 50% | 75% | max |\n|---|---|---|---|---|---|---|---|---|\n" +
+                "| 總價元 | 2,767 | 29,562,186 | 20,718,272 | 4,320,000 | 15,680,000 | 23,900,000 | 35,000,000 | 280,000,000 |");
+
+            Assert.Contains("<div class='table-wrap'><table>", html);
+            Assert.Contains("</table></div>", html);
+            Assert.Contains(".table-wrap { overflow-x: auto;", html);
+        }
+
+        [Fact]
+        public void BoldNextToChinesePunctuation_IsRenderedAsBold_NotAsAsterisks()
+        {
+            // 「**敘述統計：**總價…」：標準 Markdown 不認全形標點後緊接中文的粗體，預覽會露出 **。
+            string html = ArtifactHtmlRenderer.BuildDocxHtml("**敘述統計：**總價平均 29.56 百萬元。");
+
+            Assert.Contains("<strong>敘述統計：</strong>", html);
+            Assert.DoesNotContain("**", html);
+        }
+
+        [Fact]
+        public void ReportParagraphs_KeepTheirBold_InThePreview()
+        {
+            // 2026-11-03 沙箱報告（python-docx 產生）的預覽有 27 處露出 **：
+            // 一句粗體被切成好幾個 run、粗體裡頭前後帶全形空白、連續段落只換一行就接著圖。
+            string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".docx");
+            using (var doc = DocumentFormat.OpenXml.Packaging.WordprocessingDocument.Create(
+                       path, DocumentFormat.OpenXml.WordprocessingDocumentType.Document))
+            {
+                var main = doc.AddMainDocumentPart();
+                static DocumentFormat.OpenXml.Wordprocessing.Run Run(string text, bool bold)
+                {
+                    var r = new DocumentFormat.OpenXml.Wordprocessing.Run(
+                        new DocumentFormat.OpenXml.Wordprocessing.Text(text)
+                        { Space = DocumentFormat.OpenXml.SpaceProcessingModeValues.Preserve });
+                    if (bold)
+                        r.PrependChild(new DocumentFormat.OpenXml.Wordprocessing.RunProperties(
+                            new DocumentFormat.OpenXml.Wordprocessing.Bold()));
+                    return r;
+                }
+                static DocumentFormat.OpenXml.Wordprocessing.Paragraph Para(params DocumentFormat.OpenXml.Wordprocessing.Run[] runs)
+                    => new(runs);
+
+                main.Document = new DocumentFormat.OpenXml.Wordprocessing.Document(
+                    new DocumentFormat.OpenXml.Wordprocessing.Body(
+                        Para(Run("資科系　　學號：　　姓名：　　", true)),
+                        Para(Run("清理步驟", true), Run("與剩餘筆數：", true)),
+                        Para(Run("圖表說明：取對數後偏態降為 0.09。", true)),
+                        Para(Run("• 第一點", false)),
+                        Para(Run("• 第二點", false)),
+                        Para(Run("清單後面的一般段落。", false))));
+                main.Document.Save();
+            }
+
+            string markdown = ArtifactTextExtractor.ExtractDocx(path);
+            string html = ArtifactHtmlRenderer.BuildDocxHtml(markdown);
+            File.Delete(path);
+
+            Assert.DoesNotContain("**", html);
+            Assert.Contains("<strong>資科系　　學號：　　姓名：</strong>", html);
+            Assert.Contains("<strong>清理步驟與剩餘筆數：</strong>", html);
+            Assert.Contains("<li>第二點</li>", html);
+            Assert.Contains("<p>清單後面的一般段落。</p>", html);
+        }
+
+        [Fact]
         public void PreviewShowsWhatExcelShowsNotTheRawStoredValue()
         {
             // 百分比在檔案裡存的是 0.285，Excel 依格式顯示 28.5%。

@@ -16,7 +16,9 @@ namespace Cat5201
     public static class ArtifactHtmlRenderer
     {
         private static readonly MarkdownPipeline _pipeline =
-            new MarkdownPipelineBuilder().UseAdvancedExtensions().Build();
+            // CJK 友善的粗體：「**敘述統計：**總價…」這種全形標點後面緊接中文的寫法，
+            // 標準 Markdown 不認，預覽會直接露出 ** 符號（2026-11-03 沙箱報告預覽）。
+            new MarkdownPipelineBuilder().UseAdvancedExtensions().UseCjkFriendlyEmphasis().Build();
 
         private const string BaseCss = @"
             :root { color-scheme: light; }
@@ -58,7 +60,12 @@ namespace Cat5201
             table {
                 border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14.5px;
             }
+            .table-wrap { overflow-x: auto; margin: 16px 0; max-width: 100%; }
+            .table-wrap table { margin: 0; width: auto; min-width: 100%; }
             th,td { border: 1px solid #e6e6ea; padding: 9px 13px; text-align: left; vertical-align: top; }
+            .table-wrap th, .table-wrap td { padding: 7px 10px; }
+            .table-wrap th { white-space: nowrap; }
+            .table-wrap td { min-width: 5.5em; }
             th { background: #f5f6f8; font-weight: 700; color: #2a2c31; }
             tr:nth-child(even) td { background: #fbfbfc; }
             blockquote {
@@ -126,7 +133,7 @@ namespace Cat5201
         {
             string body = string.IsNullOrWhiteSpace(markdown)
                 ? "<p class='empty'>（沒有可顯示的內容）</p>"
-                : Markdown.ToHtml(markdown, _pipeline);
+                : WrapTables(Markdown.ToHtml(markdown, _pipeline));
 
             var sb = new StringBuilder();
             sb.Append("<!DOCTYPE html><html><head><meta charset='utf-8'>");
@@ -135,6 +142,14 @@ namespace Cat5201
             sb.Append("</body></html>");
             return sb.ToString();
         }
+
+        /// <summary>
+        /// 每個表格包一層可以左右捲動的框。2026-11-03 沙箱報告的敘述統計（9 欄）與模型比較（8 欄）在預覽裡
+        /// 超出頁面右邊：表格本身縮不下去，數字又不該被折行，只能讓它在頁面裡橫向捲動。
+        /// </summary>
+        internal static string WrapTables(string html)
+            => html.Replace("<table>", "<div class='table-wrap'><table>")
+                   .Replace("</table>", "</table></div>");
 
         /// <summary>簡報（逐張文字行）→ 投影片卡片 HTML。每張 slide 第一行當標題，其餘為內容。</summary>
         public static string BuildSlidesHtml(IReadOnlyList<IReadOnlyList<string>> slides)

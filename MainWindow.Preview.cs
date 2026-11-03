@@ -1096,8 +1096,16 @@ namespace Cat5201
                             targetFull);
                         break;
 
-                    case "txt": case "md": case "csv": case "json":
+                    case "txt": case "md": case "csv":
                         ShowTextPreview(File.ReadAllText(targetFull));
+                        break;
+
+                    // 程式碼檔：行號＋語法上色（2026-11-03 使用者要求程式碼以檔案呈現、能在畫布內預覽）。
+                    // HTML 不在這裡：上面那一支直接顯示執行結果，那才是使用者想看的。
+                    case var code when CodeFileExtractor.CodeExtensions.Contains("." + code):
+                        await ShowHtmlContentAsync(
+                            CodeHtmlRenderer.Build(System.IO.Path.GetFileName(targetFull), File.ReadAllText(targetFull)),
+                            targetFull);
                         break;
 
                     default:

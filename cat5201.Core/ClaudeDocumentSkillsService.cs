@@ -149,6 +149,9 @@ namespace Cat5201
             /// <summary>這一次是「串流卡住」而不是真的做不出來——呼叫端據此決定要不要重來。</summary>
             public bool Stalled { get; init; }
 
+            /// <summary>跑滿時間上限被停掉（一直有在做事，只是沒在時限內做完）。</summary>
+            public bool TimedOut { get; init; }
+
             public bool Success { get; init; }
             public IReadOnlyList<SkillFile> Files { get; init; } = Array.Empty<SkillFile>();
             /// <summary>Claude 最後給使用者的說明文字。</summary>
@@ -238,9 +241,20 @@ namespace Cat5201
             ct = deadline.Token;
 
             // 使用者取消 → 照原樣往外丟；時間到 → 當成一次失敗，讓呼叫端接手內建版型。
-            Result Deadline(int round, int steps) => Fail(
-                $"已達 {limit.TotalMinutes:0} 分鐘上限仍未產出檔案（{round} 輪 / {steps} 步，實際 {(DateTime.UtcNow - started).TotalMinutes:0.0} 分），已停止以免繼續累積費用。",
-                round, steps);
+            Result Deadline(int round, int steps)
+            {
+                var r = Fail(
+                    $"已達 {limit.TotalMinutes:0} 分鐘上限仍未產出檔案（{round} 輪 / {steps} 步，實際 {(DateTime.UtcNow - started).TotalMinutes:0.0} 分），已停止以免繼續累積費用。",
+                    round, steps);
+                return new Result
+                {
+                    Success = false,
+                    ErrorMessage = r.ErrorMessage,
+                    Rounds = r.Rounds,
+                    ToolSteps = r.ToolSteps,
+                    TimedOut = true,
+                };
+            }
 
             Result StalledResult(int round, int steps)
             {
@@ -274,6 +288,7 @@ namespace Cat5201
             var finalText = new StringBuilder();
             int toolSteps = 0;
             int round = 0;
+            bool rescued = false;
 
             try
             {
@@ -366,6 +381,15 @@ namespace Cat5201
 
                     var assembler = new SseMessageAssembler();
                     var roundStarted = DateTime.UtcNow;
+                    int liveSteps = 0;
+                    int roundNo = round, stepsBefore = toolSteps;
+                    assembler.ToolCallCompleted = block =>
+                    {
+                        liveSteps++;
+                        onProgress?.Invoke(roundNo, stepsBefore + liveSteps);
+                        AppLog.Info("DocSkills",
+                            $"步驟 {stepsBefore + liveSteps}（{(DateTime.UtcNow - started).TotalMinutes:0.0} 分）：{DescribeToolCall(block)}");
+                    };
 
                     // 這一輪自己的逾時：每收到一個事件就重新計時，連續沒動靜才算卡死。
                     using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -388,7 +412,8 @@ namespace Cat5201
                         double abortedUsd = EstimateAbortedOutputUsd(
                             (string?)assembler.Message["model"] ?? _model,
                             DateTime.UtcNow - roundStarted,
-                            StreamedTextLength(assembler.Message));
+                            StreamedTextLength(assembler.Message),
+                            assembler.ToolResultChars);
 
                         spent.Usd += RecordUsage(assembler.Message, round, "串流中止（輸出量為估算）", abortedUsd);
 
@@ -444,11 +469,26 @@ namespace Cat5201
                     if (stopReason == "refusal")
                         return Fail("Claude 拒絕了這個文件產出請求。", round, toolSteps);
 
-                    if (!string.IsNullOrWhiteSpace(roundText))
+                    // 補交那一輪只會說「已複製」，不是給使用者的說明。
+                    if (!rescued && !string.IsNullOrWhiteSpace(roundText))
                         finalText.Append(roundText);
 
                     if (stopReason == "max_tokens" && fileIds.Count == 0)
                         return Fail("Claude 單輪輸出達上限，文件未完成。", round, toolSteps);
+
+                    // 做完了、卻沒有檔案回來：多半是成品沒放進 $OUTPUT_DIR。沿用同一個沙箱請它補複製一次，
+                    // 不要整趟重做（2026-11-03：兩次沙箱分析與一次 Word 報告都做完了卻收不到檔案，每次重做 US$0.3～0.8）。
+                    if (ShouldAskToDeliver(stopReason, fileIds.Count, toolSteps, rescued, containerId) &&
+                        round < MaxRounds && (maxUsd <= 0 || spent.Usd < maxUsd))
+                    {
+                        rescued = true;
+                        AppLog.Warn("DocSkills",
+                            $"做了 {toolSteps} 步但沒有回傳檔案，沿用同一個沙箱請它把成品複製到 $OUTPUT_DIR（不重做）");
+                        var replay = new JsonArray(content.Where(b => b != null).Select(b => (JsonNode?)b!.DeepClone()).ToArray());
+                        messages.Add(new JsonObject { ["role"] = "assistant", ["content"] = replay });
+                        messages.Add(new JsonObject { ["role"] = "user", ["content"] = DeliverReminder });
+                        continue;
+                    }
 
                     break; // end_turn（或 max_tokens 但已有檔案）
                 }
@@ -543,11 +583,17 @@ namespace Cat5201
             foreach (var file in containerFiles ?? Array.Empty<ContainerFile>())
             {
                 if (string.IsNullOrWhiteSpace(file.FileId)) continue;
-                content.Add(new JsonObject
-                {
-                    ["type"] = "container_upload",
-                    ["file_id"] = file.FileId,
-                });
+                content.Add(file.AsImage
+                    ? new JsonObject
+                    {
+                        ["type"] = "image",
+                        ["source"] = new JsonObject { ["type"] = "file", ["file_id"] = file.FileId },
+                    }
+                    : new JsonObject
+                    {
+                        ["type"] = "container_upload",
+                        ["file_id"] = file.FileId,
+                    });
             }
 
             content.Add(new JsonObject { ["type"] = "text", ["text"] = userPrompt ?? "" });
@@ -735,7 +781,11 @@ namespace Cat5201
 
         /// <summary>要帶進沙箱的檔案：已經上傳到 Files API，用 file_id 引用。</summary>
         /// <param name="Description">這個檔案是什麼（例如照片的主體），會寫進提示讓模型知道該放哪裡。</param>
-        public sealed record ContainerFile(string FileId, string FileName, string? Description = null);
+        /// <param name="AsImage">
+        /// true＝當成「給 Claude 看的圖片」放在訊息裡（例如作業說明的截圖），不放進容器。
+        /// 容器裡的圖片 Claude 看不到內容，只能用程式處理；要它讀懂截圖上的字，就得當成圖片附上。
+        /// </param>
+        public sealed record ContainerFile(string FileId, string FileName, string? Description = null, bool AsImage = false);
 
         /// <summary>
         /// 這一次的失敗值得重來嗎。
@@ -815,23 +865,34 @@ namespace Cat5201
         /// <summary>
         /// 中止的那一輪，伺服器已經生成多少輸出（以美元計）。
         ///
-        /// 有串流出來的文字就量那些字——那是真的，不是猜的。
-        /// 一個字都沒收到時才退回「時間 × 保守速率」，並標示為估算。
+        /// 量得到的就量：串流出來的文字、思考與工具呼叫（模型寫的程式）算輸出，
+        /// 沙箱回傳的執行結果算輸入（伺服器每一步都會把它們再讀一次）。
+        /// 再拿「時間 × 保守速率」當下限，取較大者，並標示為估算。
+        ///
+        /// 2026-11-03：一趟跑了 14 分鐘被停掉，只記了 US$0.027——當時只量文字，
+        /// 而沙箱工作幾乎全是程式碼與執行結果，文字只有一兩句。
         /// </summary>
-        private static double EstimateAbortedOutputUsd(string? model, TimeSpan elapsed, int streamedChars)
+        internal static double EstimateAbortedOutputUsd(string? model, TimeSpan elapsed, int streamedChars, int toolResultChars = 0)
         {
             string modelId = ModelCostEstimator.ResolvePricingModelId(model);
 
-            int tokens = streamedChars > 0
+            int measured = streamedChars > 0
                 ? ModelCostEstimator.EstimateTokens(new string('x', Math.Min(streamedChars, 400_000)))
-                : (int)Math.Max(0, elapsed.TotalSeconds * AbortedOutputTokensPerSecond);
+                : 0;
+            int byTime = (int)Math.Max(0, elapsed.TotalSeconds * AbortedOutputTokensPerSecond);
+            int outputTokens = Math.Min(Math.Max(measured, byTime), MaxOutputTokensPerRound);
 
-            tokens = Math.Min(tokens, MaxOutputTokensPerRound);
-            return tokens <= 0 ? 0 : ModelCostEstimator.FromUsage(modelId, 0, tokens).UsdCost;
+            int resultTokens = toolResultChars > 0
+                ? ModelCostEstimator.EstimateTokens(new string('x', Math.Min(toolResultChars, 400_000)))
+                : 0;
+
+            return outputTokens <= 0 && resultTokens <= 0
+                ? 0
+                : ModelCostEstimator.FromUsage(modelId, resultTokens, outputTokens).UsdCost;
         }
 
-        /// <summary>這一輪實際串流出來的文字長度（含思考段）——中止時用來估算已經產生的輸出。</summary>
-        private static int StreamedTextLength(JsonObject message)
+        /// <summary>這一輪實際串流出來的內容長度：文字、思考段，以及工具呼叫的輸入（模型寫的程式碼）。</summary>
+        internal static int StreamedTextLength(JsonObject message)
         {
             if (message["content"] is not JsonArray content)
                 return 0;
@@ -842,9 +903,50 @@ namespace Cat5201
                 if (block is not JsonObject obj) continue;
                 total += ((string?)obj["text"] ?? "").Length;
                 total += ((string?)obj["thinking"] ?? "").Length;
+                if ((string?)obj["type"] == "server_tool_use" && obj["input"] is JsonNode input)
+                    total += input.ToJsonString().Length;
             }
 
             return total;
+        }
+
+        /// <summary>
+        /// 交檔規則（放進每一份沙箱提示）。官方文件：每個 bash 指令都有自己的空資料夾 $OUTPUT_DIR，
+        /// 指令結束時只有它最上層的檔案會變成 file_id 回傳；放在其他地方的檔案留在容器裡，使用者收不到。
+        /// 2026-11-03 之前的提示叫它放「工作目錄下的 outputs/」，它先 cd /tmp/w 再建 outputs/，三趟都收不到檔案。
+        /// </summary>
+        public const string DeliverRule =
+            "- 最後一步：用「單一個 bash 指令」把所有最終交付檔複製到 \"$OUTPUT_DIR\"，並在同一個指令裡列出確認，" +
+            "例如：cp /tmp/w/報告.docx /tmp/w/analysis.py \"$OUTPUT_DIR/\" && ls -la \"$OUTPUT_DIR\"。" +
+            "每個 bash 指令都有自己的 $OUTPUT_DIR，只有在那個指令裡放進去的檔案會交給使用者；" +
+            "放在其他位置（例如自己建的 outputs/ 資料夾）的檔案，使用者收不到。";
+
+        /// <summary>做完卻沒交出檔案時，在同一個沙箱裡補的那句話。</summary>
+        public const string DeliverReminder =
+            "使用者沒有收到任何檔案：成品沒有放進 $OUTPUT_DIR。不要重做、不要修改內容，" +
+            "只用一個 bash 指令把已經做好的最終交付檔複製到 \"$OUTPUT_DIR\" 並 ls -la \"$OUTPUT_DIR\" 確認，然後用一句話回覆。";
+
+        /// <summary>要不要在同一個沙箱裡請它補交檔案：正常結束、有做事、沒有檔案、還沒補過、而且有容器可以沿用。</summary>
+        internal static bool ShouldAskToDeliver(string stopReason, int fileCount, int toolSteps, bool alreadyAsked, string? containerId)
+            => stopReason == "end_turn" && fileCount == 0 && toolSteps > 0 && !alreadyAsked && !string.IsNullOrEmpty(containerId);
+
+        /// <summary>紀錄用的一行描述：工具名稱＋指令或檔案路徑的第一行。</summary>
+        internal static string DescribeToolCall(JsonObject block)
+        {
+            string name = (string?)block["name"] ?? "tool";
+            var input = block["input"] as JsonObject;
+            string? command = (input?["command"] as JsonValue)?.ToString();
+            string? path = (input?["path"] as JsonValue)?.ToString();
+            string detail =
+                path != null ? $"{command} {path}".Trim() :      // 檔案編輯：create /tmp/outputs/report.py
+                command ??                                        // bash 指令
+                (input?["code"] as JsonValue)?.ToString() ??
+                input?.ToJsonString() ?? "";
+
+            string first = detail.Replace("\r", "").Split('\n').FirstOrDefault(l => l.Trim().Length > 0)?.Trim() ?? "";
+            int lines = detail.Count(c => c == '\n') + 1;
+            if (first.Length > 120) first = first[..120] + "…";
+            return lines > 1 ? $"{name}：{first}（共 {lines} 行）" : $"{name}：{first}";
         }
 
         private static int ReadInt(JsonObject? obj, string key)
@@ -964,6 +1066,17 @@ namespace Cat5201
             public JsonObject Message { get; private set; } = new() { ["content"] = new JsonArray() };
             public string StreamError { get; private set; } = "";
 
+            /// <summary>
+            /// 沙箱裡每執行完一個工具呼叫（指令、寫檔）就通知一次，參數是那個 server_tool_use 區塊（input 已組好）。
+            ///
+            /// 2026-11-03：一趟沙箱跑滿 14 分鐘才被停掉，進度一直顯示「0 個步驟」，紀錄裡也看不出它在做什麼——
+            /// 步驟數原本要等整輪結束才算，而那一輪從頭到尾沒結束。
+            /// </summary>
+            public Action<JsonObject>? ToolCallCompleted { get; set; }
+
+            /// <summary>到目前為止串流進來的工具結果文字長度（中止時估算費用用）。</summary>
+            public int ToolResultChars { get; private set; }
+
             private readonly Dictionary<int, StringBuilder> _partialJson = new();
 
             /// <param name="onActivity">
@@ -1044,6 +1157,8 @@ namespace Cat5201
                         var block = e["content_block"]?.DeepClone() as JsonObject ?? new JsonObject();
                         while (content.Count <= index) content.Add(null);
                         content[index] = block;
+                        if (((string?)block["type"] ?? "").EndsWith("_tool_result", StringComparison.Ordinal))
+                            ToolResultChars += block.ToJsonString().Length;
                         break;
                     }
 
@@ -1088,6 +1203,13 @@ namespace Cat5201
                             try { block["input"] = sb.Length == 0 ? new JsonObject() : JsonNode.Parse(sb.ToString()); }
                             catch { block["input"] = new JsonObject(); }
                             _partialJson.Remove(index);
+                        }
+
+                        if (index >= 0 && index < content.Count && content[index] is JsonObject done &&
+                            (string?)done["type"] == "server_tool_use")
+                        {
+                            try { ToolCallCompleted?.Invoke(done); }
+                            catch { /* 進度回報失敗不能中斷串流 */ }
                         }
                         break;
                     }

@@ -150,7 +150,7 @@ namespace Cat5201
 交付規則：
 - 每種檔案只交付一個最終版本，檔名用有意義的主題名稱（不要用 output、test 之類）。
 - 每個 pptx / docx / xlsx 都另外轉出一份內容一致的 PDF（例如用 LibreOffice headless 轉檔）。
-- 最後一步：用「單一個 bash 指令」把所有最終交付檔複製到輸出資料夾（技能說明有指定就用它，否則用工作目錄下的 outputs/）並列出檔名。
+" + ClaudeDocumentSkillsService.DeliverRule + @"
 - 完成後用 2～4 句話向使用者說明做了哪些檔案、各自重點（不要貼程式碼、不要描述內部步驟）。";
 
         public static string BuildUserPrompt(Request r)

@@ -33,20 +33,32 @@ namespace Cat5201
 
             var sb = new StringBuilder();
             var mainPart = doc.MainDocumentPart;
+            bool inList = false;
             // 依文件順序逐一處理段落與表格（表格要還原成 Markdown 表格才看得到結構）。
             foreach (var el in body.Elements())
             {
                 if (el is W.Paragraph para)
                 {
                     // 段落含內嵌圖 → 以 base64 圖片語法輸出，讓預覽也看得到報告配圖。
+                    // 每個 Word 段落是一個獨立的 Markdown 段落（後面空一行）：只換一行的話，
+                    // 連續幾段會被當成同一段，粗體記號遇到緊接的圖或表就配不起來，預覽露出 **。
+                    // 項目符號例外：連續的「- 」要留在同一個清單裡。
                     string imgMd = ParagraphImageMarkdown(mainPart, para);
-                    if (!string.IsNullOrEmpty(imgMd))
-                        sb.AppendLine(imgMd);
-                    else
-                        sb.AppendLine(ParagraphToMarkdown(para));
+                    string line = !string.IsNullOrEmpty(imgMd) ? imgMd : ParagraphToMarkdown(para);
+                    bool isListItem = line.StartsWith("- ", StringComparison.Ordinal);
+                    if (inList && !isListItem)
+                        sb.AppendLine();          // 清單結束：空一行，否則下一段會被併進最後一個項目
+                    sb.AppendLine(line);
+                    if (!isListItem)
+                        sb.AppendLine();
+                    inList = isListItem;
                 }
                 else if (el is W.Table table)
+                {
+                    if (inList) sb.AppendLine();
+                    inList = false;
                     AppendTableMarkdown(sb, table);
+                }
             }
 
             return CollapseBlankRuns(sb.ToString());
@@ -83,17 +95,40 @@ namespace Cat5201
                 return "*" + text.Trim() + "*";
 
             // 一般段落：粗體 run 包成 **...**；項目符號「• 」轉成 Markdown「- 」。
+            // 相鄰的粗體 run 先合併（Word 常把一句粗體切成好幾段，逐段包會變成 **甲****乙**）；
+            // 前後的空白放到記號外面（「**資科系　姓名：　**」這種，Markdown 不認，預覽會露出 **）。
             var inline = new StringBuilder();
+            var boldBuf = new StringBuilder();
+            void FlushBold()
+            {
+                if (boldBuf.Length == 0) return;
+                string s = boldBuf.ToString();
+                string core = s.Trim();
+                if (core.Length == 0)
+                    inline.Append(s);
+                else
+                {
+                    int lead = s.Length - s.TrimStart().Length;
+                    inline.Append(s, 0, lead).Append("**").Append(core).Append("**")
+                          .Append(s.Substring(lead + core.Length));
+                }
+                boldBuf.Clear();
+            }
+
             foreach (var r in runs)
             {
                 string rt = r.InnerText;
                 if (string.IsNullOrEmpty(rt)) continue;
-                bool bold = r.RunProperties?.Bold != null;
+                bool bold = r.RunProperties?.Bold != null && r.RunProperties.Bold.Val?.Value != false;
                 if (bold && rt.Trim() != "•")
-                    inline.Append("**").Append(rt).Append("**");
+                    boldBuf.Append(rt);
                 else
+                {
+                    FlushBold();
                     inline.Append(rt);
+                }
             }
+            FlushBold();
 
             string body = inline.ToString();
             string trimmedStart = body.TrimStart();

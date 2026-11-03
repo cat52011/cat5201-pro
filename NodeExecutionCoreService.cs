@@ -68,7 +68,7 @@ namespace Cat5201
                     prompt + followUp,
                     (int)taskMode,
                     false,
-                    _mainReplyMaxOutputTokens,
+                    MaxOutputFor(model),
                     ct),
                 ct);
         }
@@ -103,11 +103,25 @@ namespace Cat5201
                     prompt + followUp,
                     (int)taskMode,
                     true,
-                    _mainReplyMaxOutputTokens,
+                    MaxOutputFor(model),
                     ct),
                 onDelta,
                 ct);
         }
+
+        /// <summary>
+        /// 主回覆每一輪的輸出上限。Perplexity 維持原本的 8,000（沒查到它更高的上限，送太大會被拒）。
+        ///
+        /// 其他模型提高到 16,000：2026-11-03 機器學習作業的答案約 1.3 萬 token，8,000 的上限讓它分三輪寫完，
+        /// 每一輪續寫都重送整份提示與附件（一輪約 11 萬 token），光主回覆就花了 US$1.2、三分鐘。
+        /// 分輪也正是那次程式被切壞的起點（見 NodeTextProcessingService.JoinContinuation）。
+        /// </summary>
+        internal int MaxOutputFor(string model)
+            => AiModelHelper.GetProviderKind(model) is AiProviderKind.PerplexitySonar or AiProviderKind.PerplexityTool
+                ? Math.Min(_mainReplyMaxOutputTokens, PerplexityMaxOutputTokens)
+                : _mainReplyMaxOutputTokens;
+
+        internal const int PerplexityMaxOutputTokens = 8000;
 
         private async Task<string> GenerateWithContinuationAsync(
     NodeControl currentNode,
@@ -149,17 +163,10 @@ namespace Cat5201
                 }
                 else
                 {
-                    var append = _textProcessing.RemoveLeadingOverlap(finalText.ToString(), cleaned);
-                    append = _textProcessing.RemoveRepeatedBlocks(append);
-
-                    if (!string.IsNullOrWhiteSpace(append) &&
-                        !_textProcessing.IsHighlySimilarByContainment(finalText.ToString(), append))
-                    {
-                        if (finalText.Length > 0 && !finalText.ToString().EndsWith("\n"))
-                            finalText.AppendLine();
-
-                        finalText.Append(append.Trim());
-                    }
+                    // 接縫不硬塞換行、不吃掉續寫開頭的縮排（見 NodeTextProcessingService.JoinContinuation）。
+                    string append = _textProcessing.JoinContinuation(finalText.ToString(), reply);
+                    if (append.Length > 0)
+                        finalText.Append(append);
                 }
 
                 if (ended)
@@ -171,7 +178,7 @@ namespace Cat5201
                 // 造成動輒上百 K token。只在 provider 有回報真實 OutputTokens 時套用；沒回報時退回靠標記的舊行為，
                 // 避免長輸出在不回報 usage 的 provider 上被中途截斷。
                 if (response.OutputTokens.HasValue &&
-                    response.OutputTokens.Value < _mainReplyMaxOutputTokens - 512)
+                    response.OutputTokens.Value < MaxOutputFor(model) - 512)
                     break;
             }
 
@@ -244,20 +251,12 @@ namespace Cat5201
                 }
                 else
                 {
-                    var append = _textProcessing.RemoveLeadingOverlap(finalText.ToString(), cleaned);
-                    append = _textProcessing.RemoveRepeatedBlocks(append);
-
-                    if (!string.IsNullOrWhiteSpace(append) &&
-                        !_textProcessing.IsHighlySimilarByContainment(finalText.ToString(), append))
+                    // 接縫不硬塞換行、不吃掉續寫開頭的縮排（見 NodeTextProcessingService.JoinContinuation）。
+                    string append = _textProcessing.JoinContinuation(finalText.ToString(), reply);
+                    if (append.Length > 0)
                     {
-                        if (finalText.Length > 0 && !finalText.ToString().EndsWith("\n"))
-                        {
-                            finalText.AppendLine();
-                            onDelta?.Invoke(Environment.NewLine);
-                        }
-
-                        finalText.Append(append.Trim());
-                        onDelta?.Invoke(append.Trim());
+                        finalText.Append(append);
+                        onDelta?.Invoke(append);
                     }
                 }
 
@@ -267,7 +266,7 @@ namespace Cat5201
                 // 自然講完就停（與非串流路徑同邏輯）：這輪輸出沒逼近 8000 上限＝模型講完，不是被截斷，
                 // 不再多跑 continuation，避免空跑多輪重送整包 prompt+附件、token 逐輪累加。
                 if (roundOutputTokens.HasValue &&
-                    roundOutputTokens.Value < _mainReplyMaxOutputTokens - 512)
+                    roundOutputTokens.Value < MaxOutputFor(model) - 512)
                     break;
             }
 

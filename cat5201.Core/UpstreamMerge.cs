@@ -57,6 +57,58 @@ namespace Cat5201
             return own.Length == 0 ? null : own;
         }
 
+        /// <summary>附上游程式碼檔時的總字數上限，超過的檔案只列檔名（避免一個大專案把下游的輸入撐爆）。</summary>
+        public const int MaxInlinedCodeChars = 60_000;
+
+        /// <summary>
+        /// 上游的程式碼存成了檔案（CodeFileExtractor），文字裡只剩「已存成檔案：app.py」。
+        /// 下游要審查或接著改那份程式時，拿到的不能只有這句話——把程式碼檔的內容接回去。
+        /// 只接程式碼與網頁檔；簡報、報告這類二進位檔不在這裡處理。
+        /// </summary>
+        public static string WithCodeFiles(string output, IEnumerable<string>? filePaths)
+        {
+            var files = (filePaths ?? Array.Empty<string>())
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Where(p =>
+                {
+                    string ext = System.IO.Path.GetExtension(p);
+                    return CodeFileExtractor.CodeExtensions.Contains(ext) ||
+                           ext.Equals(".html", StringComparison.OrdinalIgnoreCase) ||
+                           ext.Equals(".htm", StringComparison.OrdinalIgnoreCase);
+                })
+                .ToList();
+            if (files.Count == 0)
+                return output ?? "";
+
+            var sb = new StringBuilder((output ?? "").TrimEnd());
+            var skipped = new List<string>();
+            int used = 0;
+
+            foreach (string path in files)
+            {
+                string name = System.IO.Path.GetFileName(path);
+                string content;
+                try { content = System.IO.File.ReadAllText(path); }
+                catch { skipped.Add(name); continue; }
+
+                if (used + content.Length > MaxInlinedCodeChars)
+                {
+                    skipped.Add(name);
+                    continue;
+                }
+
+                used += content.Length;
+                string lang = System.IO.Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
+                sb.Append("\n\n【檔案：").Append(name).Append("】\n```").Append(lang).Append('\n')
+                  .Append(content.TrimEnd()).Append("\n```");
+            }
+
+            if (skipped.Count > 0)
+                sb.Append("\n\n（以下檔案太長或讀不到，沒有附上內容：").Append(string.Join("、", skipped)).Append('）');
+
+            return sb.ToString();
+        }
+
         public static string Combine(IReadOnlyList<Source>? sources)
         {
             var list = (sources ?? Array.Empty<Source>())

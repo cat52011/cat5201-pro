@@ -5876,7 +5876,8 @@ $@"請將下面內容，取一個像 ChatGPT 自動命名筆記那樣的「短�
                 .Select(n => new UpstreamMerge.Source(
                     ShortLabel(n),
                     AiModelRegistry.Find(GetNodeSelectedModel(n))?.DisplayName ?? "",
-                    UpstreamMerge.CleanOutput(n.GetBottomText())))
+                    // 上游的程式碼存成了檔案時，把檔案內容接回去，下游才看得到程式本身。
+                    UpstreamMerge.WithCodeFiles(UpstreamMerge.CleanOutput(n.GetBottomText()), n.GetOutputFilePaths())))
                 .ToList();
 
             if (sources.Count == 0)

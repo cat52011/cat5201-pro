@@ -91,6 +91,99 @@ data: {""type"":""message_stop""}
         }
 
         [Fact]
+        public async Task EachSandboxStep_IsReportedAsItHappens_WithItsCommand()
+        {
+            // 2026-11-03：沙箱跑了 14 分鐘，進度一直是「0 個步驟」——步驟原本要等整輪結束才算。
+            var seen = new List<string>();
+            var assembler = new ClaudeDocumentSkillsService.SseMessageAssembler
+            {
+                ToolCallCompleted = b => seen.Add(ClaudeDocumentSkillsService.DescribeToolCall(b)),
+            };
+            await assembler.ReadAsync(new StringReader(SampleStream), default);
+
+            Assert.Equal(new[] { "bash_code_execution：cp deck.pptx outputs/" }, seen);
+            Assert.True(assembler.ToolResultChars > 0, "工具執行結果要算進中止時的費用估算");
+        }
+
+        [Fact]
+        public void Prompts_TellClaudeToDeliverThroughOutputDir()
+        {
+            // 官方規則：每個 bash 指令有自己的 $OUTPUT_DIR，只有放進去的檔案會回傳。
+            // 2026-11-03 提示寫「工作目錄下的 outputs/」，Claude 先 cd /tmp/w 再建 outputs/，三趟都收不到檔案。
+            Assert.Contains("$OUTPUT_DIR", ClaudeDocumentSkillsService.DeliverRule);
+            Assert.Contains("ls -la \"$OUTPUT_DIR\"", ClaudeDocumentSkillsService.DeliverRule);
+            Assert.Contains(ClaudeDocumentSkillsService.DeliverRule, DataAnalysisJob.SystemPrompt);
+            Assert.Contains(ClaudeDocumentSkillsService.DeliverRule, DocumentSkillsPrompt.SystemPromptFor(wantsPdf: false));
+            Assert.DoesNotContain("工作目錄下的 outputs/", DocumentSkillsPrompt.SystemPromptFor(wantsPdf: true));
+            Assert.Contains("不要重做", ClaudeDocumentSkillsService.DeliverReminder);
+        }
+
+        [Theory]
+        [InlineData("end_turn", 0, 8, false, "container_1", true)]    // 做完了卻沒檔案：在同一個沙箱補交
+        [InlineData("end_turn", 1, 8, false, "container_1", false)]   // 有檔案了
+        [InlineData("end_turn", 0, 0, false, "container_1", false)]   // 什麼都沒做，補交沒意義
+        [InlineData("end_turn", 0, 8, true, "container_1", false)]    // 補過一次了，不再追
+        [InlineData("end_turn", 0, 8, false, null, false)]            // 沒有容器可沿用
+        [InlineData("max_tokens", 0, 8, false, "container_1", false)]
+        public void AskToDeliver_OnlyWhenWorkWasDoneButNothingCameBack(
+            string stopReason, int files, int steps, bool asked, string? container, bool expected)
+        {
+            Assert.Equal(expected, ClaudeDocumentSkillsService.ShouldAskToDeliver(stopReason, files, steps, asked, container));
+        }
+
+        [Fact]
+        public void ToolCallDescription_ShowsPathForFileEdits_AndFirstLineForScripts()
+        {
+            var edit = new JsonObject
+            {
+                ["type"] = "server_tool_use", ["name"] = "text_editor_code_execution",
+                ["input"] = new JsonObject { ["command"] = "create", ["path"] = "/tmp/hw1.py", ["file_text"] = "import pandas\n..." },
+            };
+            Assert.Equal("text_editor_code_execution：create /tmp/hw1.py", ClaudeDocumentSkillsService.DescribeToolCall(edit));
+
+            var bash = new JsonObject
+            {
+                ["type"] = "server_tool_use", ["name"] = "bash_code_execution",
+                ["input"] = new JsonObject { ["command"] = "\ncd /tmp\npython hw1.py" },
+            };
+            Assert.Equal("bash_code_execution：cd /tmp（共 3 行）", ClaudeDocumentSkillsService.DescribeToolCall(bash));
+        }
+
+        [Fact]
+        public void AbortedRun_IsNotCountedAsAFewCents()
+        {
+            // 2026-11-03：跑了 14 分鐘被停掉的那趟只記了 US$0.027（當時只量文字，沙箱工作幾乎全是程式碼與執行結果）。
+            double fourteenMinutes = ClaudeDocumentSkillsService.EstimateAbortedOutputUsd(
+                "claude-sonnet-5-5", System.TimeSpan.FromMinutes(14), streamedChars: 40);
+            double oneMinute = ClaudeDocumentSkillsService.EstimateAbortedOutputUsd(
+                "claude-sonnet-5-5", System.TimeSpan.FromMinutes(1), streamedChars: 40);
+            double withResults = ClaudeDocumentSkillsService.EstimateAbortedOutputUsd(
+                "claude-sonnet-5-5", System.TimeSpan.FromMinutes(14), streamedChars: 40, toolResultChars: 200_000);
+
+            Assert.True(fourteenMinutes > 0.2, $"14 分鐘只估了 US${fourteenMinutes:0.000}");
+            Assert.True(fourteenMinutes > oneMinute);
+            Assert.True(withResults > fourteenMinutes, "沙箱回傳的執行結果也要算");
+        }
+
+        [Fact]
+        public void StreamedLength_CountsTheCodeTheModelWrote()
+        {
+            var message = new JsonObject
+            {
+                ["content"] = new JsonArray
+                {
+                    new JsonObject { ["type"] = "text", ["text"] = "好" },
+                    new JsonObject
+                    {
+                        ["type"] = "server_tool_use",
+                        ["input"] = new JsonObject { ["command"] = "create", ["file_text"] = new string('x', 5000) },
+                    },
+                },
+            };
+            Assert.True(ClaudeDocumentSkillsService.StreamedTextLength(message) > 5000);
+        }
+
+        [Fact]
         public async Task FileIds_AreFoundInToolResults()
         {
             var a = await Assemble();

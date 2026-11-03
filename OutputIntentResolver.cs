@@ -23,41 +23,49 @@ namespace Cat5201
         /// 手動模式下用使用者選的模型判斷（2026-10-29 使用者指示）；
         /// 那個模型不適合做這種短判斷時（例如 Deep Research），改走關鍵字，不換模型。
         /// </param>
+        /// <param name="attachments">
+        /// 節點的附件（檔名＋文件類的開頭一段）。要交什麼常常寫在附件裡（作業說明、範本），
+        /// 只看使用者打的那一句會判錯（2026-11-03 機器學習作業，見 AttachmentIntentHints）。
+        /// </param>
         public async Task<OutputIntent> ResolveAsync(
-            string topText, CancellationToken ct = default, ModelScope? scope = null)
+            string topText, CancellationToken ct = default, ModelScope? scope = null,
+            IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
 
+            // 不論哪一條路徑得出結果，最後都套「附件範本」的固定規則。
+            OutputIntent Finish(OutputIntent intent) => AttachmentIntentHints.ApplyTemplateRule(intent, topText, attachments);
+
             string? model = (scope ?? ModelScope.Auto).HelperModel(AiModels.OpenAi_Gpt56);
             if (model == null)
-                return OutputIntent.FromKeywords(topText);
+                return Finish(OutputIntent.FromKeywords(topText));
 
             string raw;
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("輸出意圖判斷");
-                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText), 200, ct);
+                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText, attachments), 200, ct);
             }
             catch
             {
                 // API 失敗 → 退回關鍵字判斷，至少不漏掉明顯的輸出需求。
-                return OutputIntent.FromKeywords(topText);
+                return Finish(OutputIntent.FromKeywords(topText));
             }
 
             var apiIntent = TryParse(raw);
             if (apiIntent == null)
-                return OutputIntent.FromKeywords(topText);
+                return Finish(OutputIntent.FromKeywords(topText));
 
             // API 說「都不要檔案」，但關鍵字明顯指出要某種輸出時，以關鍵字為準，避免明明要卻沒產出。
             if (!apiIntent.WantsAny)
             {
                 var kw = OutputIntent.FromKeywords(topText);
                 if (kw.WantsAny)
-                    return kw;
+                    return Finish(kw);
             }
 
-            return apiIntent;
+            return Finish(apiIntent);
         }
 
         /// <summary>
@@ -156,6 +164,13 @@ namespace Cat5201
 - 「做一份简报，配上图片」 → presentation=true、illustrations=true、slides=0。
 - 「做一份簡報，不要放圖」 → presentation=true、illustrations=false。
 
+附件：
+- 使用者可能附上檔案（作業說明、範本、資料）。使用者要你『完成』附件裡的作業、照範本做、或照附件的要求交件時，
+  依附件要求的繳交物判斷：要交的文件（作業檔案、作業報告、Word 範本）→ report=true；簡報範本 → presentation=true；
+  試算表範本 → table=true。程式碼不在這幾類裡，不需要標。
+- 附件只是被拿來問問題、當參考資料（例如「這份合約有什麼風險」）→ 依使用者那句話判斷，附件本身不代表要產檔。
+- 範例：「完成此作業」＋附件「HW1作業範本.docx」→ report=true。
+
 其他原則：
 - 使用者明確下令要簡報 / 報告 / 表格 / 圖片 / 影片 → 對應項 true。
 - 只是問問題、聊天、描述、要一段純文字回答 → 全部 false。
@@ -163,11 +178,11 @@ namespace Cat5201
 - 影片成本最高，特別謹慎：只有非常明確要你『生成一段影片』時才標 video=true。";
         }
 
-        private static string BuildUserPrompt(string text)
+        internal static string BuildUserPrompt(string text, IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null)
         {
             return
 $@"使用者輸入：
-{text}
+{text}{AttachmentIntentHints.ToPromptBlock(attachments)}
 
 請輸出 JSON。";
         }

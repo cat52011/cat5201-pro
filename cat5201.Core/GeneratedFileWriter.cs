@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -379,6 +380,89 @@ namespace Cat5201
             {
                 return Failed(ex.Message, title);
             }
+        }
+
+        /// <summary>
+        /// 程式碼檔：一次執行的所有檔案放進同一個子資料夾，保留模型取的檔名（含子目錄）。
+        ///
+        /// 不像其他產出那樣在檔名後面加時間戳：index.html 裡寫的是 &lt;link href="style.css"&gt;，
+        /// 檔名一改，預覽與直接執行就接不起來了。撞名的問題交給「每次一個新資料夾」解決。
+        /// 寫成不含 BOM 的 UTF-8：BOM 會讓 #! 開頭的腳本與部分直譯器出錯。
+        /// </summary>
+        public static IReadOnlyList<GeneratedFilePayload> WriteCodeFiles(
+            string outputDir,
+            string title,
+            IReadOnlyList<CodeFileExtractor.CodeFile> files,
+            string sourceSummary)
+        {
+            var results = new List<GeneratedFilePayload>();
+            if (files == null || files.Count == 0)
+                return results;
+
+            if (string.IsNullOrWhiteSpace(outputDir))
+            {
+                results.Add(Failed("輸出資料夾未設定。", title));
+                return results;
+            }
+
+            string folder;
+            try
+            {
+                string baseName = SanitizeFileName(title);
+                if (string.IsNullOrWhiteSpace(baseName)) baseName = "code";
+                folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}"));
+                for (int k = 2; Directory.Exists(folder); k++)
+                    folder = Path.GetFullPath(Path.Combine(outputDir, $"{baseName}_{DateTime.Now:yyyyMMdd_HHmmss}-{k}"));
+                Directory.CreateDirectory(folder);
+            }
+            catch (Exception ex)
+            {
+                results.Add(Failed(ex.Message, title));
+                return results;
+            }
+
+            var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+            foreach (var file in files)
+            {
+                try
+                {
+                    string? relative = CodeFileExtractor.SafeRelativePath(file.FileName);
+                    if (relative == null)
+                    {
+                        results.Add(Failed("檔名不合法：" + file.FileName, file.FileName));
+                        continue;
+                    }
+
+                    string fullPath = Path.GetFullPath(Path.Combine(folder, relative.Replace('/', Path.DirectorySeparatorChar)));
+                    if (!fullPath.StartsWith(folder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                    {
+                        results.Add(Failed("輸出路徑超出允許範圍。", file.FileName));
+                        continue;
+                    }
+
+                    Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                    File.WriteAllText(fullPath, file.Content ?? "", utf8);
+                    NotifyWritten(fullPath);
+
+                    results.Add(new GeneratedFilePayload
+                    {
+                        Format = "code",
+                        FileName = relative,
+                        FilePath = fullPath,
+                        Title = title ?? "",
+                        CharacterCount = (file.Content ?? "").Length,
+                        ByteCount = utf8.GetByteCount(file.Content ?? ""),
+                        Success = true,
+                        SourceSummary = sourceSummary ?? "",
+                    });
+                }
+                catch (Exception ex)
+                {
+                    results.Add(Failed(ex.Message, file.FileName));
+                }
+            }
+
+            return results;
         }
 
         /// <summary>

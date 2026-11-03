@@ -30,14 +30,41 @@ namespace Cat5201
                 return "";
 
             text = EndMarkerRegex.Replace(text, "");
-            text = InternalContextLabelRegex.Replace(text, "");
-            text = CitationMarkerRegex.Replace(text, "");
-            text = SourceTagCitationRegex.Replace(text, "");
 
-            if (enforceSynthesisFormat)
-                text = NormalizeLegacyHeadingsOnly(text);
+            // 程式碼不能動：引用記號的規則會把 split()[0] 的 [0]、data[[TARGET]] 的 [TARGET] 當成引用刪掉
+            // （2026-11-03 機器學習作業實測），空白整理也會改掉程式碼裡的空行。只處理程式碼以外的部分。
+            text = OutsideCode(text, prose =>
+            {
+                prose = InternalContextLabelRegex.Replace(prose, "");
+                prose = CitationMarkerRegex.Replace(prose, "");
+                prose = SourceTagCitationRegex.Replace(prose, "");
+                if (enforceSynthesisFormat)
+                    prose = NormalizeLegacyHeadingsOnly(prose);
+                return CleanupWhitespaceInner(prose);
+            });
 
-            return CleanupWhitespace(text);
+            return text.Replace("\r\n", "\n").Replace('\r', '\n').Trim();
+        }
+
+        // 程式碼區塊（``` 或 ~~~ 起訖）與行內程式碼（`…`）。
+        private static readonly Regex CodeSpanRegex = new(
+            @"(?ms)^[ \t]{0,3}(?<f>`{3,}|~{3,})[^\n]*\n.*?^[ \t]{0,3}\k<f>[ \t]*$|^[ \t]{0,3}(?:`{3,}|~{3,})[^\n]*\n.*\z|`[^`\n]+`",
+            RegexOptions.Compiled);
+
+        /// <summary>只對程式碼以外的文字套用 transform；程式碼原樣保留。</summary>
+        internal static string OutsideCode(string text, Func<string, string> transform)
+        {
+            text = (text ?? "").Replace("\r\n", "\n").Replace('\r', '\n');
+            var sb = new System.Text.StringBuilder(text.Length);
+            int last = 0;
+            foreach (Match m in CodeSpanRegex.Matches(text))
+            {
+                sb.Append(transform(text[last..m.Index]));
+                sb.Append(m.Value);
+                last = m.Index + m.Length;
+            }
+            sb.Append(transform(text[last..]));
+            return sb.ToString();
         }
 
         public static AiFallbackExecutionResult Sanitize(
@@ -85,12 +112,12 @@ namespace Cat5201
                 to);
         }
 
-        private static string CleanupWhitespace(string text)
+        // 片段版：不做整體 Trim（片段前後接著程式碼，換行要留著）。
+        private static string CleanupWhitespaceInner(string text)
         {
-            text = text.Replace("\r\n", "\n").Replace('\r', '\n');
             text = Regex.Replace(text, @"[ \t]+\n", "\n");
             text = Regex.Replace(text, @"\n{3,}", "\n\n");
-            return text.Trim();
+            return text;
         }
     }
 }

@@ -176,6 +176,9 @@ namespace Cat5201
         {
             public string FileName { get; set; } = "";
             public string FullPath { get; set; } = "";
+
+            /// <summary>「程式碼：」「報告：」…依副檔名分類（OutputFileCategory），取代一律「檔案：」。</summary>
+            public string CategoryLabel => OutputFileCategory.Of(FileName).Label + "：";
         }
 
         // §7.2 簡報單張重生：保存本次簡報的大綱 + .pptx 路徑 + 原始請求，供預覽視窗單張重生時用。
@@ -991,6 +994,36 @@ namespace Cat5201
                 }
                 catch (Exception ex) { AppLog.Warn("Node", $"暫存檔清理失敗（磁碟會殘檔）：{path}", ex); }
             }
+
+            // 程式碼檔放在每次執行自己的子資料夾裡（見 GeneratedFileWriter.WriteCodeFiles）；
+            // 檔案刪光後把空資料夾一起收掉，往上最多收到產出資料夾為止，不會碰到它本身或更上層。
+            string? genRoot = null;
+            try { genRoot = _parent == null ? null : System.IO.Path.GetFullPath(_parent.GetGeneratedFilesDir()); }
+            catch { genRoot = null; }
+            if (genRoot != null)
+            {
+                foreach (var dir in _pendingFilePaths
+                             .Where(p => OutputFileCategory.Of(p).Label is "程式碼" or "網頁")
+                             .Select(System.IO.Path.GetDirectoryName)
+                             .Where(d => !string.IsNullOrEmpty(d))
+                             .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    try
+                    {
+                        var current = new System.IO.DirectoryInfo(dir!);
+                        while (current != null &&
+                               current.FullName.StartsWith(genRoot + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                               current.Exists && !current.EnumerateFileSystemInfos().Any())
+                        {
+                            var parent = current.Parent;
+                            current.Delete();
+                            current = parent;
+                        }
+                    }
+                    catch (Exception ex) { AppLog.Warn("Node", $"清理空的程式碼資料夾失敗：{dir}", ex); }
+                }
+            }
+
             _pendingFilePaths.Clear();
 
             _outputFiles.Clear();
@@ -1018,7 +1051,8 @@ namespace Cat5201
 
             if (files != null)
             {
-                foreach (var f in files)
+                // 同類的放在一起：簡報、報告、表格、PDF、程式碼、圖片…（程式碼與文件不再混在一起）。
+                foreach (var f in OutputFileCategory.Sort(files, x => x?.FileName))
                 {
                     if (f == null || !f.Success || string.IsNullOrWhiteSpace(f.FilePath))
                         continue;
@@ -1106,7 +1140,7 @@ namespace Cat5201
 
             if (paths != null)
             {
-                foreach (var raw in paths)
+                foreach (var raw in OutputFileCategory.Sort(paths, System.IO.Path.GetFileName))
                 {
                     // 檔案可能被搬過（整理成各存檔子資料夾、刪存檔後集中到 other、
                     // 使用者自己改了存放位置）。只認原本那條路徑的話，chip 會**無聲消失**，
