@@ -199,7 +199,7 @@ namespace Cat5201.Tests
         [Fact]
         public void NewIssues_AreClassified_ByWhetherTheQuotedTextExistedBeforeTheFix()
         {
-            // 2026-11-04 實測：修正只改了一句話，再審查「新發現」的特徵重要性問題其實修正前就在程式裡（上一輪漏看）
+            // 2026-11-04 實測：修正只改了一句話，再審查「新發現」的特徵重要性問題，它引用的程式修正前就有
             string before = "上表為樹模型特徵重要性前 8 名。\nimp_df = pd.DataFrame(imp).sort_values(\"M6 RandomForest (log price)\", ascending=False)";
             string after = "樹模型理論上不需標準化，但本程式為共用前處理流程，仍對連續特徵依序進行補值、截尾與標準化。\n" + before;
 
@@ -216,7 +216,7 @@ namespace Cat5201.Tests
 
             Assert.Equal(new[]
             {
-                ReportReview.OriginBefore,      // 修正前就存在（上一輪漏看）
+                ReportReview.OriginBefore,      // 引用的文字修正前就有
                 ReportReview.OriginAfter,       // 只在修正後的版本
                 ReportReview.OriginUnknown,     // 兩邊都找不到
                 ReportReview.OriginUnknown,     // 沒有引號可比對
@@ -247,12 +247,46 @@ namespace Cat5201.Tests
             };
 
             string line = ReviewAutoFix.RecheckLine(1, recheck);
-            Assert.Contains("另外新發現 2 項（高 0、中 1），其中審查模型找到的 2 項：修正前就存在 1 項（上一輪漏看）、修正後才出現 0 項、無法判斷 1 項", line);
+            Assert.Contains("另外新發現 2 項（高 0、中 1），其中審查模型找到的 2 項：引用內容修正前已存在 1 項、引用內容為修正後新增 0 項、無法判斷 1 項", line);
+            Assert.DoesNotContain("漏看", line);            // 字串比對證明不了是上一輪漏看（GPT 2026-11-04 的反例）
 
             string md = ReportReview.ToMarkdown("HW1.docx", Array.Empty<string>(), recheck);
-            Assert.Contains("| # | 嚴重度 | 來源 | 位置 |", md);
-            Assert.Contains("| 1 | 中 | 修正前就存在（上一輪漏看） |", md);
-            Assert.Contains("由程式比對問題引用的原文判斷", md);
+            Assert.Contains("| # | 嚴重度 | 引用內容 | 位置 |", md);
+            Assert.Contains("| 1 | 中 | 引用內容修正前已存在 |", md);
+            Assert.Contains("不代表問題是什麼時候形成的", md);
+            Assert.DoesNotContain("漏看", md);
+        }
+
+        [Fact]
+        public void QuoteThatExistedBefore_DoesNotClaimTheProblemExistedBefore()
+        {
+            // GPT 的反例：結論那句沒改（舊版就有），但它對照的結果表從 +20% 改成 −10%，矛盾是修正後才形成的。
+            // 字串比對只能標「引用內容修正前已存在」，標籤不能說成「上一輪漏看」。
+            string before = "結論：營收成長 20%。\n| 營收成長 | 20% |";
+            string after = "結論：營收成長 20%。\n| 營收成長 | -10% |";
+            var issue = new ReportReview.Issue("高", "結論", "結論與結果表矛盾", "報告：「結論：營收成長 20%。」／結果表：「營收成長 -10%」", "");
+
+            var origin = Assert.Single(ReviewAutoFix.ClassifyOrigins(new[] { issue }, before, after));
+
+            Assert.Equal(ReportReview.OriginBefore, origin);
+            Assert.Equal("引用內容修正前已存在", origin);
+            Assert.DoesNotContain("漏看", origin);
+        }
+
+        [Fact]
+        public void PartiallyParsedRecheck_ReportsTheUnreadablePart()
+        {
+            string raw = "{\"issues\":[123],\"previous\":[{\"n\":1,\"status\":\"已修正\",\"evidence\":\"現在寫 0.029%\"}]}";
+            var recheck = new ReportReview.Result(Array.Empty<ReportReview.Issue>(), Array.Empty<ReportReview.Issue>(),
+                "gpt", "n", "c", raw, ReportReview.ReviewStatus.PartiallyParsed, null,
+                new[] { new ReportReview.PreviousStatus(1, "x", ReportReview.StatusFixed, "現在寫 0.029%") });
+
+            string line = ReviewAutoFix.RecheckLine(1, recheck);
+
+            Assert.Contains("已修正 1 項", line);
+            Assert.Contains("可解析的部分沒有新發現的問題", line);
+            Assert.Contains("另有 1 項審查回覆格式無法解析", line);
+            Assert.DoesNotContain("。沒有新發現的問題", line);
         }
 
         [Fact]

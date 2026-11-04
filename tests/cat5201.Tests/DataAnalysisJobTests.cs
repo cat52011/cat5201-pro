@@ -81,6 +81,27 @@ namespace Cat5201.Tests
         }
 
         [Fact]
+        public void SystemPrompt_AsksForCodeThatRunsOnNewerLibraries()
+        {
+            // 2026-11-04 GPT 審查 HW1：LassoCV(n_alphas=60) 在沙箱跑得過，scikit-learn 1.9 會報錯
+            string p = DataAnalysisJob.SystemPrompt;
+            Assert.Contains("沙箱的套件版本比使用者電腦上的舊", p);
+            Assert.Contains("alphas=np.logspace(-4, 1, 60)", p);
+            Assert.Contains("不要用 n_alphas", p);
+            Assert.Contains("np.sqrt(mean_squared_error(...))", p);
+        }
+
+        [Fact]
+        public void SystemPrompt_AsksToCheckWhetherClippingCausesTheBiggestErrors()
+        {
+            // 2026-11-04 GPT 審查 HW1：面積截在 497 ㎡，9 筆大物件佔 M2 測試誤差平方和 84%，報告卻歸因於對數還原
+            string p = DataAnalysisJob.SystemPrompt;
+            Assert.Contains("對主要預測變數（例如面積、規模、金額）做截尾或設上限時", p);
+            Assert.Contains("誤差最大的案件", p);
+            Assert.Contains("先檢查前處理", p);
+        }
+
+        [Fact]
         public void SystemPrompt_KeepsTheSandboxRunShort()
         {
             // 2026-11-03 第二次實測：沙箱跑滿 14 分鐘沒做完。一支程式跑一次、不調參。

@@ -36,6 +36,13 @@ namespace Cat5201
             Failed,
             /// <summary>有回覆，但不是含 issues 陣列的 JSON。</summary>
             Unparseable,
+            /// <summary>
+            /// issues 陣列裡有項目讀不出問題內容（不是物件、也沒有任何可當問題的欄位）。
+            /// 讀得出的照列，讀不出的附原文；不能當成「審查完成」，更不能說零問題。
+            /// 2026-11-04（GPT 審查本專案）：{"issues":["營收單位錯誤"]}、用 description 不用 problem 的回覆，
+            /// 原本都被略過，解析成 0 項，摘要寫「沒有找到問題」。
+            /// </summary>
+            PartiallyParsed,
         }
 
         /// <summary>上一輪的問題在這一輪的處理狀態（自動修正後的再審查用）：已修正、仍存在、無法確認。</summary>
@@ -54,7 +61,7 @@ namespace Cat5201
             IReadOnlyList<string>? Origins = null)
         {
             /// <summary>
-            /// 再審查時每個新問題的來源（和 ModelIssues 一一對應）：修正前就存在、修正後才出現、無法判斷。
+            /// 再審查時每個新問題引用的內容是新是舊（和 ModelIssues 一一對應）：OriginBefore／OriginAfter／OriginUnknown。
             /// 由程式比對原文判斷（見 ReviewAutoFix.ClassifyOrigins），不是審查模型說的。沒有對應時為 null。
             /// </summary>
             public IReadOnlyList<string>? IssueOrigins =>
@@ -67,8 +74,14 @@ namespace Cat5201
             public ReviewStatus EffectiveStatus =>
                 Status != ReviewStatus.Completed ? Status
                 : string.IsNullOrEmpty(ReviewerModel) ? ReviewStatus.NotRun
-                : !string.IsNullOrWhiteSpace(RawReply) && ParseReply(RawReply) == null ? ReviewStatus.Unparseable
+                : string.IsNullOrWhiteSpace(RawReply) ? ReviewStatus.Completed
+                : ParseReply(RawReply) is not { } p ? ReviewStatus.Unparseable
+                : p.Unparsed > 0 ? ReviewStatus.PartiallyParsed
                 : ReviewStatus.Completed;
+
+            /// <summary>審查回覆的 issues 裡有幾項讀不出問題內容（見 ReviewStatus.PartiallyParsed）。</summary>
+            public int UnparsedCount =>
+                string.IsNullOrWhiteSpace(RawReply) ? 0 : ParseReply(RawReply)?.Unparsed ?? 0;
 
             public IReadOnlyList<string> CoverageNotes => Coverage ?? Array.Empty<string>();
         }
@@ -77,9 +90,14 @@ namespace Cat5201
         public const string StatusRemains = "仍存在";
         public const string StatusUnknown = "無法確認";
 
-        /// <summary>再審查新發現問題的來源（程式比對原文判斷）。</summary>
-        public const string OriginBefore = "修正前就存在（上一輪漏看）";
-        public const string OriginAfter = "修正後才出現";
+        /// <summary>
+        /// 再審查新發現的問題，它引用的原文是新是舊（程式比對字串）。
+        /// 只說字串比對證明得了的事：引用的文字修正前就有，不代表問題修正前就有——
+        /// 結論那句沒改、但它對照的數字改了，矛盾就是修正後才形成的（2026-11-04 GPT 審查本專案的反例）。
+        /// 原本標成「修正前就存在（上一輪漏看）」「修正後才出現」，說得比證據更肯定。
+        /// </summary>
+        public const string OriginBefore = "引用內容修正前已存在";
+        public const string OriginAfter = "引用內容為修正後新增";
         public const string OriginUnknown = "無法判斷";
 
         /// <summary>送給審查模型的報告全文上限（字）。一般報告一萬多字，留餘裕。</summary>
@@ -167,6 +185,57 @@ namespace Cat5201
         internal const int MaxProgramIssues = 30;
 
         // ── 程式檢查 ──────────────────────────────────────────────
+
+        /// <summary>
+        /// 新版套件已經移除、照寫會直接報錯的寫法（只收誤判機率低的）。
+        /// 2026-11-04（GPT 審查 HW1）：LassoCV(n_alphas=60) 在沙箱的舊版跑得過，scikit-learn 1.9 已移除這個參數，
+        /// 老師的電腦如果是新版，程式跑到建模就當掉。沙箱版本太舊不會出棄用警告，撰寫模型無從得知，所以用程式檢查。
+        /// </summary>
+        internal static readonly (Regex Pattern, string Problem, string Suggestion)[] RemovedApis =
+        {
+            (new Regex(@"\bn_alphas\s*=", RegexOptions.Compiled),
+                "用了 n_alphas 參數：scikit-learn 1.7 起淘汰、1.9 已移除（LassoCV、ElasticNetCV 等），較新的環境會直接報錯",
+                "改成傳入明確的 alpha 陣列，例如 alphas=np.logspace(-4, 1, 60)，新舊版本都能執行"),
+            (new Regex(@"\bsquared\s*=\s*False", RegexOptions.Compiled),
+                "用了 mean_squared_error(..., squared=False)：scikit-learn 1.6 已移除 squared 參數，較新的環境會直接報錯",
+                "改成 np.sqrt(mean_squared_error(y, p))，新舊版本都能執行"),
+            (new Regex(@"OneHotEncoder\([^)]*\bsparse\s*=", RegexOptions.Compiled),
+                "OneHotEncoder 用了 sparse 參數：scikit-learn 1.4 已移除，較新的環境會直接報錯",
+                "改成 sparse_output=False"),
+            (new Regex(@"\.iteritems\(", RegexOptions.Compiled),
+                "用了 .iteritems()：pandas 2.0 已移除，較新的環境會直接報錯",
+                "改成 .items()"),
+            // \b 讓 np.float64、np.int_、np.str_ 這些仍可用的寫法不會被抓到
+            (new Regex(@"\bnp\.(float|int|bool|object|str)\b", RegexOptions.Compiled),
+                "用了 np.float／np.int 這類別名：NumPy 1.24 已移除，較新的環境會直接報錯",
+                "改成 Python 內建的 float、int，或 np.float64、np.int64"),
+        };
+
+        /// <summary>
+        /// 程式碼檢查（不經 AI）：找出新版套件已移除的寫法，列在審查清單；自動修正開著時也會一起修。
+        /// 只是字串比對，所以只收誤判機率低的寫法（見 RemovedApis）。
+        /// </summary>
+        public static IReadOnlyList<Issue> CodeChecks(IReadOnlyList<(string Name, string Code)>? codeFiles)
+        {
+            var issues = new List<Issue>();
+            foreach (var (name, code) in codeFiles ?? Array.Empty<(string, string)>())
+            {
+                var lines = (code ?? "").Replace("\r\n", "\n").Split('\n');
+                foreach (var (pattern, problem, suggestion) in RemovedApis)
+                {
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string line = lines[i];
+                        string trimmed = line.TrimStart();
+                        if (trimmed.StartsWith("#", StringComparison.Ordinal) || !pattern.IsMatch(line)) continue;
+                        issues.Add(new Issue("中", $"程式「{name}」第 {i + 1} 行", problem, Shorten(trimmed, 160), suggestion));
+                        break;   // 同一種寫法每支程式報一次就好
+                    }
+                    if (issues.Count >= MaxProgramIssues) return issues;
+                }
+            }
+            return issues;
+        }
 
         /// <summary>表格儲存格整格是這些值，就是沒算出來或沒處理好的值。</summary>
         private static readonly HashSet<string> InvalidCells = new(StringComparer.Ordinal)
@@ -461,12 +530,22 @@ namespace Cat5201
             return sb.ToString();
         }
 
+        /// <summary>問題內容可能放在這些欄位（模型偶爾不用規定的 problem）。依序取第一個有字的。</summary>
+        private static readonly string[] ProblemKeys = { "problem", "description", "issue", "text", "message", "content" };
+
+        /// <summary>格式不符、但讀得出內容的問題，位置欄寫這個（嚴重度不明時一律當「中」）。</summary>
+        internal const string SalvagedWhere = "（回覆格式不符，未註明位置）";
+
         /// <summary>
         /// 解析審查模型的 JSON。必須有 issues 陣列才算解析成功（空陣列＝確實沒有問題）；
         /// 解析不了回 null（呼叫端標成 Unparseable，照實寫「審查回覆無法解析」並附上原文）。
         /// 2026-11-04：原本 {} 也被接受，摘要變成「沒有找到問題」。
+        ///
+        /// 陣列裡的項目：意思讀得出來的就救回來——字串項目當成問題內容、problem 以外的同義欄位（description 等）也認；
+        /// 真的讀不出問題內容的（數字、空物件、沒有任何文字欄位）計入 Unparsed，呼叫端標成 PartiallyParsed。
+        /// 2026-11-04（GPT 審查本專案）：原本這兩種都直接略過，模型回報了問題，解析結果卻是 0 項。
         /// </summary>
-        public static (IReadOnlyList<Issue> Issues, string Checked)? ParseReply(string? reply)
+        public static (IReadOnlyList<Issue> Issues, string Checked, int Unparsed)? ParseReply(string? reply)
         {
             string text = reply ?? "";
             int start = text.IndexOf('{');
@@ -483,21 +562,31 @@ namespace Cat5201
                     return null;
 
                 var issues = new List<Issue>();
+                int unparsed = 0;
                 foreach (var e in arr.EnumerateArray())
                 {
-                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    if (e.ValueKind == JsonValueKind.String)
+                    {
+                        // 只給一句話的問題：照列，位置與嚴重度不明
+                        string only = e.GetString()!.Trim();
+                        if (only.Length > 0) issues.Add(new Issue("中", SalvagedWhere, only, "", ""));
+                        else unparsed++;
+                        continue;
+                    }
+                    if (e.ValueKind != JsonValueKind.Object) { unparsed++; continue; }
+
                     string Get(string key) =>
                         e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
 
-                    string problem = Get("problem");
-                    if (problem.Length == 0) continue;
+                    string problem = ProblemKeys.Select(Get).FirstOrDefault(s => s.Length > 0) ?? "";
+                    if (problem.Length == 0) { unparsed++; continue; }
                     string severity = Get("severity") is "高" or "中" or "低" ? Get("severity") : "中";
                     issues.Add(new Issue(severity, Get("where"), problem, Get("evidence"), Get("suggestion")));
                 }
 
                 string checkedText = root.TryGetProperty("checked", out var c) && c.ValueKind == JsonValueKind.String
                     ? c.GetString()!.Trim() : "";
-                return (Order(issues).Take(15).ToList(), checkedText);
+                return (Order(issues).Take(15).ToList(), checkedText, unparsed);
             }
             catch (JsonException)
             {
@@ -528,7 +617,12 @@ namespace Cat5201
                             if (!e.TryGetProperty("n", out var nEl) || !nEl.TryGetInt32(out int n)) continue;
                             string status = e.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString()!.Trim() : "";
                             string evidence = e.TryGetProperty("evidence", out var ev) && ev.ValueKind == JsonValueKind.String ? ev.GetString()!.Trim() : "";
-                            if ((status is StatusFixed or StatusRemains or StatusUnknown) && !found.ContainsKey(n))
+                            if (!(status is StatusFixed or StatusRemains or StatusUnknown) || found.ContainsKey(n)) continue;
+                            // 「已修正」「仍存在」都要有依據才算數；沒附依據的改記「無法確認」——
+                            // 2026-11-04（GPT 審查本專案）：{"status":"已修正","evidence":""} 原本照單全收。
+                            if (evidence.Length == 0 && status != StatusUnknown)
+                                found[n] = (StatusUnknown, $"審查者判定為「{status}」，但沒有附依據");
+                            else
                                 found[n] = (status, evidence);
                         }
                     }
@@ -603,9 +697,16 @@ namespace Cat5201
             if (!string.IsNullOrWhiteSpace(r.Checked))
                 sb.AppendLine($"- 審查者說明：{r.Checked}");
             var status = r.EffectiveStatus;
-            sb.AppendLine(status == ReviewStatus.Completed
-                ? $"- 結果：審查模型找到 {all.Count} 項（高 {high}、中 {mid}、低 {low}），程式檢查找到 {r.ProgramIssues.Count} 項。"
-                : $"- 結果：{StatusText(status)}，只有程式檢查的結果（找到 {r.ProgramIssues.Count} 項）。**這不代表報告已通過數字與文字核對。**");
+            sb.AppendLine(status switch
+            {
+                ReviewStatus.Completed =>
+                    $"- 結果：審查模型找到 {all.Count} 項（高 {high}、中 {mid}、低 {low}），程式檢查找到 {r.ProgramIssues.Count} 項。",
+                ReviewStatus.PartiallyParsed =>
+                    $"- 結果：審查模型找到 {all.Count} 項（高 {high}、中 {mid}、低 {low}），另有 {r.UnparsedCount} 項回覆格式無法解析（原文附在最後）；" +
+                    $"程式檢查找到 {r.ProgramIssues.Count} 項。**格式無法解析的部分沒有列入，這不代表報告已通過核對。**",
+                _ =>
+                    $"- 結果：{StatusText(status)}，只有程式檢查的結果（找到 {r.ProgramIssues.Count} 項）。**這不代表報告已通過數字與文字核對。**",
+            });
             sb.AppendLine("- 這份清單只列出問題與建議，沒有修改報告。是否採用由你決定。");
             sb.AppendLine();
 
@@ -620,36 +721,43 @@ namespace Cat5201
             {
                 sb.AppendLine("## 上一輪問題的處理狀態").AppendLine();
                 sb.AppendLine($"已修正 {r.Previous.Count(p => p.Status == StatusFixed)} 項、仍存在 {r.Previous.Count(p => p.Status == StatusRemains)} 項、" +
-                              $"無法確認 {r.Previous.Count(p => p.Status == StatusUnknown)} 項（編號和「修正說明」裡的第 n 項相同）。").AppendLine();
-                sb.AppendLine("| # | 上一輪的問題 | 狀態 | 依據 |\n|---|---|---|---|");
+                              $"無法確認 {r.Previous.Count(p => p.Status == StatusUnknown)} 項（編號和「修正說明」裡的第 n 項相同）。" +
+                              "狀態是審查模型的判定，請對照依據；沒有附依據的一律記成「" + StatusUnknown + "」。").AppendLine();
+                sb.AppendLine("| # | 上一輪的問題 | 狀態（審查模型判定） | 依據 |\n|---|---|---|---|");
                 foreach (var p in r.Previous)
                     sb.AppendLine($"| {p.N} | {Cell(p.Problem)} | {Cell(p.Status)} | {Cell(p.Evidence)} |");
                 sb.AppendLine();
             }
 
             sb.AppendLine(r.Previous is { Count: > 0 } ? "## 這一輪新發現的問題" : "## 審查模型找到的問題").AppendLine();
-            if (status != ReviewStatus.Completed)
+            bool partial = status == ReviewStatus.PartiallyParsed;
+            if (status != ReviewStatus.Completed && !partial)
                 sb.AppendLine($"（{StatusText(status)}：{r.ReviewerNote}。）" +
                               (status == ReviewStatus.Unparseable ? "原文附在最後。" : ""));
             else if (all.Count == 0)
-                sb.AppendLine("沒有找到數字不符或前後矛盾的地方。");
+                sb.AppendLine(partial
+                    ? $"（可解析的部分沒有列出問題；另有 {r.UnparsedCount} 項回覆格式無法解析，原文附在最後。這不代表沒有問題。）"
+                    : "沒有找到數字不符或前後矛盾的地方。");
             else
             {
+                if (partial)
+                    sb.AppendLine($"（另有 {r.UnparsedCount} 項回覆格式無法解析，沒有列在下表，原文附在最後。）").AppendLine();
                 var origins = r.IssueOrigins;
                 if (origins != null)
-                    sb.AppendLine($"「來源」由程式比對問題引用的原文判斷：修正前就存在 {origins.Count(o => o == OriginBefore)} 項、" +
-                                  $"修正後才出現 {origins.Count(o => o == OriginAfter)} 項、無法判斷 {origins.Count(o => o == OriginUnknown)} 項。").AppendLine();
+                    sb.AppendLine($"「引用內容」欄由程式比對問題引用的原文：{OriginBefore} {origins.Count(o => o == OriginBefore)} 項、" +
+                                  $"{OriginAfter} {origins.Count(o => o == OriginAfter)} 項、{OriginUnknown} {origins.Count(o => o == OriginUnknown)} 項。" +
+                                  "這只表示引用的文字是新是舊，不代表問題是什麼時候形成的——例如結論那句沒改、但它對照的數字改了，矛盾就是修正後才出現。").AppendLine();
                 AppendTable(sb, all, withSeverity: true, origins);
             }
 
             sb.AppendLine().AppendLine("## 程式自動檢查（不經 AI）").AppendLine();
-            sb.AppendLine("檢查無效值（nan、None、#DIV/0! 等）與沒填完的模板字。").AppendLine();
+            sb.AppendLine("檢查無效值（nan、None、#DIV/0! 等）、沒填完的模板字，以及程式裡新版套件已移除、會直接報錯的寫法。").AppendLine();
             if (r.ProgramIssues.Count == 0)
                 sb.AppendLine("沒有找到。");
             else
                 AppendTable(sb, r.ProgramIssues, withSeverity: false);
 
-            if (status == ReviewStatus.Unparseable && !string.IsNullOrWhiteSpace(r.RawReply))
+            if ((status == ReviewStatus.Unparseable || partial) && !string.IsNullOrWhiteSpace(r.RawReply))
                 sb.AppendLine().AppendLine("## 審查者原始回覆").AppendLine().AppendLine(Shorten(r.RawReply, 4000));
 
             return sb.ToString();
@@ -661,6 +769,7 @@ namespace Cat5201
             ReviewStatus.NotRun => "這次沒有呼叫審查模型",
             ReviewStatus.Failed => "審查模型這次沒有回應",
             ReviewStatus.Unparseable => "審查回覆無法解析",
+            ReviewStatus.PartiallyParsed => "審查回覆有部分格式無法解析",
             _ => "審查完成",
         };
 
@@ -676,16 +785,22 @@ namespace Cat5201
             string coverage = r.CoverageNotes.Count > 0 ? "部分內容沒有送審，見清單的「檢查範圍」。" : "";
             var status = r.EffectiveStatus;
 
-            if (status != ReviewStatus.Completed)
+            bool partial = status == ReviewStatus.PartiallyParsed;
+            if (status != ReviewStatus.Completed && !partial)
                 return $"獨立審查：{StatusText(status)}（{r.ReviewerNote}），只做了程式檢查" +
                        (r.ProgramIssues.Count > 0 ? $"，找到 {r.ProgramIssues.Count} 項，清單在「審查清單」檔" : "，沒有找到無效值或殘留字") +
                        "；這不代表報告已通過數字與文字核對。" + coverage;
 
             string who = $"{DisplayName(r.ReviewerModel)}，沒有參與撰寫";
+            string partialNote = partial
+                ? $"另有 {r.UnparsedCount} 項審查回覆格式無法解析（原文在清單裡），這部分沒有核對結果。"
+                : "";
             if (count == 0)
-                return $"獨立審查（{who}）：沒有找到數字不符或前後矛盾的地方。" + coverage;
+                return partial
+                    ? $"獨立審查（{who}）：審查回覆有 {r.UnparsedCount} 項格式無法解析，沒有可列出的問題；這不代表報告已通過數字與文字核對。" + coverage
+                    : $"獨立審查（{who}）：沒有找到數字不符或前後矛盾的地方。" + coverage;
             return $"獨立審查（{who}）：找到 {count} 項需要確認的地方" + (high > 0 ? $"（其中 {high} 項較嚴重）" : "") +
-                   (reportUnchanged ? "，修改清單在「審查清單」檔，報告本身沒有被修改。" : "。") + coverage;
+                   (reportUnchanged ? "，修改清單在「審查清單」檔，報告本身沒有被修改。" : "。") + partialNote + coverage;
         }
 
         private static void AppendTable(StringBuilder sb, IReadOnlyList<Issue> issues, bool withSeverity,
@@ -693,7 +808,7 @@ namespace Cat5201
         {
             bool withOrigin = withSeverity && origins != null && origins.Count == issues.Count;
             sb.AppendLine(withOrigin
-                ? "| # | 嚴重度 | 來源 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|---|"
+                ? "| # | 嚴重度 | 引用內容 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|---|"
                 : withSeverity
                     ? "| # | 嚴重度 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|"
                     : "| # | 位置 | 問題 | 原文 | 建議 |\n|---|---|---|---|---|");

@@ -35,12 +35,129 @@ namespace Cat5201.Tests
             Assert.Empty(parsed!.Value.Issues);
         }
 
+        // ── 2026-11-04（GPT 審查本專案）：issues 有內容、格式不符，原本被略過成 0 項 ──
+        // 原本這裡的測試叫「非物件項目略過」——把錯誤的行為當成正確的固定下來了。
+
         [Fact]
-        public void NonObjectItems_AreSkipped_InsteadOfThrowing()
+        public void StringItems_AreKept_AsIssues()
         {
-            var parsed = ReportReview.ParseReply("{\"issues\":[\"文字\",{\"severity\":\"中\",\"problem\":\"p\"}]}");
-            Assert.Single(parsed!.Value.Issues);
+            var parsed = ReportReview.ParseReply("{\"issues\":[\"營收單位錯誤\"]}");
+
+            var issue = Assert.Single(parsed!.Value.Issues);
+            Assert.Equal("營收單位錯誤", issue.Problem);
+            Assert.Equal("中", issue.Severity);                         // 嚴重度不明一律當「中」
+            Assert.Equal(ReportReview.SalvagedWhere, issue.Where);
+            Assert.Equal(0, parsed.Value.Unparsed);
         }
+
+        [Theory]
+        [InlineData("description")]
+        [InlineData("issue")]
+        [InlineData("text")]
+        [InlineData("message")]
+        public void ProblemSynonyms_AreRecognised(string key)
+        {
+            var parsed = ReportReview.ParseReply("{\"issues\":[{\"severity\":\"高\",\"" + key + "\":\"營收單位錯誤\"}]}");
+
+            var issue = Assert.Single(parsed!.Value.Issues);
+            Assert.Equal(("高", "營收單位錯誤"), (issue.Severity, issue.Problem));
+            Assert.Equal(0, parsed.Value.Unparsed);
+        }
+
+        [Fact]
+        public void ItemsWithNoReadableProblem_MakeThePartiallyParsedStatus_NeverZeroIssues()
+        {
+            string raw = "{\"issues\":[123,{},{\"severity\":\"高\",\"where\":\"表 1\"},{\"severity\":\"中\",\"problem\":\"p\"}],\"checked\":\"c\"}";
+            var parsed = ReportReview.ParseReply(raw);
+            Assert.Single(parsed!.Value.Issues);
+            Assert.Equal(3, parsed.Value.Unparsed);
+
+            // 狀態：呼叫端沒帶狀態也認得出來
+            var r = new ReportReview.Result(parsed.Value.Issues, None, AiModels.OpenAi_Gpt56, "n", "c", raw);
+            Assert.Equal(ReportReview.ReviewStatus.PartiallyParsed, r.EffectiveStatus);
+            Assert.Equal(3, r.UnparsedCount);
+
+            string summary = ReportReview.Summary(r);
+            Assert.Contains("另有 3 項審查回覆格式無法解析", summary);
+            Assert.DoesNotContain("沒有找到數字不符", summary);
+
+            string md = ReportReview.ToMarkdown("HW1.docx", Array.Empty<string>(), r);
+            Assert.Contains("另有 3 項回覆格式無法解析", md);
+            Assert.Contains("## 審查者原始回覆", md);
+            Assert.Contains("這不代表報告已通過核對", md);
+        }
+
+        [Fact]
+        public void AllItemsUnreadable_SaysSo_InsteadOfNoProblemsFound()
+        {
+            string raw = "{\"issues\":[{\"severity\":\"高\"}],\"checked\":\"c\"}";
+            var r = new ReportReview.Result(None, None, AiModels.OpenAi_Gpt56, "n", "c", raw);
+
+            string summary = ReportReview.Summary(r);
+            Assert.Contains("審查回覆有 1 項格式無法解析，沒有可列出的問題", summary);
+            Assert.Contains("這不代表報告已通過數字與文字核對", summary);
+            Assert.DoesNotContain("沒有找到數字不符", summary);
+            Assert.DoesNotContain("沒有找到數字不符", ReportReview.ToMarkdown("HW1.docx", Array.Empty<string>(), r));
+        }
+
+        [Fact]
+        public void PreviousStatus_WithoutEvidence_IsUnknown()
+        {
+            // GPT 的反例：{"previous":[{"n":1,"status":"已修正","evidence":""}]} 原本照單全收
+            var previous = new[] { new ReportReview.Issue("中", "a", "問題一", "", ""), new ReportReview.Issue("中", "b", "問題二", "", "") };
+            string reply = "{\"issues\":[],\"previous\":[" +
+                           "{\"n\":1,\"status\":\"已修正\",\"evidence\":\"\"}," +
+                           "{\"n\":2,\"status\":\"仍存在\",\"evidence\":\"   \"}]}";
+
+            var s = ReportReview.ParsePrevious(reply, previous);
+
+            Assert.All(s, p => Assert.Equal(ReportReview.StatusUnknown, p.Status));
+            Assert.Contains("審查者判定為「已修正」，但沒有附依據", s[0].Evidence);
+            Assert.Contains("審查者判定為「仍存在」，但沒有附依據", s[1].Evidence);
+        }
+
+        [Fact]
+        public void PreviousStatusTable_SaysItIsTheReviewersJudgement()
+        {
+            var r = new ReportReview.Result(None, None, AiModels.OpenAi_Gpt56, "n", "c", "{\"issues\":[]}",
+                ReportReview.ReviewStatus.Completed, null,
+                new[] { new ReportReview.PreviousStatus(1, "問題一", ReportReview.StatusFixed, "現在寫 0.029%") });
+
+            string md = ReportReview.ToMarkdown("HW1.docx", Array.Empty<string>(), r);
+            Assert.Contains("狀態（審查模型判定）", md);
+            Assert.Contains("沒有附依據的一律記成「無法確認」", md);
+        }
+
+        // ── 新版套件已移除的寫法（2026-11-04 GPT 審查 HW1：LassoCV(n_alphas=60) 在 scikit-learn 1.9 會報錯）──
+
+        [Theory]
+        [InlineData("m = LassoCV(n_alphas=60, cv=5)", "n_alphas")]
+        [InlineData("rmse = mean_squared_error(y, p, squared=False)", "squared")]
+        [InlineData("enc = OneHotEncoder(drop='first', sparse=False)", "sparse")]
+        [InlineData("for k, v in df.iteritems():", "iteritems")]
+        [InlineData("x = df['a'].astype(np.float)", "np.float")]
+        [InlineData("y = np.int(3)", "np.float")]
+        public void RemovedApis_AreFlaggedWithLineNumbers(string line, string expectInProblem)
+        {
+            string code = "import numpy as np\n\n" + line + "\n";
+            var issue = Assert.Single(ReportReview.CodeChecks(new[] { ("hw1.py", code) }));
+
+            Assert.Equal("中", issue.Severity);
+            Assert.Equal("程式「hw1.py」第 3 行", issue.Where);
+            Assert.Contains(expectInProblem, issue.Problem);
+            Assert.Contains("較新的環境會直接報錯", issue.Problem);
+            Assert.False(string.IsNullOrWhiteSpace(issue.Suggestion));
+        }
+
+        [Theory]
+        [InlineData("m = LassoCV(alphas=np.logspace(-4, 1, 60), cv=5)")]
+        [InlineData("rmse = np.sqrt(mean_squared_error(y, p))")]
+        [InlineData("enc = OneHotEncoder(drop='first', sparse_output=False)")]
+        [InlineData("for k, v in df.items():")]
+        [InlineData("x = df['a'].astype(np.float64); y = np.int_(3); z = np.str_('a')")]
+        [InlineData("# LassoCV(n_alphas=60) 是舊寫法")]
+        public void CompatibleCode_IsNotFlagged(string line)
+            => Assert.Empty(ReportReview.CodeChecks(new[] { ("hw1.py", line) }));
 
         [Theory]
         [InlineData(ReportReview.ReviewStatus.NotRun, "這次沒有呼叫審查模型")]

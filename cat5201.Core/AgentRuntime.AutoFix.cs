@@ -159,7 +159,7 @@ namespace Cat5201
                 AppLog.Warn("AutoFix", "修正版再審查失敗（修正版仍然保留）", ex);
             }
 
-            // 新發現的問題：比對修正前後的原文，分出「修正前就存在（上一輪漏看）」和「修正後才出現」。
+            // 新發現的問題：比對修正前後的原文，標出它引用的內容是修正前就有、還是修正後才有（只說文字新舊，不推論問題何時形成）。
             if (recheck != null && recheck.Result.ModelIssues.Count > 0)
             {
                 try

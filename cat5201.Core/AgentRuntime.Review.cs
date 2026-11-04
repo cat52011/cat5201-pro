@@ -149,7 +149,10 @@ namespace Cat5201
                 comparedNames.Add(c.FileName);
             }
 
-            var programIssues = ReportReview.ProgramChecks(markdown, tables);
+            // 程式檢查（不經 AI）：報告與結果表的無效值、沒填完的模板字，加上程式裡新版套件已移除的寫法
+            var programIssues = ReportReview.ProgramChecks(markdown, tables)
+                .Concat(ReportReview.CodeChecks(code))
+                .ToList();
 
             var (reviewer, note) = ReportReview.PickReviewer(_scope, writerModelId, ReportReview.HasKey);
 
@@ -203,7 +206,12 @@ namespace Cat5201
                     }
                     else
                     {
-                        status = ReportReview.ReviewStatus.Completed;
+                        // issues 裡有讀不出內容的項目：照列讀得出的，但不算「完成」（摘要不會說零問題）
+                        status = parsed.Value.Unparsed > 0
+                            ? ReportReview.ReviewStatus.PartiallyParsed
+                            : ReportReview.ReviewStatus.Completed;
+                        if (parsed.Value.Unparsed > 0)
+                            AppLog.Warn("Review", $"審查回覆有 {parsed.Value.Unparsed} 項格式無法解析，已標成部分無法解析");
                         modelIssues = parsed.Value.Issues;
                         checkedText = parsed.Value.Checked;
                         if (previousIssues is { Count: > 0 })

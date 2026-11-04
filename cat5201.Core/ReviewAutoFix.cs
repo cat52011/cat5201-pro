@@ -169,9 +169,11 @@ namespace Cat5201
         internal const int MinQuoteChars = 8;
 
         /// <summary>
-        /// 再審查新發現的問題，是修正前就存在（上一輪漏看）、修正後才出現，還是無法判斷。
-        /// 由程式比對：問題引用的原文（「…」或『…』裡的字）出現在修正前的報告或程式 → 修正前就存在；
-        /// 只出現在修正後的版本 → 修正後才出現；都找不到（例如引用的是表格、或審查者改寫過原文）→ 無法判斷。
+        /// 再審查新發現的問題，它引用的原文是新是舊。
+        /// 由程式比對：問題引用的原文（「…」或『…』裡的字）出現在修正前的報告或程式 → 引用內容修正前已存在；
+        /// 只出現在修正後的版本 → 引用內容為修正後新增；都找不到（例如引用的是表格、或審查者改寫過原文）→ 無法判斷。
+        /// 這只說文字的新舊，不推論問題何時形成：引用的句子沒變、但它對照的數字變了，問題仍可能是修正後才形成的
+        /// （2026-11-04 GPT 審查本專案的反例；原本把前者標成「上一輪漏看」，說得比證據更肯定）。
         /// 2026-11-04 實測：修正只改了一句話，再審查卻「新發現」一項——那段程式修正前就有，是第一次審查漏看。
         /// 不分開的話，會被誤讀成修正把東西改壞了。不花 AI 費用。
         /// </summary>
@@ -264,7 +266,7 @@ namespace Cat5201
 
         /// <summary>審查模型沒有完成、程式檢查也沒找到要修的：沒有可依據的清單，不能說「不需要修正」。</summary>
         public static string ReviewIncompleteLine =>
-            "審查後自動修正：審查模型這次沒有完成，沒有可依據的問題清單，所以沒有修正。";
+            "審查後自動修正：審查模型這次沒有完整完成（沒有回應或回覆格式無法解析），沒有可依據的問題清單，所以沒有修正。";
 
         public static string FailedLine(string reason) =>
             $"審查後自動修正沒有完成（{(string.IsNullOrWhiteSpace(reason) ? "原因不明" : reason.Trim())}），原本的檔案不受影響。";
@@ -299,7 +301,8 @@ namespace Cat5201
                 return "修正後再審查沒有完成，修正後的版本沒有經過第二次核對。";
 
             var status = recheck.EffectiveStatus;
-            if (status != ReportReview.ReviewStatus.Completed)
+            bool partial = status == ReportReview.ReviewStatus.PartiallyParsed;
+            if (status != ReportReview.ReviewStatus.Completed && !partial)
                 return $"修正後再審查：{ReportReview.StatusText(status)}，修正後的版本沒有經過第二次核對，" +
                        "原本的問題是否修好無法確認。";
 
@@ -311,9 +314,9 @@ namespace Cat5201
             int high = recheck.ModelIssues.Count(i => i.Severity == "高");
             int mid = recheck.ModelIssues.Count(i => i.Severity == "中") + recheck.ProgramIssues.Count(i => i.Severity == "中");
 
-            string line = $"修正後再審查：原本 {fixableCount} 項中，已修正 {done} 項、仍存在 {remains} 項、無法確認 {unknown} 項；";
+            string line = $"修正後再審查（審查模型判定）：原本 {fixableCount} 項中，已修正 {done} 項、仍存在 {remains} 項、無法確認 {unknown} 項；";
             if (fresh == 0)
-                line += "沒有新發現的問題。";
+                line += partial ? "可解析的部分沒有新發現的問題。" : "沒有新發現的問題。";
             else
             {
                 line += $"另外新發現 {fresh} 項（高 {high}、中 {mid}）";
@@ -323,12 +326,14 @@ namespace Cat5201
                     int before = origins.Count(o => o == ReportReview.OriginBefore);
                     int after = origins.Count(o => o == ReportReview.OriginAfter);
                     int unsure = origins.Count(o => o == ReportReview.OriginUnknown);
-                    // 程式檢查的項目沒有比對來源，不算在這三類裡
-                    line += $"，其中審查模型找到的 {origins.Count} 項：修正前就存在 {before} 項（上一輪漏看）、修正後才出現 {after} 項、無法判斷 {unsure} 項";
+                    // 程式檢查的項目沒有比對來源，不算在這三類裡；只說引用的文字新舊，不推論問題何時形成
+                    line += $"，其中審查模型找到的 {origins.Count} 項：{ReportReview.OriginBefore} {before} 項、{ReportReview.OriginAfter} {after} 項、無法判斷 {unsure} 項";
                 }
                 line += "。";
             }
-            if (remains + unknown + fresh > 0)
+            if (partial)
+                line += $"另有 {recheck.UnparsedCount} 項審查回覆格式無法解析，這部分沒有核對結果。";
+            if (remains + unknown + fresh > 0 || partial)
                 line += "細節在「審查清單」檔；這一次不再自動修正。";
             return line;
         }
