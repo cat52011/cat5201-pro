@@ -153,7 +153,8 @@ namespace Cat5201
 
         public IReadOnlyList<ContextConnectionInfo> GetConnectionsForContext()
         {
-            return _connections
+            // 含背景執行中存檔的連線：呼叫端都是依節點找上下游，背景節點要找得到自己的上游（見 MainWindow.Sessions.cs）。
+            return LiveConnections()
                 .Where(c => c.StartNode != null && c.EndNode != null)
                 .Select(c => new ContextConnectionInfo
                 {
@@ -307,12 +308,16 @@ namespace Cat5201
             }
         }
 
-        /// <summary>目前存檔的顯示名稱（沒有開啟任何存檔時為空）。</summary>
+        /// <summary>
+        /// 目前存檔的顯示名稱（沒有開啟任何存檔時為空）。
+        /// 在節點的執行流程裡，指的是那個節點所屬的存檔——使用者中途切到別的存檔，產出仍寫回原本的存檔資料夾。
+        /// </summary>
         private string CurrentSaveDisplayName()
         {
             try
             {
-                return string.IsNullOrWhiteSpace(_currentFilePath) ? "" : DisplayNameFromPath(_currentFilePath);
+                string? path = EffectiveProjectPath;
+                return string.IsNullOrWhiteSpace(path) ? "" : DisplayNameFromPath(path);
             }
             catch { return ""; }
         }
@@ -374,6 +379,57 @@ namespace Cat5201
             catch (Exception ex) { AppLog.Warn("Output", "整理產出檔案失敗", ex); }
         }
 
+        /// <summary>
+        /// 啟動時：改過名的存檔，產出資料夾對齊目前的存檔名稱，並收掉完全空的產出資料夾（規則見 GeneratedFileOrganizer.AlignSaveFolders）。
+        /// 2026-11-04：改名跟著搬資料夾之前就改過名的聊天，檔案還留在舊名稱的資料夾。
+        /// 已經對齊時什麼都不做；在開啟存檔之前執行，所以只要改寫存檔 JSON，不用動畫面上的節點。
+        /// </summary>
+        private void AlignGeneratedFoldersWithSaveNames()
+        {
+            try
+            {
+                string root = GeneratedFilesRoot;
+                if (!System.IO.Directory.Exists(root))
+                    return;
+
+                var saves = new List<GeneratedFileOrganizer.SaveOutputs>();
+                var pathBySave = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (string save in System.IO.Directory.GetFiles(SavesDir, "*.json"))
+                {
+                    string display = DisplayNameFromPath(save);
+                    var paths = new List<string>();
+                    try
+                    {
+                        // 只要 Nodes[].OutputFilePaths 與 OutputImagePath，直接讀 JSON 比反序列化整個專案便宜。
+                        using var doc = System.Text.Json.JsonDocument.Parse(System.IO.File.ReadAllText(save));
+                        if (doc.RootElement.TryGetProperty("Nodes", out var nodes) && nodes.ValueKind == System.Text.Json.JsonValueKind.Array)
+                            foreach (var node in nodes.EnumerateArray())
+                            {
+                                if (node.TryGetProperty("OutputFilePaths", out var files) && files.ValueKind == System.Text.Json.JsonValueKind.Array)
+                                    foreach (var f in files.EnumerateArray())
+                                        if (f.ValueKind == System.Text.Json.JsonValueKind.String && f.GetString() is { Length: > 0 } fp)
+                                            paths.Add(fp);
+                                if (node.TryGetProperty("OutputImagePath", out var img) && img.ValueKind == System.Text.Json.JsonValueKind.String &&
+                                    img.GetString() is { Length: > 0 } ip)
+                                    paths.Add(ip);
+                            }
+                    }
+                    catch { paths.Clear(); /* 讀不開的存檔不搬，但名稱仍算數：名稱同它的資料夾不會被別的存檔搬走 */ }
+
+                    saves.Add(new GeneratedFileOrganizer.SaveOutputs(display, paths));
+                    pathBySave[display] = save;
+                }
+
+                foreach (var r in GeneratedFileOrganizer.AlignSaveFolders(root, saves))
+                {
+                    if (pathBySave.TryGetValue(r.SaveName, out var savePath))
+                        RewriteOutputPathsInSave(savePath, r.Map);
+                    AppLog.Info("Output", $"「{r.SaveName}」的產出檔案從「{r.FromFolder}」移到「{r.ToFolder}」（{r.Map.Count} 個檔案）");
+                }
+            }
+            catch (Exception ex) { AppLog.Warn("Output", "對齊產出資料夾名稱失敗（檔案沒有搬動）", ex); }
+        }
+
         /// <summary>搬動之後，把每個存檔裡記的產出路徑指回新位置。</summary>
         private void RepairGeneratedFilePaths(string root)
         {
@@ -419,6 +475,9 @@ namespace Cat5201
         }
 
         public string GetGeneratedFilesDir() => GeneratedFilesDir;
+
+        /// <summary>產出檔案的根目錄（所有存檔共用）。節點清理上一輪產出時，以它為界收空資料夾。</summary>
+        public string GetGeneratedFilesRootDir() => GeneratedFilesRoot;
 
         /// <summary>目前設定的產出資料夾（給個人化面板顯示）。</summary>
         public string GetGeneratedFilesDirSetting() => _generatedFilesDirOverride;
@@ -500,7 +559,13 @@ namespace Cat5201
             }
         }
 
-        private string? _currentFilePath;
+        // 目前畫面的存檔路徑。存在 ProjectRef 裡（見 MainWindow.Sessions.cs）：切換存檔時，執行中的節點
+        // 保有原本那個 ProjectRef，改名也會跟著更新，產出才寫得回對的存檔。
+        private string? _currentFilePath
+        {
+            get => _activeProject.Path;
+            set => _activeProject.Path = value;
+        }
         private bool _hasStarted = false;
         private bool _suppressSave = false;
 
@@ -548,6 +613,14 @@ namespace Cat5201
             {
                 get => _editText;
                 set { if (_editText != value) { _editText = value; OnPropertyChanged(nameof(EditText)); } }
+            }
+
+            // 這個存檔有節點在執行（目前畫面或背景）：名稱顯示流光，直到全部跑完（見 MainWindow.Sessions.cs）。
+            private bool _isRunning;
+            public bool IsRunning
+            {
+                get => _isRunning;
+                set { if (_isRunning != value) { _isRunning = value; OnPropertyChanged(nameof(IsRunning)); } }
             }
 
             public FileItem(string fullPath)
@@ -1680,6 +1753,8 @@ namespace Cat5201
             EnsureApiStatusRows();
             ApplyApiBalancePanelVisibility();   // 右下角餘額面板（依個人化開關）
             OrganizeGeneratedFilesOnce();       // 舊的散檔歸到各自的存檔資料夾
+            AlignGeneratedFoldersWithSaveNames(); // 改過名的存檔：產出資料夾對齊目前的名稱，收掉空資料夾
+            EnsureSessionTimer();               // 存檔清單的流光、背景執行中存檔的釋放（MainWindow.Sessions.cs）
             ApplyDecisionPanelVisibility();     // 右上角決策視窗（依個人化開關）
             InitializeTrash();                  // 最近刪除：清掉過期的，決定入口要不要顯示
 
@@ -1799,6 +1874,9 @@ namespace Cat5201
 
         private void NewFile_Click(object sender, RoutedEventArgs e)
         {
+            // 目前的存檔有節點在跑：留在背景繼續（見 MainWindow.Sessions.cs）。
+            StashActiveProjectIfRunning();
+
             StartUI.Visibility = Visibility.Visible;
             MainUI.Visibility = Visibility.Collapsed;
             SetRandomStartMessage();
@@ -1811,10 +1889,7 @@ namespace Cat5201
             _fileNameLockedByUser = false;
             _lastAppliedAutoKeyword = "";
             _lastInitialTopSnapshot = "";
-            _attachmentsByNode.Clear();
-            _nodeModelsById.Clear();
-            _nodeTaskModesById.Clear();
-            _nodeAgentsById.Clear();
+            ClearPerNodeStateExceptBackground();
 
             _editingNode = null;
             _editingReason = EditReason.None;
@@ -1887,6 +1962,14 @@ namespace Cat5201
         private void DeleteFile(string path)
         {
             var name = DisplayNameFromPath(path);
+
+            // 有節點在跑的存檔（目前畫面或背景）不能刪：刪了執行中的節點就沒有地方寫回結果。
+            if (IsProjectRunning(path))
+            {
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("還在執行", "Still running"),
+                    UiLanguage.P($"「{name}」還有節點在執行，等執行完再刪除。", $"\"{name}\" still has nodes running. Delete it after they finish."), this);
+                return;
+            }
 
             // 只問一句。原本那兩行說明（會搬到「最近刪除」、全域記憶不受影響）是寫給
             // 「怕按下去就沒了」的人看的，但它每一次刪檔都出現，久了就是雜訊——
@@ -2024,6 +2107,14 @@ namespace Cat5201
             if (item == null)
                 return;
 
+            // 背景執行中的存檔不能改名：它的節點設定裡記的附件路徑還是舊名稱，執行完再改才安全。
+            if (SessionFor(item.FullPath) != null)
+            {
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("還在執行", "Still running"),
+                    UiLanguage.P($"「{item.DisplayName}」還有節點在背景執行，等執行完再改名。", $"\"{item.DisplayName}\" still has nodes running in the background. Rename it after they finish."), this);
+                return;
+            }
+
             // 一次只編輯一個：先收掉其他項的編輯狀態。
             if (FileList.ItemsSource is IEnumerable<FileItem> list)
             {
@@ -2105,8 +2196,13 @@ namespace Cat5201
                     return;
                 }
 
-                if (!string.IsNullOrEmpty(_currentFilePath) &&
-                    string.Equals(_currentFilePath, oldPath, StringComparison.OrdinalIgnoreCase))
+                bool isCurrent = !string.IsNullOrEmpty(_currentFilePath) &&
+                                 string.Equals(_currentFilePath, oldPath, StringComparison.OrdinalIgnoreCase);
+
+                // 產出資料夾跟著改名（目前開著的存檔：改節點記的路徑，下面 SaveState 存回；其他存檔：直接改它的 JSON）。
+                MoveGeneratedFolderForRename(oldBaseName, DisplayNameFromPath(result.NewPath), isCurrent ? null : result.NewPath);
+
+                if (isCurrent)
                 {
                     _currentFilePath = result.NewPath;
                     _fileNameLockedByUser = true;
@@ -2129,6 +2225,81 @@ namespace Cat5201
         }
 
         // MoveAttachmentFolderSafely / .bak sidecar / 附件路徑改寫 → 已抽出到 ProjectStore（第 1 刀）。
+
+        /// <summary>
+        /// 存檔改名（手動或自動命名）後，產出資料夾跟著改名，並把記的路徑改到新位置。
+        /// otherSavePath＝null：改的是目前開著的存檔，更新畫面上各節點記的路徑（呼叫端接著 SaveState 存回）；
+        /// 否則直接改那個存檔的 JSON。
+        /// 2026-11-04：原本改名不搬產出資料夾，同一個聊天的檔案分散在新舊兩個名稱的資料夾。
+        /// 搬移失敗不影響改名本身：檔案留在原處，預覽仍可用檔名找到（ResolveGeneratedFile）。
+        /// </summary>
+        private void MoveGeneratedFolderForRename(string oldBaseName, string newBaseName, string? otherSavePath)
+        {
+            IReadOnlyDictionary<string, string> map;
+            try { map = GeneratedFileOrganizer.RenameSaveFolder(GeneratedFilesRoot, oldBaseName, newBaseName); }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Output", $"產出資料夾沒有跟著改名：{oldBaseName} → {newBaseName}", ex);
+                return;
+            }
+            if (map.Count == 0)
+                return;
+
+            if (otherSavePath != null)
+            {
+                RewriteOutputPathsInSave(otherSavePath, map);
+                return;
+            }
+
+            foreach (var n in MainCanvas.Children.OfType<NodeControl>())
+            {
+                var paths = n.GetOutputFilePaths();
+                var remapped = paths.Select(p => GeneratedFileOrganizer.Remap(p, map)).ToList();
+                if (!paths.SequenceEqual(remapped, StringComparer.Ordinal))
+                    n.RestoreOutputFiles(remapped);
+
+                string? image = n.GetOutputImagePath();
+                string newImage = GeneratedFileOrganizer.Remap(image, map);
+                if (!string.IsNullOrEmpty(image) && !string.Equals(image, newImage, StringComparison.Ordinal))
+                    n.SetOutputImage(newImage);
+            }
+        }
+
+        /// <summary>把某個存檔 JSON 裡各節點的產出路徑（OutputFilePaths、OutputImagePath）依對照改到新位置。</summary>
+        private static void RewriteOutputPathsInSave(string savePath, IReadOnlyDictionary<string, string> map)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(savePath)) return;
+                var root = System.Text.Json.Nodes.JsonNode.Parse(System.IO.File.ReadAllText(savePath));
+                if (root?["Nodes"] is not System.Text.Json.Nodes.JsonArray nodes) return;
+
+                bool changed = false;
+                foreach (var n in nodes)
+                {
+                    if (n?["OutputFilePaths"] is System.Text.Json.Nodes.JsonArray paths)
+                        for (int i = 0; i < paths.Count; i++)
+                        {
+                            string? p = paths[i]?.GetValue<string>();
+                            string q = GeneratedFileOrganizer.Remap(p, map);
+                            if (p != null && q != p) { paths[i] = q; changed = true; }
+                        }
+
+                    if (n?["OutputImagePath"] is System.Text.Json.Nodes.JsonValue v && v.TryGetValue<string>(out var img))
+                    {
+                        string q = GeneratedFileOrganizer.Remap(img, map);
+                        if (q != img) { n["OutputImagePath"] = q; changed = true; }
+                    }
+                }
+
+                if (changed)
+                    AtomicFile.WriteAllText(savePath, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Output", $"改名後更新 {System.IO.Path.GetFileName(savePath)} 的產出路徑失敗", ex);
+            }
+        }
 
         private void RefreshAllNodeAttachmentUIs()
         {
@@ -2171,12 +2342,22 @@ namespace Cat5201
             if (sender is NodeControl node)
                 UpdateConnectionsFor(node);
 
-            SaveState();
+            SaveStateFor(sender as NodeControl);
         }
 
         private void Node_ContentChanged(object? sender, EventArgs e)
         {
-            SaveState();
+            SaveStateFor(sender as NodeControl);
+        }
+
+        /// <summary>節點在背景執行中的存檔裡：存回那個存檔；否則存目前畫面。</summary>
+        private void SaveStateFor(NodeControl? node)
+        {
+            var session = SessionOf(node);
+            if (session != null)
+                SaveBackgroundSession(session);
+            else
+                SaveState();
         }
 
         private Point GetThumbCenterOnCanvas(NodeControl node, string thumbName)
@@ -2565,7 +2746,7 @@ namespace Cat5201
             if (node == null)
                 return false;
 
-            return _connections.Any(c => ReferenceEquals(c.EndNode, node));
+            return LiveConnections().Any(c => ReferenceEquals(c.EndNode, node));
         }
 
         // 一鍵（Mode 1）與完全自動（Mode 2）共用：把節點展開成下游工作流並依序執行整條。
@@ -3305,7 +3486,7 @@ namespace Cat5201
 
         public bool HasOutgoingConnections(NodeControl node)
         {
-            foreach (var c in _connections)
+            foreach (var c in LiveConnections())
                 if (ReferenceEquals(c.StartNode, node))
                     return true;
             return false;
@@ -3841,7 +4022,9 @@ namespace Cat5201
         // 附件相對路徑改寫的磁碟版已在 ProjectStore;這裡只剩「已載入節點」的記憶體同步。
         private void UpdateAttachmentRelativePathsInMemory(string oldBaseName, string newBaseName)
         {
-            foreach (var kv in _attachmentsByNode)
+            // 只改目前畫面上的節點：表裡也有背景執行中存檔的節點，它們的附件屬於別的存檔名稱。
+            var onCanvas = MainCanvas.Children.OfType<NodeControl>().Select(n => n.Id).ToHashSet();
+            foreach (var kv in _attachmentsByNode.Where(kv => onCanvas.Contains(kv.Key)))
             {
                 foreach (var a in kv.Value)
                 {
@@ -3855,8 +4038,29 @@ namespace Cat5201
             if (!_hasStarted) return;
             if (_suppressSave) return;
 
+            var state = BuildState(MainCanvas.Children.OfType<NodeControl>().ToList(), _connections, _initialNode, _fileNameLockedByUser);
+
+            if (string.IsNullOrEmpty(_currentFilePath))
+                _currentFilePath = Store.NewProjectPath();
+
+            Store.Save(state, _currentFilePath!);
+
+            // 個人化偏好與專案檔分離，但任何一次存檔都順手把全域偏好也寫回，確保隨時最新。
+            SavePreferences();
+
+            RefreshCurrentFileLabel();
+        }
+
+        /// <summary>
+        /// 把一組節點與連線組成要存檔的狀態。目前畫面（SaveState）和背景執行中的存檔（SaveBackgroundSession）共用。
+        /// 附件只收這組節點的——表裡也有其他存檔（背景執行中）的節點。
+        /// </summary>
+        private AppState BuildState(
+            IReadOnlyList<NodeControl> canvasNodes, IEnumerable<Connection> connections, NodeControl? initialNode, bool fileNameLocked)
+        {
+            var nodeIds = canvasNodes.Select(n => n.Id).ToHashSet();
             var nodes = new List<NodeState>();
-            foreach (var child in MainCanvas.Children.OfType<NodeControl>())
+            foreach (var child in canvasNodes)
             {
                 double x = SafeFinite(Canvas.GetLeft(child), 0);
                 double y = SafeFinite(Canvas.GetTop(child), 0);
@@ -3885,7 +4089,7 @@ namespace Cat5201
             }
 
             var conns = new List<ConnState>();
-            foreach (var c in _connections)
+            foreach (var c in connections)
             {
                 conns.Add(new ConnState(
                     c.StartNode.Id.ToString(),
@@ -3897,7 +4101,7 @@ namespace Cat5201
             }
 
             var atts = new List<AttachmentState>();
-            foreach (var kv in _attachmentsByNode)
+            foreach (var kv in _attachmentsByNode.Where(kv => nodeIds.Contains(kv.Key)))
             {
                 var nodeId = kv.Key.ToString();
                 foreach (var a in kv.Value)
@@ -3914,7 +4118,7 @@ namespace Cat5201
 
             var logs = new List<ExecutionLogState>();
 
-            foreach (var child in MainCanvas.Children.OfType<NodeControl>())
+            foreach (var child in canvasNodes)
             {
                 var nodeLogs = GetExecutionLogs(child);
                 foreach (var log in nodeLogs)
@@ -3923,14 +4127,14 @@ namespace Cat5201
                 }
             }
 
-            var state = new AppState(
+            return new AppState(
     DateTime.Now,
-    _initialNode?.Id.ToString(),
+    initialNode?.Id.ToString(),
     nodes,
     conns,
     atts,
     logs,
-    FileNameLocked: _fileNameLockedByUser,
+    FileNameLocked: fileNameLocked,
     AutoModelSelectionEnabled: _isAutoModelSelectionEnabled,
     AdvancedAutoResolverEnabled: _isAdvancedAutoResolverEnabled,
     DownstreamAutoMode: DownstreamAutoModeHelper.ToStorageValue(_downstreamAutoMode),
@@ -3941,21 +4145,18 @@ namespace Cat5201
     ManualTimeoutSeconds: _manualTimeoutSeconds,
     SchemaVersion: ProjectStore.CurrentSchemaVersion
 );
-
-            if (string.IsNullOrEmpty(_currentFilePath))
-                _currentFilePath = Store.NewProjectPath();
-
-            Store.Save(state, _currentFilePath!);
-
-            // 個人化偏好與專案檔分離，但任何一次存檔都順手把全域偏好也寫回，確保隨時最新。
-            SavePreferences();
-
-            RefreshCurrentFileLabel();
         }
 
         private void LoadState(string path)
         {
             if (!File.Exists(path)) return;
+
+            // 目前的存檔有節點在跑：整包留在背景繼續，不中止（見 MainWindow.Sessions.cs）。
+            StashActiveProjectIfRunning();
+
+            // 要開的存檔正在背景執行：掛回同一批節點，不從 JSON 重建（重建會丟掉執行中的進度與動畫）。
+            if (TryRestoreBackgroundSession(path))
+                return;
 
             // Store.Load 含 .bak fallback:主檔毀損時自動退上一版備份(原本直接 ReadAllText 沒這層救)。
             var state = Store.Load(path);
@@ -3993,13 +4194,8 @@ namespace Cat5201
             UpdateAdvancedAutoResolverVisibility();
             UpdateDecisionPanelForCurrentMode();
 
-            _attachmentsByNode.Clear();
-            _nodeModelsById.Clear();
-            _nodeTaskModesById.Clear();
-            _executionLogService.ClearAll();
-            _nodeAgentsById.Clear();
-            _unsupportedDownstreamNodeIds.Clear();
-            _generatedDownstreamNodeIds.Clear();
+            // 背景仍在執行的存檔，它的節點設定要留著（節點 Id 全域唯一，不會和這個存檔混到）。
+            ClearPerNodeStateExceptBackground();
 
             _hoveredDecisionNode = null;
             _lastDecisionNode = null;
@@ -4139,13 +4335,7 @@ namespace Cat5201
             _connections.Clear();
             _zIndexCounter = 0;
             _initialNode = null;
-            _nodeModelsById.Clear();
-            _nodeTaskModesById.Clear();
-            _executionLogService.ClearAll();
-            _autoFlowTemplatesByNode.Clear();
-            _autoFlowPoliciesByNode.Clear();
-            _unsupportedDownstreamNodeIds.Clear();
-            _nodeAgentsById.Clear();
+            ClearPerNodeStateExceptBackground();
             _editingNode = null;
             _editingReason = EditReason.None;
         }
@@ -4214,6 +4404,11 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(keyword))
                 return;
 
+            // 等 AI 想名稱的這幾秒，使用者可能已經切到別的存檔（原本的存檔留在背景執行）。
+            // 這時「目前的存檔」已經不是當初那個，不能拿去改名；原本的存檔先維持原名。
+            if (!string.Equals(_currentFilePath, originalPath, StringComparison.OrdinalIgnoreCase))
+                return;
+
             if (string.Equals(_lastAppliedAutoKeyword, keyword, StringComparison.OrdinalIgnoreCase))
                 return;
 
@@ -4244,6 +4439,7 @@ namespace Cat5201
 
                 UpdateAttachmentRelativePathsInMemory(oldBaseName, newBaseName);
                 RefreshAllNodeAttachmentUIs();
+                MoveGeneratedFolderForRename(oldBaseName, newBaseName, null);
                 SaveState();
 
                 _lastAppliedAutoKeyword = keyword;
@@ -4611,7 +4807,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
         internal IEnumerable<(NodeControl StartNode, string StartThumb, NodeControl EndNode, string EndThumb)> GetAllConnections()
         {
-            foreach (var c in _connections)
+            foreach (var c in LiveConnections())
                 yield return (c.StartNode, c.StartThumb, c.EndNode, c.EndThumb);
         }
 
@@ -5554,6 +5750,11 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                     CompanionPdfSwitch.IsChecked = DeliveryOptions.CompanionPdf;
                 if (IndependentReviewSwitch != null)
                     IndependentReviewSwitch.IsChecked = DeliveryOptions.IndependentReview;
+                if (AutoFixAfterReviewSwitch != null)
+                {
+                    AutoFixAfterReviewSwitch.IsChecked = DeliveryOptions.AutoFixAfterReview;
+                    AutoFixAfterReviewSwitch.IsEnabled = DeliveryOptions.IndependentReview;
+                }
                 if (DecisionPanelSwitch != null)
                     DecisionPanelSwitch.IsChecked = _showDecisionPanel;
                 if (TimeoutInput != null)
@@ -5629,6 +5830,18 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             if (_syncingCostControls)
                 return;
             DeliveryOptions.IndependentReview = IndependentReviewSwitch?.IsChecked == true;
+            // 自動修正要先有審查結果：審查關掉時開關跟著停用（保留原本的選擇，重新開啟審查時照舊）。
+            if (AutoFixAfterReviewSwitch != null)
+                AutoFixAfterReviewSwitch.IsEnabled = DeliveryOptions.IndependentReview;
+            SaveState();
+        }
+
+        /// <summary>審查找到高／中問題時自動修正一輪（要多花一趟沙箱與一次審查，預設關）。</summary>
+        private void AutoFixAfterReviewSwitch_Changed(object sender, RoutedEventArgs e)
+        {
+            if (_syncingCostControls)
+                return;
+            DeliveryOptions.AutoFixAfterReview = AutoFixAfterReviewSwitch?.IsChecked == true;
             SaveState();
         }
 
@@ -5940,6 +6153,10 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             if (node == null)
                 return;
 
+            // 背景執行中的存檔的節點不搶決策面板：使用者正在看的是另一個存檔。
+            if (!MainCanvas.Children.Contains(node))
+                return;
+
             _lastDecisionNode = node;
             _hoveredDecisionNode = node;
             ShowDecisionForNode(node);
@@ -5982,6 +6199,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
             using var cts = new CancellationTokenSource();
             _workflowChainCts = cts;
+            _chainProject = _activeProject;   // 切到別的存檔時，用來判斷這條鏈屬於哪個存檔（流光、背景釋放）
             try
             {
                 var visited = new HashSet<Guid>();
@@ -5989,7 +6207,8 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
                 for (int step = 0; step < 12; step++)
                 {
-                    if (current == null || !MainCanvas.Children.Contains(current))
+                    // 使用者切到別的存檔時，這條鏈的節點留在背景，鏈照常往下跑（IsNodeLive，見 MainWindow.Sessions.cs）
+                    if (current == null || !IsNodeLive(current))
                         return;
 
                     if (cts.IsCancellationRequested)
@@ -6214,7 +6433,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             if (node == null)
                 return Array.Empty<NodeControl>();
 
-            return _connections
+            return LiveConnections()
                 .Where(c => ReferenceEquals(c.StartNode, node) && c.FlowMode && c.EndNode != null)
                 .Select(c => c.EndNode)
                 .Distinct()
@@ -6227,7 +6446,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             if (node == null)
                 return Array.Empty<NodeControl>();
 
-            return _connections
+            return LiveConnections()
                 .Where(c => ReferenceEquals(c.EndNode, node) && c.FlowMode && c.StartNode != null)
                 .Select(c => c.StartNode)
                 .Distinct()
@@ -6250,6 +6469,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
             using var cts = new CancellationTokenSource();
             _workflowChainCts = cts;
+            _chainProject = _activeProject;   // 切到別的存檔時，用來判斷這條鏈屬於哪個存檔（流光、背景釋放）
             // 下游先全部標記「等待中」（琥珀框 + 手機顯示），輪到誰執行時 Running 會蓋過；
             // startNode 自己不標（runStartNode 時它馬上就跑、否則它是剛跑完的上游）。
             MarkFlowSubtreeWaiting(startNode, includeRoot: false);
@@ -6386,7 +6606,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             FlowRunState state,
             CancellationTokenSource cts)
         {
-            if (node == null || !MainCanvas.Children.Contains(node))
+            if (node == null || !IsNodeLive(node))
                 return;
 
             if (cts.IsCancellationRequested)

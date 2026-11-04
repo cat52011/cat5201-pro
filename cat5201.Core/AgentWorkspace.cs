@@ -59,6 +59,23 @@ namespace Cat5201
             }
         }
 
+        /// <summary>
+        /// 移除符合條件的項目，回傳被移除的項目（呼叫端失敗時可以再 Add 回去）。
+        /// 用途：審查後自動修正成功時，修正前的檔案移進子資料夾，不再列成 chip（見 AgentRuntime.AutoFix）。
+        /// </summary>
+        public IReadOnlyList<AgentWorkspaceItem> RemoveWhere(Func<AgentWorkspaceItem, bool> match)
+        {
+            if (match == null)
+                return Array.Empty<AgentWorkspaceItem>();
+
+            lock (_sync)
+            {
+                var removed = _items.Where(match).ToList();
+                _items.RemoveAll(x => removed.Contains(x));
+                return removed;
+            }
+        }
+
         public string BuildPromptBlock()
         {
             var items = GetAll();

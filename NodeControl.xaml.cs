@@ -995,33 +995,45 @@ namespace Cat5201
                 catch (Exception ex) { AppLog.Warn("Node", $"暫存檔清理失敗（磁碟會殘檔）：{path}", ex); }
             }
 
-            // 程式碼檔放在每次執行自己的子資料夾裡（見 GeneratedFileWriter.WriteCodeFiles）；
-            // 檔案刪光後把空資料夾一起收掉，往上最多收到產出資料夾為止，不會碰到它本身或更上層。
+            // 檔案刪光後把空資料夾一起收掉（程式碼檔在每次執行自己的子資料夾裡，報告在聊天資料夾裡）。
+            // 往上最多收到產出「根目錄」為止，不會碰到它本身或更上層。
+            // 2026-11-04：原本以「目前聊天名稱」的資料夾為界、而且只收程式碼資料夾——聊天在兩輪之間改過名的話，
+            // 舊名稱的資料夾不在界內，刪光後留下空殼（使用者看到好幾個點進去是空的資料夾）。
             string? genRoot = null;
-            try { genRoot = _parent == null ? null : System.IO.Path.GetFullPath(_parent.GetGeneratedFilesDir()); }
+            try { genRoot = _parent == null ? null : System.IO.Path.GetFullPath(_parent.GetGeneratedFilesRootDir()); }
             catch { genRoot = null; }
             if (genRoot != null)
             {
+                var dirs = _pendingFilePaths
+                    .Select(System.IO.Path.GetDirectoryName)
+                    .Where(d => !string.IsNullOrEmpty(d))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                // 程式資料夾裡的「修正前」（審查後自動修正留下的上一版）屬於同一輪產出，跟著清掉；
+                // 它沒有列在輸出 chip 裡，不清的話會讓整個程式資料夾一直刪不掉。
                 foreach (var dir in _pendingFilePaths
-                             .Where(p => OutputFileCategory.Of(p).Label is "程式碼" or "網頁")
+                             .Where(p => OutputFileCategory.Of(p).Label is "程式碼")
                              .Select(System.IO.Path.GetDirectoryName)
                              .Where(d => !string.IsNullOrEmpty(d))
                              .Distinct(StringComparer.OrdinalIgnoreCase))
                 {
                     try
                     {
-                        var current = new System.IO.DirectoryInfo(dir!);
-                        while (current != null &&
-                               current.FullName.StartsWith(genRoot + System.IO.Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-                               current.Exists && !current.EnumerateFileSystemInfos().Any())
+                        if (!System.IO.Directory.Exists(dir)) continue;
+                        foreach (var archive in System.IO.Directory.GetDirectories(dir!, ReviewAutoFix.ArchiveFolderName + "*"))
                         {
-                            var parent = current.Parent;
-                            current.Delete();
-                            current = parent;
+                            string name = System.IO.Path.GetFileName(archive);
+                            if (name == ReviewAutoFix.ArchiveFolderName ||
+                                System.Text.RegularExpressions.Regex.IsMatch(name, "^" + ReviewAutoFix.ArchiveFolderName + @"_\d+$"))
+                                System.IO.Directory.Delete(archive, recursive: true);
                         }
                     }
-                    catch (Exception ex) { AppLog.Warn("Node", $"清理空的程式碼資料夾失敗：{dir}", ex); }
+                    catch (Exception ex) { AppLog.Warn("Node", $"清理修正前的檔案失敗：{dir}", ex); }
                 }
+
+                foreach (var dir in dirs)
+                    GeneratedFileOrganizer.RemoveEmptyDirs(dir, genRoot);
             }
 
             _pendingFilePaths.Clear();
@@ -1704,6 +1716,9 @@ namespace Cat5201
                     ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("主視窗未連接", "Main window not connected"));
                     return;
                 }
+
+                // 記下這次執行屬於哪個存檔：中途切到別的存檔時，產出仍寫回這個存檔的資料夾（見 MainWindow.Sessions.cs）。
+                _parent.EnterRunProject(this);
 
                 if (_parent.NodeService == null)
                 {

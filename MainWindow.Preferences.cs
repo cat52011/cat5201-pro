@@ -59,6 +59,7 @@ namespace Cat5201
             string GeneratedFilesDir = "",                   // 產出檔案存放位置（空＝預設的 _generated）
             bool MobileMirrorReadOnly = true,                // 手機鏡像只能看、不能操作（預設開；舊偏好檔沒有這欄也是唯讀）
             bool IndependentReviewEnabled = true,            // 產出報告後跑獨立審查（預設開）
+            bool AutoFixAfterReviewEnabled = false,          // 審查找到高／中問題時自動修正一輪（預設關，要多花時間與費用）
             string InterfaceLanguage = ""                    // 介面語言 zh-TW / en；空＝還沒選過，啟動時會問一次
         );
 
@@ -102,6 +103,9 @@ namespace Cat5201
         // 正常關閉：刪除 marker（沒刪到＝下次啟動視為崩潰）。
         protected override void OnClosed(EventArgs e)
         {
+            // 背景還在執行的存檔先存一次目前的進度（節點會隨程式結束停止）。
+            try { SaveAllBackgroundSessions(); } catch (Exception ex) { AppLog.Warn("Project", "關閉時儲存背景存檔失敗", ex); }
+
             try { File.Delete(SessionLockPath); } catch { }
             base.OnClosed(e);
         }
@@ -122,6 +126,7 @@ namespace Cat5201
                                  .ToList();
 
             FileList.ItemsSource = items;
+            UpdateRunningFlagsInFileList();   // 重建清單時流光不要閃掉（MainWindow.Sessions.cs）
 
             if (!string.IsNullOrEmpty(_currentFilePath))
                 SelectFileInList(_currentFilePath);
@@ -147,6 +152,7 @@ namespace Cat5201
                     MobileMirrorEnabled: _mobileMirrorEnabled,
                     MobileMirrorReadOnly: _mobileMirrorReadOnly,
                     IndependentReviewEnabled: DeliveryOptions.IndependentReview,
+                    AutoFixAfterReviewEnabled: DeliveryOptions.AutoFixAfterReview,
                     Skills: new List<SkillDefinition>(SkillsRegistry.GetAll()),
                     DailyBudgetTwd: _dailyBudgetTwd,
                     AutoConfirmSeconds: _autoConfirmSeconds,
@@ -233,6 +239,7 @@ namespace Cat5201
                 _mobileMirrorEnabled = prefs.MobileMirrorEnabled;
                 _mobileMirrorReadOnly = prefs.MobileMirrorReadOnly;
                 DeliveryOptions.IndependentReview = prefs.IndependentReviewEnabled;
+                DeliveryOptions.AutoFixAfterReview = prefs.AutoFixAfterReviewEnabled;
                 SkillsRegistry.SetAll(prefs.Skills);   // §19：技能載入執行期單一真相
                 _dailyBudgetTwd = Math.Max(0, prefs.DailyBudgetTwd);
                 // Core 端要在「預留的同一刻」比對上限，所以預算也要同步過去。

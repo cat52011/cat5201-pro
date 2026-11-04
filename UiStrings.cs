@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace Cat5201
 {
@@ -92,6 +92,9 @@ namespace Cat5201
             ["產出書面報告後，由沒有參與撰寫的模型核對數字與文字、找出矛盾，另存一份審查清單；不會修改報告。每份約 NT$1（Claude 審查）到 NT$10（GPT 審查）。"] =
                 "After a written report is produced, a model that didn't write it checks the numbers and text for contradictions and saves a separate review list. The report itself is not changed. About NT$1 (Claude review) to NT$10 (GPT review) per report.",
             ["報告完成後獨立審查"] = "Independent review after reports",
+            ["獨立審查找到「高」或「中」的問題時，把問題清單交回撰寫的模型，修改程式後重跑一次，再審查一次並逐項確認原問題是否修好。修正後的檔案沿用原本的檔名，修正前的檔案移到程式資料夾裡的「修正前」，兩次審查合併在同一份審查清單。目前只支援附資料檔、在沙箱執行的分析報告。每次約多 3～6 分鐘、NT$15～45。需要先開啟獨立審查。"] =
+                "When the independent review finds high- or medium-severity issues, the list goes back to the writing model, which fixes its code and reruns once; the result is reviewed again and each original issue is checked off. The fixed files keep the original names, the pre-fix files move to a \"修正前\" (before fix) folder inside the code folder, and both reviews go into the same review list. Currently only for analysis reports run in the sandbox with attached data files. Adds about 3–6 minutes and NT$15–45 each time. Requires independent review to be on.",
+            ["審查後自動修正一輪"] = "Auto-fix once after review",
             ["存放位置"] = "Save location",
             ["變更…"] = "Change…",
             ["開啟資料夾"] = "Open folder",

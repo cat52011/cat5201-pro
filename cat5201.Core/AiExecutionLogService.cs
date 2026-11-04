@@ -57,5 +57,16 @@ namespace Cat5201
         {
             _logsByNodeId.Clear();
         }
+
+        /// <summary>
+        /// 移除符合條件的節點的紀錄。切換存檔時只清掉目前畫面的節點，背景仍在執行的存檔的紀錄要留著
+        /// （2026-11-04：原本 ClearAll，背景節點跑完寫進來的紀錄不見了）。
+        /// </summary>
+        public void RemoveWhere(Func<string, bool> removeNodeId)
+        {
+            if (removeNodeId == null) return;
+            foreach (var key in _logsByNodeId.Keys.Where(removeNodeId).ToList())
+                _logsByNodeId.Remove(key);
+        }
     }
 }

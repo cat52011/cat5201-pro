@@ -400,6 +400,59 @@ namespace Cat5201.Tests
             }
         }
 
+        [Fact]
+        public async Task AutoFixOn_ReportNotFromSandbox_OnlyListsIssues_AndSaysWhy()
+        {
+            // 審查後自動修正（2026-11-04）目前只支援沙箱分析報告：其他報告照舊只列清單，答案說明原因，
+            // 不重跑、不多出修正版檔案、也不再呼叫第二次審查。
+            var previousKey = ReportReview.HasKey;
+            bool previousReview = DeliveryOptions.IndependentReview;
+            bool previousFix = DeliveryOptions.AutoFixAfterReview;
+            ReportReview.HasKey = _ => true;
+            DeliveryOptions.IndependentReview = true;
+            DeliveryOptions.AutoFixAfterReview = true;
+            try
+            {
+                var prompts = new ConcurrentBag<string>();
+                var runtime = new AgentRuntime(new Host(), new Resolver(),
+                    (node, prompt, decision, onDelta, streaming, ct) =>
+                    {
+                        prompts.Add(prompt);
+                        bool review = prompt.Contains("你是獨立的審查者", StringComparison.Ordinal);
+                        return Task.FromResult(new AiFallbackExecutionResult
+                        {
+                            IsSuccess = true, Text = review ? ReviewerReply : ReportText, ActualModelId = decision.ModelId,
+                        });
+                    },
+                    new Finalizer());
+
+                var workspace = new AgentWorkspace();
+                var result = await runtime.ExecuteAsync(new AgentExecutionRequest
+                {
+                    Node = new Node(),
+                    Agent = AgentRegistry.Get(null),
+                    TopText = "寫一份書面報告比較 BMI 模型",
+                    SkipCapabilities = true,
+                    Workspace = workspace,
+                    CancellationToken = CancellationToken.None,
+                });
+
+                var files = workspace.GetByType("generated_file").Select(x => x.Payload)
+                    .OfType<GeneratedFilePayload>().Where(f => f.Success).ToList();
+                Assert.Single(files, f => f.FileName.Contains("審查清單"));
+                Assert.DoesNotContain(files, f => f.FilePath.Contains(ReviewAutoFix.ArchiveFolderName));
+                Assert.Single(prompts, p => p.Contains("你是獨立的審查者"));
+                Assert.Contains("獨立審查", result.FinalText);
+                Assert.Contains(ReviewAutoFix.NotSupportedLine, result.FinalText);
+            }
+            finally
+            {
+                ReportReview.HasKey = previousKey;
+                DeliveryOptions.IndependentReview = previousReview;
+                DeliveryOptions.AutoFixAfterReview = previousFix;
+            }
+        }
+
         private sealed class Host : IAgentHost
         {
             public string Dir { get; } = Path.Combine(Path.GetTempPath(), "cat5201-tests", Guid.NewGuid().ToString("N"));

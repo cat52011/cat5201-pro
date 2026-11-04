@@ -260,46 +260,10 @@ namespace Cat5201
             // 3) 收檔：報告、表格照一般產出寫檔；程式放進程式碼資料夾（分類成「程式碼」、可預覽）。
             // title、genDir 在建提示之前就定好了（見上面），這裡照用，交付檔名才會和沙箱裡寫的一樣。
             string sourceSummary = $"{orchestrationPlan.PipelineId} / 沙箱執行 {model}";
-            var produced = new List<string>();
-            bool reportDone = false, tableDone = false, resultTableDone = false;
-            var codeFiles = new List<GeneratedFilePayload>();
-
-            void Emit(GeneratedFilePayload payload, string agentId)
-            {
-                if (payload == null || !payload.Success) return;
-                workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(workspace, node, agentId, "generated_file", payload, modelId: model));
-                produced.Add(payload.FileName);
-            }
-
-            foreach (var f in result.Files)
-            {
-                switch (f.Extension.ToLowerInvariant())
-                {
-                    case ".docx" when job.WantsReport && !reportDone:
-                        var docx = GeneratedFileWriter.WriteDocx(genDir, title, f.Bytes, sourceSummary);
-                        Emit(docx, "report-agent");
-                        reportDone = docx.Success;
-                        break;
-                    case ".xlsx" when !tableDone && !resultTableDone:
-                        // 沒被要求表格時也收：報告常引用「完整結果見 xxx.xlsx」，丟掉會讓報告指向不存在的檔案。
-                        var xlsx = GeneratedFileWriter.WriteXlsx(genDir, tableTitle, f.Bytes, sourceSummary);
-                        Emit(xlsx, "table-agent");
-                        if (job.WantsTable) tableDone = xlsx.Success;
-                        else resultTableDone = xlsx.Success;
-                        break;
-                    case ".py" when codeFiles.Count == 0:
-                        string code = System.Text.Encoding.UTF8.GetString(f.Bytes).TrimStart('﻿');
-                        var written = GeneratedFileWriter.WriteCodeFiles(genDir, title,
-                            new[] { new CodeFileExtractor.CodeFile(System.IO.Path.GetFileName(f.FileName), "python", code) },
-                            sourceSummary);
-                        foreach (var w in written.Where(w => w.Success))
-                        {
-                            Emit(w, "code-agent");
-                            codeFiles.Add(w);
-                        }
-                        break;
-                }
-            }
+            var collected = CollectSandboxFiles(node, workspace, result, job, genDir, title, tableTitle, sourceSummary, model);
+            var produced = collected.Produced;
+            var codeFiles = collected.CodeFiles;
+            bool reportDone = collected.Report != null, tableDone = collected.TableDone;
 
             if (!reportDone && !tableDone)
             {
@@ -309,6 +273,15 @@ namespace Cat5201
 
             if (reportDone || tableDone)
                 orchestration.MarkSuccess("generate_file", "沙箱執行 / " + string.Join(" / ", produced));
+
+            // 審查後自動修正（個人化）要重跑同一個沙箱任務：把模型、已上傳的檔案、任務與程式路徑記在 workspace。
+            // 不給使用者看；修正那一步（AgentRuntime.AutoFix）才會讀。
+            if (reportDone)
+                workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(
+                    workspace, node, "data-analysis", ReviewAutoFix.ContextItemType,
+                    new ReviewAutoFix.SandboxContext(model, uploads, job, title,
+                        codeFiles.FirstOrDefault()?.FilePath ?? "", sourceSummary),
+                    isUserVisibleOverride: false, modelId: model));
 
             string summary = string.IsNullOrWhiteSpace(result.Summary)
                 ? $"已在沙箱實際執行分析，產出：{string.Join("、", produced)}。"
@@ -326,6 +299,69 @@ namespace Cat5201
                     Attempts = new List<AiFallbackAttempt> { new() { AttemptIndex = 1, ModelId = model, Success = true } },
                 },
                 reportDone, tableDone, codeFiles);
+        }
+
+        private sealed record CollectedSandboxFiles(
+            List<string> Produced, GeneratedFilePayload? Report, bool TableDone, List<GeneratedFilePayload> Tables,
+            List<GeneratedFilePayload> CodeFiles);
+
+        /// <summary>
+        /// 把沙箱交回的檔案寫進產出資料夾並放進 workspace：報告、表格照一般產出寫檔，程式放進程式碼資料夾。
+        /// 第一趟分析和審查後的自動修正都用這裡，兩邊的檔名規則才會一樣。
+        /// codeTargetPath：自動修正時，程式寫回原本的路徑（原本那一份已移進「修正前」），不另開新的程式資料夾。
+        /// </summary>
+        private static CollectedSandboxFiles CollectSandboxFiles(
+            INodeContext node, AgentWorkspace workspace, ClaudeDocumentSkillsService.Result result,
+            DataAnalysisJob.Request job, string genDir, string title, string tableTitle, string sourceSummary, string model,
+            string? codeTargetPath = null)
+        {
+            var produced = new List<string>();
+            GeneratedFilePayload? report = null;
+            bool tableDone = false, resultTableDone = false;
+            var tables = new List<GeneratedFilePayload>();
+            var codeFiles = new List<GeneratedFilePayload>();
+
+            void Emit(GeneratedFilePayload payload, string agentId)
+            {
+                if (payload == null || !payload.Success) return;
+                workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(workspace, node, agentId, "generated_file", payload, modelId: model));
+                produced.Add(payload.FileName);
+            }
+
+            foreach (var f in result.Files)
+            {
+                switch (f.Extension.ToLowerInvariant())
+                {
+                    case ".docx" when job.WantsReport && report == null:
+                        var docx = GeneratedFileWriter.WriteDocx(genDir, title, f.Bytes, sourceSummary);
+                        Emit(docx, "report-agent");
+                        if (docx.Success) report = docx;
+                        break;
+                    case ".xlsx" when !tableDone && !resultTableDone:
+                        // 沒被要求表格時也收：報告常引用「完整結果見 xxx.xlsx」，丟掉會讓報告指向不存在的檔案。
+                        var xlsx = GeneratedFileWriter.WriteXlsx(genDir, tableTitle, f.Bytes, sourceSummary);
+                        Emit(xlsx, "table-agent");
+                        if (xlsx.Success) tables.Add(xlsx);
+                        if (job.WantsTable) tableDone = xlsx.Success;
+                        else resultTableDone = xlsx.Success;
+                        break;
+                    case ".py" when codeFiles.Count == 0:
+                        string code = System.Text.Encoding.UTF8.GetString(f.Bytes).TrimStart('﻿');
+                        var written = !string.IsNullOrWhiteSpace(codeTargetPath)
+                            ? new[] { GeneratedFileWriter.WriteCodeFileAt(codeTargetPath!, code, title, sourceSummary) }
+                            : GeneratedFileWriter.WriteCodeFiles(genDir, title,
+                                new[] { new CodeFileExtractor.CodeFile(System.IO.Path.GetFileName(f.FileName), "python", code) },
+                                sourceSummary);
+                        foreach (var w in written.Where(w => w.Success))
+                        {
+                            Emit(w, "code-agent");
+                            codeFiles.Add(w);
+                        }
+                        break;
+                }
+            }
+
+            return new CollectedSandboxFiles(produced, report, tableDone, tables, codeFiles);
         }
     }
 }

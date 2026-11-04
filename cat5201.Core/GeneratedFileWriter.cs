@@ -459,6 +459,36 @@ namespace Cat5201
         }
 
         /// <summary>
+        /// 把程式寫到指定的完整路徑（覆寫）。審查後自動修正用：修正後的程式放回原本的程式資料夾、用原本的檔名，
+        /// 使用者照原本的方式執行就好（原本那一份已先移進「修正前」）。不含 BOM，理由同 WriteCodeFiles。
+        /// </summary>
+        public static GeneratedFilePayload WriteCodeFileAt(string fullPath, string content, string title, string sourceSummary)
+        {
+            try
+            {
+                var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+                Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+                File.WriteAllText(fullPath, content ?? "", utf8);
+                NotifyWritten(fullPath);
+                return new GeneratedFilePayload
+                {
+                    Format = "code",
+                    FileName = Path.GetFileName(fullPath),
+                    FilePath = fullPath,
+                    Title = title ?? "",
+                    CharacterCount = (content ?? "").Length,
+                    ByteCount = utf8.GetByteCount(content ?? ""),
+                    Success = true,
+                    SourceSummary = sourceSummary ?? "",
+                };
+            }
+            catch (Exception ex)
+            {
+                return Failed(ex.Message, title);
+            }
+        }
+
+        /// <summary>
         /// §18：檔案成功落地後的通知鉤子（由 MainWindow 設定；目前用於 Drive 自動上傳）。
         /// 鉤子失敗絕不影響產檔主流程。
         /// </summary>

@@ -33,6 +33,7 @@ namespace Cat5201.Tests
             Assert.False(prefs.MobileMirrorEnabled);
             Assert.True(prefs.MobileMirrorReadOnly);   // 舊偏好檔沒有這欄：手機鏡像預設只能看（2026-11-03）
             Assert.True(prefs.IndependentReviewEnabled);   // 獨立審查預設開（2026-11-04）
+            Assert.False(prefs.AutoFixAfterReviewEnabled); // 審查後自動修正預設關：要多花時間與費用（2026-11-04）
             Assert.False(prefs.ReadUpstreamAttachments);
             // MVP 安全預設（釘住，防止回歸）：新使用者預設每日 NT$100 上限、產檔硬批准（不倒數自動同意）。
             Assert.Equal(100, prefs.DailyBudgetTwd);

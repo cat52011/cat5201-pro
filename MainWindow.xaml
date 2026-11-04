@@ -386,8 +386,10 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Grid>
-                                    <TextBlock x:Name="NameText"
+                                    <!-- 存檔裡有節點在執行（目前畫面或背景）時名稱流光，直到全部跑完（ShimmerTextBlock） -->
+                                    <local:ShimmerTextBlock x:Name="NameText"
                                                Text="{Binding DisplayName}"
+                                               IsShimmering="{Binding IsRunning}"
                                                TextTrimming="CharacterEllipsis"
                                                VerticalAlignment="Center"/>
                                     <!-- ChatGPT 風格：無邊框，只比背景深一點的半透明圓角底 -->
@@ -1847,6 +1849,22 @@ Margin="0,20,20,0"
                                       VerticalAlignment="Center"
                                       Checked="IndependentReviewSwitch_Changed"
                                       Unchecked="IndependentReviewSwitch_Changed"/>
+                        </Grid>
+                        <!-- 審查後自動修正一輪（2026-11-04）：要多跑一趟沙箱與一次審查，預設關；獨立審查關掉時這裡跟著停用 -->
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '獨立審查找到「高」或「中」的問題時，把問題清單交回撰寫的模型，修改程式後重跑一次，再審查一次並逐項確認原問題是否修好。修正後的檔案沿用原本的檔名，修正前的檔案移到程式資料夾裡的「修正前」，兩次審查合併在同一份審查清單。目前只支援附資料檔、在沙箱執行的分析報告。每次約多 3～6 分鐘、NT$15～45。需要先開啟獨立審查。'}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{local:Tr '審查後自動修正一輪'}"
+                                       FontSize="12.5" Foreground="#333"
+                                       TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                            <CheckBox x:Name="AutoFixAfterReviewSwitch"
+                                      Grid.Column="1"
+                                      Style="{StaticResource AppleSwitchStyle}"
+                                      VerticalAlignment="Center"
+                                      Checked="AutoFixAfterReviewSwitch_Changed"
+                                      Unchecked="AutoFixAfterReviewSwitch_Changed"/>
                         </Grid>
 
                         <!-- 存放位置：產出的檔案本來就不隨聊天刪除消失（它們在所有存檔共用的資料夾），

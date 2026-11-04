@@ -21,6 +21,12 @@
         public static bool IndependentReview { get; set; } = true;
 
         /// <summary>
+        /// 獨立審查找到「高」「中」的問題時，自動修正一輪（見 ReviewAutoFix）。預設關。
+        /// 2026-11-04：要多花一趟沙箱與一次審查的時間和費用，所以讓使用者自己決定；也要獨立審查開著才會跑。
+        /// </summary>
+        public static bool AutoFixAfterReview { get; set; } = false;
+
+        /// <summary>
         /// 配圖（簡報、報告、影片首幀）的生成品質。
         ///
         /// 1024×1536 一張：high US$0.165、medium US$0.041、low US$0.005。
@@ -34,6 +40,8 @@
         public static void ResetForTests()
         {
             CompanionPdf = true;
+            // AutoFixAfterReview、IndependentReview 不在這裡重設：別的測試類別平行呼叫這裡時，
+            // 會把審查測試途中設好的開關關掉。用到的測試自己設定、自己還原（見 ReportReviewTests）。
             IllustrationQuality = ImageQuality.Medium;
         }
     }

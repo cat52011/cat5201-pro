@@ -72,6 +72,15 @@ namespace Cat5201.Tests
         }
 
         [Fact]
+        public void SystemPrompt_SaysNotToCopyTemplateInstructions()
+        {
+            // 2026-11-04 HW1：標題照抄了範本給學生的提示「1. 資料清理與視覺化圖表 (參考程式碼Part 1)」
+            Assert.Contains("寫給學生的說明、提示與示範文字不要照抄進報告", DataAnalysisJob.SystemPrompt);
+            Assert.Contains("(參考程式碼Part 1)", DataAnalysisJob.SystemPrompt);
+            Assert.Contains("標題只保留章節名稱", DataAnalysisJob.SystemPrompt);
+        }
+
+        [Fact]
         public void SystemPrompt_KeepsTheSandboxRunShort()
         {
             // 2026-11-03 第二次實測：沙箱跑滿 14 分鐘沒做完。一支程式跑一次、不調參。

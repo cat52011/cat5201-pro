@@ -414,9 +414,23 @@ namespace Cat5201
         /// 儲存格照顯示格式讀，跟使用者在 Excel 看到的一樣。
         /// </summary>
         public static List<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)> ExtractXlsxSheets(
-            string path, int maxSheets = 12, int maxRowsPerSheet = 200)
+            string path, int maxSheets = 30, int maxRowsPerSheet = 200)
+            => ExtractXlsxSheetsWithCounts(path, maxSheets, maxRowsPerSheet).Sheets;
+
+        /// <summary>讀出的工作表、每張表實際的列數（含標題列），以及超過張數上限沒有讀的工作表名稱。</summary>
+        public sealed record XlsxSheets(
+            List<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)> Sheets,
+            Dictionary<string, int> TotalRows,
+            List<string> SkippedSheets);
+
+        /// <summary>
+        /// 同 ExtractXlsxSheets，另外回報每張表實際有幾列、哪些工作表因為張數上限沒有讀。
+        /// 2026-11-04：只讀前 200 列，審查卻被告知「這張表共 199 列」（實際 581 列），兩輪都回報了不存在的問題；
+        /// 張數上限也會讓後面的工作表悄悄漏掉。呼叫端要用這裡的實際數字告訴審查者、寫進「檢查範圍」。
+        /// </summary>
+        public static XlsxSheets ExtractXlsxSheetsWithCounts(string path, int maxSheets = 30, int maxRowsPerSheet = 200)
         {
-            var result = new List<(string, IReadOnlyList<IReadOnlyList<string>>)>();
+            var result = new XlsxSheets(new(), new(StringComparer.Ordinal), new());
 
             using var docFile = ReadOnlyOfficeFile.Xlsx(path);
             var wbPart = docFile.Document.WorkbookPart;
@@ -425,19 +439,29 @@ namespace Cat5201
 
             var sst = wbPart.SharedStringTablePart?.SharedStringTable;
             var styles = wbPart.WorkbookStylesPart?.Stylesheet;
-            foreach (var sheet in wbPart.Workbook.Sheets.Elements<S.Sheet>().Take(maxSheets))
+            int index = 0;
+            foreach (var sheet in wbPart.Workbook.Sheets.Elements<S.Sheet>())
             {
+                index++;
+                string name = sheet.Name?.Value ?? $"工作表{index}";
+                if (result.Sheets.Count >= maxSheets)
+                {
+                    result.SkippedSheets.Add(name);
+                    continue;
+                }
                 if (sheet.Id?.Value == null || wbPart.GetPartById(sheet.Id.Value) is not WorksheetPart wsPart)
                     continue;
                 var sheetData = wsPart.Worksheet?.Elements<S.SheetData>().FirstOrDefault();
                 if (sheetData == null)
                     continue;
 
-                var rows = sheetData.Elements<S.Row>()
+                var allRows = sheetData.Elements<S.Row>();
+                var rows = allRows
                     .Take(maxRowsPerSheet)
                     .Select(r => (IReadOnlyList<string>)r.Elements<S.Cell>().Select(c => ReadCell(c, sst, styles).Text).ToList())
                     .ToList();
-                result.Add((sheet.Name?.Value ?? $"工作表{result.Count + 1}", rows));
+                result.Sheets.Add((name, rows));
+                result.TotalRows[name] = allRows.Count();
             }
 
             return result;

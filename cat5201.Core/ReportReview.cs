@@ -21,19 +21,82 @@ namespace Cat5201
     {
         public sealed record Issue(string Severity, string Where, string Problem, string Evidence, string Suggestion);
 
+        /// <summary>
+        /// 審查模型這一次有沒有真的完成。只有 Completed 才能說「沒有找到問題」。
+        /// 2026-11-04（GPT 審查本專案）：空白回覆、非 JSON、{} 都被當成零問題，摘要寫「沒有找到」——
+        /// 使用者會以為報告已通過核對，自動修正後的再審查也一樣。
+        /// </summary>
+        public enum ReviewStatus
+        {
+            /// <summary>審查模型回了可解析、含 issues 陣列的 JSON。</summary>
+            Completed,
+            /// <summary>沒有呼叫審查模型（沒有可用模型、超過預算），只做程式檢查。</summary>
+            NotRun,
+            /// <summary>呼叫了但沒有回應（逾時、錯誤）。</summary>
+            Failed,
+            /// <summary>有回覆，但不是含 issues 陣列的 JSON。</summary>
+            Unparseable,
+        }
+
+        /// <summary>上一輪的問題在這一輪的處理狀態（自動修正後的再審查用）：已修正、仍存在、無法確認。</summary>
+        public sealed record PreviousStatus(int N, string Problem, string Status, string Evidence);
+
         public sealed record Result(
             IReadOnlyList<Issue> ModelIssues,
             IReadOnlyList<Issue> ProgramIssues,
             string ReviewerModel,
             string ReviewerNote,
             string Checked,
-            string RawReply);
+            string RawReply,
+            ReviewStatus Status = ReviewStatus.Completed,
+            IReadOnlyList<string>? Coverage = null,
+            IReadOnlyList<PreviousStatus>? Previous = null,
+            IReadOnlyList<string>? Origins = null)
+        {
+            /// <summary>
+            /// 再審查時每個新問題的來源（和 ModelIssues 一一對應）：修正前就存在、修正後才出現、無法判斷。
+            /// 由程式比對原文判斷（見 ReviewAutoFix.ClassifyOrigins），不是審查模型說的。沒有對應時為 null。
+            /// </summary>
+            public IReadOnlyList<string>? IssueOrigins =>
+                Origins != null && Origins.Count == ModelIssues.Count ? Origins : null;
+
+            /// <summary>
+            /// 實際狀態。標成 Completed 但沒有審查者，當成沒有執行；有回覆卻解析不了，當成無法解析——
+            /// 不管呼叫端有沒有帶狀態，都不能把這兩種情況說成零問題。
+            /// </summary>
+            public ReviewStatus EffectiveStatus =>
+                Status != ReviewStatus.Completed ? Status
+                : string.IsNullOrEmpty(ReviewerModel) ? ReviewStatus.NotRun
+                : !string.IsNullOrWhiteSpace(RawReply) && ParseReply(RawReply) == null ? ReviewStatus.Unparseable
+                : ReviewStatus.Completed;
+
+            public IReadOnlyList<string> CoverageNotes => Coverage ?? Array.Empty<string>();
+        }
+
+        public const string StatusFixed = "已修正";
+        public const string StatusRemains = "仍存在";
+        public const string StatusUnknown = "無法確認";
+
+        /// <summary>再審查新發現問題的來源（程式比對原文判斷）。</summary>
+        public const string OriginBefore = "修正前就存在（上一輪漏看）";
+        public const string OriginAfter = "修正後才出現";
+        public const string OriginUnknown = "無法判斷";
 
         /// <summary>送給審查模型的報告全文上限（字）。一般報告一萬多字，留餘裕。</summary>
         internal const int MaxReportChars = 30000;
 
-        /// <summary>送給審查模型的結果檔上限（字）。報告裡多半已有同樣的表，結果檔只是對照用。</summary>
-        internal const int MaxTableChars = 10000;
+        /// <summary>
+        /// 送給審查模型的結果檔上限（字，所有工作表合計）。報告裡多半已有同樣的表，結果檔只是對照用。
+        /// 2026-11-04：原本 1 萬字，HW1 的結果表只送了 27%——被一張 580 列的逐筆預測表佔掉。
+        /// 現在逐筆資料表先只取前 MaxRowsPerSheet 列（見 TrimSheet），摘要型的工作表就放得下，上限也放寬到 2 萬字。
+        /// </summary>
+        internal const int MaxTableChars = 20000;
+
+        /// <summary>
+        /// 一張工作表最多送幾列（不含標題列）。超過的多半是逐筆資料（每筆測試案件的預測、誤差），
+        /// 報告只會引用其中幾筆或統計值，送前幾十列抽查就夠；被截的列數寫進「檢查範圍」。
+        /// </summary>
+        internal const int MaxRowsPerSheet = 30;
 
         /// <summary>
         /// 送審的程式檔（核對做法描述用）。不限 Python：R、Jupyter、MATLAB、SQL、Java、C++ 寫的作業也要看得到程式。
@@ -93,8 +156,13 @@ namespace Cat5201
         /// 送給審查模型的程式碼上限（字，所有程式檔合計）。只用來核對「報告說的做法」和「程式做的」是否一致。
         /// 2026-11-04：HW1 的審查看不到程式，漏了「報告說懲罰對各特徵公平，但 0/1 欄沒標準化」
         /// 和「用測試集 RMSE 選最佳模型」。
+        /// 同日再放寬：原本 1.5 萬字，HW1 的程式約 3.5 萬字，只送了前 42%——產生報告的後半段
+        /// （報告怎麼描述做法、表格怎麼排序）審查都看不到。4 萬字約 1.5 萬 token，一般作業的程式放得下。
         /// </summary>
-        internal const int MaxCodeChars = 15000;
+        internal const int MaxCodeChars = 60000;
+
+        /// <summary>再審查時附上的撰寫者說明最多幾字（逐項處理結果，通常幾行）。</summary>
+        internal const int MaxWriterNoteChars = 2000;
 
         internal const int MaxProgramIssues = 30;
 
@@ -221,38 +289,64 @@ namespace Cat5201
             "{\"issues\":[{\"severity\":\"高|中|低\",\"where\":\"位置（章節、表格或程式）\",\"problem\":\"問題\"," +
             "\"evidence\":\"引用的原文\",\"suggestion\":\"建議修改\"}],\"checked\":\"一句話說明你核對了哪些內容\"}";
 
-        /// <summary>
-        /// 審查模型收到的全文。codeFiles 是同一趟產出的程式碼（檔名、內容），只用來核對做法描述；
-        /// 合計超過 MaxCodeChars 就截斷。
-        /// </summary>
-        public static string BuildPrompt(
-            string reportName,
+        /// <summary>送審內容的三個部分各自實際送出的文字（超過上限已截斷）與被截掉的字數。BuildPrompt 與 Coverage 共用，兩邊才會一致。</summary>
+        private sealed record PromptParts(
+            string Report, int ReportCut, string Tables, int TablesCut, string Code, int CodeCut,
+            IReadOnlyList<(string Sheet, int Rows, int Sent)> TrimmedSheets);
+
+        private static PromptParts Parts(
             string reportMarkdown,
             IReadOnlyList<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)>? tables,
-            IReadOnlyList<Issue>? programIssues,
-            IReadOnlyList<(string Name, string Code)>? codeFiles = null)
+            IReadOnlyList<(string Name, string Code)>? codeFiles,
+            IReadOnlyDictionary<string, int>? totalRows = null)
         {
-            var sb = new StringBuilder();
-            sb.AppendLine(Instructions).AppendLine();
-
             string report = WithoutImages(reportMarkdown ?? "");
-            if (report.Length > MaxReportChars)
-                report = report[..MaxReportChars] + "\n…（報告後段省略）";
-            sb.AppendLine($"=== 報告：{reportName} ===").AppendLine(report).AppendLine();
+            int reportCut = Math.Max(0, report.Length - MaxReportChars);
+            if (reportCut > 0) report = report[..MaxReportChars] + "\n…（報告後段省略）";
 
+            // 結果表：放得下就整份送；放不下時，從列數最多的表開始截成標題列＋MaxRowsPerSheet 列，直到放得下。
+            // 2026-11-04 第 4 次實測：一律截到 30 列，連 51 列的係數表也被截掉，其實整份都放得下。
+            // 「共幾列」用 totalRows 的實際數字（讀檔只讀前 200 列；當時把讀到的 199 列說成「共 199 列」，實際 581 列）。
+            var sheetList = (tables ?? Array.Empty<(string, IReadOnlyList<IReadOnlyList<string>>)>()).ToList();
+            int TotalData(int i) => Math.Max(0,
+                (totalRows != null && totalRows.TryGetValue(sheetList[i].Name, out int n) ? Math.Max(n, sheetList[i].Rows.Count) : sheetList[i].Rows.Count) - 1);
+            var keep = sheetList.Select(s => s.Rows.Count).ToArray();
+
+            string Render(int i)
+            {
+                var (name, rows) = sheetList[i];
+                var sb = new StringBuilder();
+                sb.AppendLine($"--- 結果檔：{name} ---");
+                for (int r = 0; r < keep[i]; r++)
+                    sb.AppendLine(string.Join(" | ", rows[r]));
+                int sent = Math.Max(0, keep[i] - 1), total = TotalData(i);
+                if (sent < total)
+                    sb.AppendLine($"…（這張表共 {total:N0} 列，只送前 {sent:N0} 列）");
+                return sb.ToString();
+            }
+
+            int Length() => Enumerable.Range(0, sheetList.Count).Sum(i => Render(i).Length);
+            if (Length() > MaxTableChars)
+            {
+                foreach (int i in Enumerable.Range(0, sheetList.Count).OrderByDescending(i => sheetList[i].Rows.Count))
+                {
+                    if (keep[i] <= MaxRowsPerSheet + 1) continue;
+                    keep[i] = MaxRowsPerSheet + 1;
+                    if (Length() <= MaxTableChars) break;
+                }
+            }
+
+            var trimmed = new List<(string Sheet, int Rows, int Sent)>();
             var tableText = new StringBuilder();
-            foreach (var (name, rows) in tables ?? Array.Empty<(string, IReadOnlyList<IReadOnlyList<string>>)>())
+            for (int i = 0; i < sheetList.Count; i++)
             {
-                tableText.AppendLine($"--- 結果檔：{name} ---");
-                foreach (var r in rows)
-                    tableText.AppendLine(string.Join(" | ", r));
+                tableText.Append(Render(i));
+                int sent = Math.Max(0, keep[i] - 1), total = TotalData(i);
+                if (sent < total) trimmed.Add((sheetList[i].Name, total, sent));
             }
-            if (tableText.Length > 0)
-            {
-                string t = tableText.ToString();
-                if (t.Length > MaxTableChars) t = t[..MaxTableChars] + "\n…（以下省略）";
-                sb.AppendLine("=== 程式輸出的結果檔（核對報告數字用） ===").AppendLine(t).AppendLine();
-            }
+            string t = tableText.ToString();
+            int tablesCut = Math.Max(0, t.Length - MaxTableChars);
+            if (tablesCut > 0) t = t[..MaxTableChars] + "\n…（以下省略）";
 
             var codeText = new StringBuilder();
             foreach (var (name, code) in codeFiles ?? Array.Empty<(string, string)>())
@@ -260,24 +354,118 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(code)) continue;
                 codeText.AppendLine($"--- 程式：{name} ---").AppendLine(code.Replace("\r\n", "\n").TrimEnd());
             }
-            if (codeText.Length > 0)
-            {
-                string c = codeText.ToString();
-                if (c.Length > MaxCodeChars) c = c[..MaxCodeChars] + "\n…（程式後段省略）";
-                sb.AppendLine("=== 程式碼（核對做法描述用） ===").AppendLine(c).AppendLine();
-            }
+            string c = codeText.ToString();
+            int codeCut = Math.Max(0, c.Length - MaxCodeChars);
+            if (codeCut > 0) c = c[..MaxCodeChars] + "\n…（程式後段省略）";
+
+            return new PromptParts(report, reportCut, t, tablesCut, c, codeCut, trimmed);
+        }
+
+        /// <summary>
+        /// 檢查範圍：哪些內容因為超過上限沒有送審、哪些交付檔沒有送審。空清單＝全部送審。
+        /// 2026-11-04（GPT 審查本專案）：截斷只寫在送給模型的提示裡，使用者看不到，會以為整批交付都檢查過。
+        /// </summary>
+        public static IReadOnlyList<string> Coverage(
+            string reportMarkdown,
+            IReadOnlyList<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)>? tables,
+            IReadOnlyList<(string Name, string Code)>? codeFiles,
+            IReadOnlyList<string>? unreviewedFiles = null,
+            IReadOnlyDictionary<string, int>? totalRows = null,
+            IReadOnlyList<string>? skippedSheets = null)
+        {
+            var p = Parts(reportMarkdown, tables, codeFiles, totalRows);
+            var notes = new List<string>();
+            if (p.ReportCut > 0)
+                notes.Add($"報告超過 {MaxReportChars:N0} 字，最後約 {p.ReportCut:N0} 字沒有送審。");
+            foreach (var (sheet, rows, sent) in p.TrimmedSheets)
+                notes.Add($"結果表「{sheet}」共 {rows:N0} 列，只送了前 {sent:N0} 列（放不下時，列數多的表只抽查前段）。");
+            foreach (var s in skippedSheets ?? Array.Empty<string>())
+                if (!string.IsNullOrWhiteSpace(s))
+                    notes.Add($"結果表的工作表「{s}」沒有送審（工作表張數超過讀取上限）。");
+            if (p.TablesCut > 0)
+                notes.Add($"結果表合計超過 {MaxTableChars:N0} 字，後面約 {p.TablesCut:N0} 字（排在後面的工作表）沒有送審。");
+            if (p.CodeCut > 0)
+                notes.Add($"程式碼合計超過 {MaxCodeChars:N0} 字，後面約 {p.CodeCut:N0} 字沒有送審，報告描述的做法只核對了前段。");
+            foreach (var f in unreviewedFiles ?? Array.Empty<string>())
+                if (!string.IsNullOrWhiteSpace(f))
+                    notes.Add($"「{f}」沒有送審（這一趟只審一份報告或簡報）。");
+            return notes;
+        }
+
+        /// <summary>
+        /// 審查模型收到的全文。codeFiles 是同一趟產出的程式碼（檔名、內容），只用來核對做法描述；
+        /// 合計超過 MaxCodeChars 就截斷。
+        /// previousIssues：自動修正後的再審查用，上一輪的問題沿用同樣的編號，要求逐項回報處理狀態。
+        /// </summary>
+        public static string BuildPrompt(
+            string reportName,
+            string reportMarkdown,
+            IReadOnlyList<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)>? tables,
+            IReadOnlyList<Issue>? programIssues,
+            IReadOnlyList<(string Name, string Code)>? codeFiles = null,
+            IReadOnlyList<Issue>? previousIssues = null,
+            string? writerNote = null,
+            IReadOnlyDictionary<string, int>? totalRows = null)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine(Instructions).AppendLine();
+
+            var p = Parts(reportMarkdown, tables, codeFiles, totalRows);
+            sb.AppendLine($"=== 報告：{reportName} ===").AppendLine(p.Report).AppendLine();
+
+            if (p.Tables.Length > 0)
+                sb.AppendLine("=== 程式輸出的結果檔（核對報告數字用） ===").AppendLine(p.Tables).AppendLine();
+
+            if (p.Code.Length > 0)
+                sb.AppendLine("=== 程式碼（核對做法描述用） ===").AppendLine(p.Code).AppendLine();
 
             if (programIssues is { Count: > 0 })
             {
                 sb.AppendLine("=== 程式已找到的問題（不要重複回報） ===");
                 foreach (var i in programIssues)
                     sb.AppendLine($"- {i.Where}：{i.Problem}");
+                sb.AppendLine();
+            }
+
+            if (previousIssues is { Count: > 0 })
+            {
+                sb.AppendLine("=== 上一輪審查的問題（這份報告是針對它們修正後的版本，請逐項確認） ===");
+                int n = 0;
+                foreach (var i in previousIssues)
+                {
+                    n++;
+                    sb.AppendLine($"{n}. ［{i.Severity}］{i.Where}：{i.Problem}");
+                    if (!string.IsNullOrWhiteSpace(i.Evidence)) sb.AppendLine($"   當時的依據：{i.Evidence}");
+                }
+                sb.AppendLine();
+
+                // 撰寫者可能查證後認為某一項不存在而沒改（2026-11-04 第 4 次實測：審查被錯的列數誤導，
+                // 撰寫者查證後拒絕修改，再審查卻看不到這段理由，又判「仍存在」）。附上說明，讓再審查自己判斷誰對。
+                string note = (writerNote ?? "").Trim();
+                if (note.Length > 0)
+                {
+                    if (note.Length > MaxWriterNoteChars) note = note[..MaxWriterNoteChars] + "…";
+                    sb.AppendLine("=== 撰寫者對各項的處理說明（僅供參考，不一定正確；請用目前的檔案自己查證） ===");
+                    sb.AppendLine(note).AppendLine();
+                    sb.AppendLine("撰寫者說某一項「問題不存在」時，請核對它的理由：理由成立就標「" + StatusFixed +
+                                  "」並在 evidence 說明原本的問題不成立；理由不成立就標「" + StatusRemains + "」並引用反證。");
+                }
+
+                sb.AppendLine("對上面每一項，用目前的報告、結果檔與程式判斷：「" + StatusFixed + "」「" + StatusRemains + "」或「" + StatusUnknown +
+                              "」（附上的內容不足以判斷時）。每一項都要回覆，evidence 引用目前的原文。");
+                sb.AppendLine("回覆的 JSON 另外加上 \"previous\":[{\"n\":編號,\"status\":\"" + StatusFixed + "|" + StatusRemains + "|" + StatusUnknown +
+                              "\",\"evidence\":\"依據的原文\"}]。");
+                sb.AppendLine("仍存在的問題只在 previous 標「" + StatusRemains + "」，不要在 issues 重複列；issues 只列這次新發現的問題。");
             }
 
             return sb.ToString();
         }
 
-        /// <summary>解析審查模型的 JSON。解析不了回 null（呼叫端照實寫「審查回覆無法解析」，並附上原文）。</summary>
+        /// <summary>
+        /// 解析審查模型的 JSON。必須有 issues 陣列才算解析成功（空陣列＝確實沒有問題）；
+        /// 解析不了回 null（呼叫端標成 Unparseable，照實寫「審查回覆無法解析」並附上原文）。
+        /// 2026-11-04：原本 {} 也被接受，摘要變成「沒有找到問題」。
+        /// </summary>
         public static (IReadOnlyList<Issue> Issues, string Checked)? ParseReply(string? reply)
         {
             string text = reply ?? "";
@@ -290,19 +478,21 @@ namespace Cat5201
             {
                 using var doc = JsonDocument.Parse(text[start..(end + 1)]);
                 var root = doc.RootElement;
-                var issues = new List<Issue>();
-                if (root.TryGetProperty("issues", out var arr) && arr.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var e in arr.EnumerateArray())
-                    {
-                        string Get(string key) =>
-                            e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
+                if (root.ValueKind != JsonValueKind.Object ||
+                    !root.TryGetProperty("issues", out var arr) || arr.ValueKind != JsonValueKind.Array)
+                    return null;
 
-                        string problem = Get("problem");
-                        if (problem.Length == 0) continue;
-                        string severity = Get("severity") is "高" or "中" or "低" ? Get("severity") : "中";
-                        issues.Add(new Issue(severity, Get("where"), problem, Get("evidence"), Get("suggestion")));
-                    }
+                var issues = new List<Issue>();
+                foreach (var e in arr.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    string Get(string key) =>
+                        e.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()!.Trim() : "";
+
+                    string problem = Get("problem");
+                    if (problem.Length == 0) continue;
+                    string severity = Get("severity") is "高" or "中" or "低" ? Get("severity") : "中";
+                    issues.Add(new Issue(severity, Get("where"), problem, Get("evidence"), Get("suggestion")));
                 }
 
                 string checkedText = root.TryGetProperty("checked", out var c) && c.ValueKind == JsonValueKind.String
@@ -313,6 +503,48 @@ namespace Cat5201
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// 解析再審查回覆裡的 previous（上一輪每一項的處理狀態）。每一個上一輪的問題都會有一列：
+        /// 審查者沒回覆、編號不對或狀態不是三種之一的，一律記成「無法確認」——不會因為沒回就當成已修正。
+        /// </summary>
+        public static IReadOnlyList<PreviousStatus> ParsePrevious(string? reply, IReadOnlyList<Issue> previousIssues)
+        {
+            var found = new Dictionary<int, (string Status, string Evidence)>();
+            string text = reply ?? "";
+            int start = text.IndexOf('{'), end = text.LastIndexOf('}');
+            if (start >= 0 && end > start)
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(text[start..(end + 1)]);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                        doc.RootElement.TryGetProperty("previous", out var arr) && arr.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var e in arr.EnumerateArray())
+                        {
+                            if (e.ValueKind != JsonValueKind.Object) continue;
+                            if (!e.TryGetProperty("n", out var nEl) || !nEl.TryGetInt32(out int n)) continue;
+                            string status = e.TryGetProperty("status", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString()!.Trim() : "";
+                            string evidence = e.TryGetProperty("evidence", out var ev) && ev.ValueKind == JsonValueKind.String ? ev.GetString()!.Trim() : "";
+                            if ((status is StatusFixed or StatusRemains or StatusUnknown) && !found.ContainsKey(n))
+                                found[n] = (status, evidence);
+                        }
+                    }
+                }
+                catch (JsonException) { }
+            }
+
+            var list = new List<PreviousStatus>();
+            for (int i = 0; i < (previousIssues?.Count ?? 0); i++)
+            {
+                int n = i + 1;
+                list.Add(found.TryGetValue(n, out var f)
+                    ? new PreviousStatus(n, previousIssues![i].Problem, f.Status, f.Evidence)
+                    : new PreviousStatus(n, previousIssues![i].Problem, StatusUnknown, "審查者沒有回覆這一項"));
+            }
+            return list;
         }
 
         // ── 審查者的選擇 ──────────────────────────────────────────
@@ -370,19 +602,45 @@ namespace Cat5201
             sb.AppendLine($"- 審查內容：{reportName}" + (tableNames.Count > 0 ? "，對照 " + string.Join("、", tableNames) : "") + "。");
             if (!string.IsNullOrWhiteSpace(r.Checked))
                 sb.AppendLine($"- 審查者說明：{r.Checked}");
-            sb.AppendLine($"- 結果：審查模型找到 {all.Count} 項（高 {high}、中 {mid}、低 {low}），程式檢查找到 {r.ProgramIssues.Count} 項。");
+            var status = r.EffectiveStatus;
+            sb.AppendLine(status == ReviewStatus.Completed
+                ? $"- 結果：審查模型找到 {all.Count} 項（高 {high}、中 {mid}、低 {low}），程式檢查找到 {r.ProgramIssues.Count} 項。"
+                : $"- 結果：{StatusText(status)}，只有程式檢查的結果（找到 {r.ProgramIssues.Count} 項）。**這不代表報告已通過數字與文字核對。**");
             sb.AppendLine("- 這份清單只列出問題與建議，沒有修改報告。是否採用由你決定。");
             sb.AppendLine();
 
-            sb.AppendLine("## 審查模型找到的問題").AppendLine();
-            if (all.Count == 0)
-                sb.AppendLine(string.IsNullOrEmpty(r.ReviewerModel)
-                    ? "（這次沒有呼叫審查模型。）"
-                    : string.IsNullOrEmpty(r.RawReply) || ParseReply(r.RawReply) != null
-                        ? "沒有找到數字不符或前後矛盾的地方。"
-                        : "審查回覆無法解析，原文附在最後。");
+            sb.AppendLine("## 檢查範圍").AppendLine();
+            if (r.CoverageNotes.Count == 0)
+                sb.AppendLine("上面列出的檔案都完整送審，沒有截斷。");
             else
-                AppendTable(sb, all, withSeverity: true);
+                foreach (var note in r.CoverageNotes) sb.AppendLine("- " + note);
+            sb.AppendLine();
+
+            if (r.Previous is { Count: > 0 })
+            {
+                sb.AppendLine("## 上一輪問題的處理狀態").AppendLine();
+                sb.AppendLine($"已修正 {r.Previous.Count(p => p.Status == StatusFixed)} 項、仍存在 {r.Previous.Count(p => p.Status == StatusRemains)} 項、" +
+                              $"無法確認 {r.Previous.Count(p => p.Status == StatusUnknown)} 項（編號和「修正說明」裡的第 n 項相同）。").AppendLine();
+                sb.AppendLine("| # | 上一輪的問題 | 狀態 | 依據 |\n|---|---|---|---|");
+                foreach (var p in r.Previous)
+                    sb.AppendLine($"| {p.N} | {Cell(p.Problem)} | {Cell(p.Status)} | {Cell(p.Evidence)} |");
+                sb.AppendLine();
+            }
+
+            sb.AppendLine(r.Previous is { Count: > 0 } ? "## 這一輪新發現的問題" : "## 審查模型找到的問題").AppendLine();
+            if (status != ReviewStatus.Completed)
+                sb.AppendLine($"（{StatusText(status)}：{r.ReviewerNote}。）" +
+                              (status == ReviewStatus.Unparseable ? "原文附在最後。" : ""));
+            else if (all.Count == 0)
+                sb.AppendLine("沒有找到數字不符或前後矛盾的地方。");
+            else
+            {
+                var origins = r.IssueOrigins;
+                if (origins != null)
+                    sb.AppendLine($"「來源」由程式比對問題引用的原文判斷：修正前就存在 {origins.Count(o => o == OriginBefore)} 項、" +
+                                  $"修正後才出現 {origins.Count(o => o == OriginAfter)} 項、無法判斷 {origins.Count(o => o == OriginUnknown)} 項。").AppendLine();
+                AppendTable(sb, all, withSeverity: true, origins);
+            }
 
             sb.AppendLine().AppendLine("## 程式自動檢查（不經 AI）").AppendLine();
             sb.AppendLine("檢查無效值（nan、None、#DIV/0! 等）與沒填完的模板字。").AppendLine();
@@ -391,38 +649,63 @@ namespace Cat5201
             else
                 AppendTable(sb, r.ProgramIssues, withSeverity: false);
 
-            if (all.Count == 0 && !string.IsNullOrWhiteSpace(r.RawReply) && ParseReply(r.RawReply) == null)
+            if (status == ReviewStatus.Unparseable && !string.IsNullOrWhiteSpace(r.RawReply))
                 sb.AppendLine().AppendLine("## 審查者原始回覆").AppendLine().AppendLine(Shorten(r.RawReply, 4000));
 
             return sb.ToString();
         }
 
-        /// <summary>接在答案最後的一句話。</summary>
-        public static string Summary(Result r)
+        /// <summary>審查模型沒有完成時的說法（清單與摘要共用）。</summary>
+        public static string StatusText(ReviewStatus status) => status switch
+        {
+            ReviewStatus.NotRun => "這次沒有呼叫審查模型",
+            ReviewStatus.Failed => "審查模型這次沒有回應",
+            ReviewStatus.Unparseable => "審查回覆無法解析",
+            _ => "審查完成",
+        };
+
+        /// <summary>
+        /// 接在答案最後的一句話。只有審查模型真的完成時才說「沒有找到」；
+        /// 沒執行、失敗、無法解析都照實寫，並說明這不代表通過核對。
+        /// reportUnchanged＝false：自動修正已把外面的報告換成修正版，不能再說「報告本身沒有被修改」。
+        /// </summary>
+        public static string Summary(Result r, bool reportUnchanged = true)
         {
             int count = r.ModelIssues.Count + r.ProgramIssues.Count;
             int high = r.ModelIssues.Count(i => i.Severity == "高");
-            string who = string.IsNullOrEmpty(r.ReviewerModel)
-                ? "程式檢查"
-                : $"{DisplayName(r.ReviewerModel)}，沒有參與撰寫";
-            return count == 0
-                ? $"獨立審查（{who}）：沒有找到數字不符或前後矛盾的地方。"
-                : $"獨立審查（{who}）：找到 {count} 項需要確認的地方" + (high > 0 ? $"（其中 {high} 項較嚴重）" : "") +
-                  "，修改清單在「審查清單」檔，報告本身沒有被修改。";
+            string coverage = r.CoverageNotes.Count > 0 ? "部分內容沒有送審，見清單的「檢查範圍」。" : "";
+            var status = r.EffectiveStatus;
+
+            if (status != ReviewStatus.Completed)
+                return $"獨立審查：{StatusText(status)}（{r.ReviewerNote}），只做了程式檢查" +
+                       (r.ProgramIssues.Count > 0 ? $"，找到 {r.ProgramIssues.Count} 項，清單在「審查清單」檔" : "，沒有找到無效值或殘留字") +
+                       "；這不代表報告已通過數字與文字核對。" + coverage;
+
+            string who = $"{DisplayName(r.ReviewerModel)}，沒有參與撰寫";
+            if (count == 0)
+                return $"獨立審查（{who}）：沒有找到數字不符或前後矛盾的地方。" + coverage;
+            return $"獨立審查（{who}）：找到 {count} 項需要確認的地方" + (high > 0 ? $"（其中 {high} 項較嚴重）" : "") +
+                   (reportUnchanged ? "，修改清單在「審查清單」檔，報告本身沒有被修改。" : "。") + coverage;
         }
 
-        private static void AppendTable(StringBuilder sb, IReadOnlyList<Issue> issues, bool withSeverity)
+        private static void AppendTable(StringBuilder sb, IReadOnlyList<Issue> issues, bool withSeverity,
+            IReadOnlyList<string>? origins = null)
         {
-            sb.AppendLine(withSeverity
-                ? "| # | 嚴重度 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|"
-                : "| # | 位置 | 問題 | 原文 | 建議 |\n|---|---|---|---|---|");
+            bool withOrigin = withSeverity && origins != null && origins.Count == issues.Count;
+            sb.AppendLine(withOrigin
+                ? "| # | 嚴重度 | 來源 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|---|"
+                : withSeverity
+                    ? "| # | 嚴重度 | 位置 | 問題 | 依據（原文） | 建議修改 |\n|---|---|---|---|---|---|"
+                    : "| # | 位置 | 問題 | 原文 | 建議 |\n|---|---|---|---|---|");
             int n = 0;
             foreach (var i in issues)
             {
                 n++;
-                sb.AppendLine(withSeverity
-                    ? $"| {n} | {Cell(i.Severity)} | {Cell(i.Where)} | {Cell(i.Problem)} | {Cell(i.Evidence)} | {Cell(i.Suggestion)} |"
-                    : $"| {n} | {Cell(i.Where)} | {Cell(i.Problem)} | {Cell(i.Evidence)} | {Cell(i.Suggestion)} |");
+                sb.AppendLine(withOrigin
+                    ? $"| {n} | {Cell(i.Severity)} | {Cell(origins![n - 1])} | {Cell(i.Where)} | {Cell(i.Problem)} | {Cell(i.Evidence)} | {Cell(i.Suggestion)} |"
+                    : withSeverity
+                        ? $"| {n} | {Cell(i.Severity)} | {Cell(i.Where)} | {Cell(i.Problem)} | {Cell(i.Evidence)} | {Cell(i.Suggestion)} |"
+                        : $"| {n} | {Cell(i.Where)} | {Cell(i.Problem)} | {Cell(i.Evidence)} | {Cell(i.Suggestion)} |");
             }
         }
 
