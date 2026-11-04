@@ -58,10 +58,11 @@ namespace Cat5201
             _editingSkill = skill;
             if (SkillNameInput != null) SkillNameInput.Text = skill.Name;
             if (SkillContentInput != null) SkillContentInput.Text = skill.Content;
-            if (AddSkillButton != null) AddSkillButton.Content = "✓ 儲存修改";
+            if (AddSkillButton != null) AddSkillButton.Content = UiLanguage.P("✓ 儲存修改", "✓ Save changes");
             if (SkillImportHint != null)
             {
-                SkillImportHint.Text = $"編輯中：「{(string.IsNullOrWhiteSpace(skill.Name) ? "(未命名)" : skill.Name)}」——改完按「儲存修改」。";
+                string skillName = string.IsNullOrWhiteSpace(skill.Name) ? UiLanguage.P("(未命名)", "(untitled)") : skill.Name;
+                SkillImportHint.Text = UiLanguage.P($"編輯中：「{skillName}」——改完按「儲存修改」。", $"Editing \"{skillName}\". Press \"Save changes\" when done.");
                 SkillImportHint.Foreground = new SolidColorBrush(Color.FromRgb(0x3B, 0x54, 0xFF));
             }
         }
@@ -71,7 +72,7 @@ namespace Cat5201
             _editingSkill = null;
             if (SkillNameInput != null) SkillNameInput.Text = "";
             if (SkillContentInput != null) SkillContentInput.Text = "";
-            if (AddSkillButton != null) AddSkillButton.Content = "＋ 新增技能";
+            if (AddSkillButton != null) AddSkillButton.Content = UiLanguage.P("＋ 新增技能", "+ Add skill");
             if (SkillImportHint != null) SkillImportHint.Text = "";
         }
 
@@ -100,11 +101,11 @@ namespace Cat5201
                 if (m.Success)
                     fetchUrl = $"https://raw.githubusercontent.com/{m.Groups[1].Value}/{m.Groups[2].Value}/{m.Groups[3].Value}";
 
-                Hint("下載中…");
+                Hint(UiLanguage.P("下載中…", "Downloading…"));
                 string text = await _skillImportHttp.GetStringAsync(fetchUrl);
                 if (string.IsNullOrWhiteSpace(text))
                 {
-                    Hint("檔案是空的。", error: true);
+                    Hint(UiLanguage.P("檔案是空的。", "The file is empty."), error: true);
                     return;
                 }
                 if (text.Length > 20_000)
@@ -126,7 +127,7 @@ namespace Cat5201
                 if (string.IsNullOrWhiteSpace(name))
                 {
                     try { name = System.IO.Path.GetFileNameWithoutExtension(new Uri(fetchUrl).AbsolutePath); }
-                    catch { name = "匯入的技能"; }
+                    catch { name = UiLanguage.P("匯入的技能", "Imported skill"); }
                 }
 
                 var list = new List<SkillDefinition>(SkillsRegistry.GetAll())
@@ -137,12 +138,12 @@ namespace Cat5201
                 SavePreferences();
                 RefreshSkillsList();
                 if (SkillImportUrlInput != null) SkillImportUrlInput.Text = "";
-                Hint($"✓ 已匯入「{name}」（{content.Length} 字）");
+                Hint(UiLanguage.P($"✓ 已匯入「{name}」（{content.Length} 字）", $"✓ Imported \"{name}\" ({content.Length} chars)"));
                 AppLog.Info("Skills", $"GitHub 匯入技能：{name} ← {fetchUrl}");
             }
             catch (Exception ex)
             {
-                Hint("匯入失敗：" + ex.Message, error: true);
+                Hint(UiLanguage.P("匯入失敗：", "Import failed:") + ex.Message, error: true);
                 AppLog.Warn("Skills", "GitHub 匯入失敗：" + url, ex);
             }
         }
@@ -177,7 +178,7 @@ namespace Cat5201
                     IsChecked = s.Enabled,
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 8, 0),
-                    ToolTip = "啟用/停用此技能（停用＝保留但不注入）",
+                    ToolTip = UiLanguage.P("啟用/停用此技能（停用＝保留但不注入）", "Turn this skill on/off (off = kept but not used)"),
                 };
                 toggle.Checked += (_, __) => { s.Enabled = true; SavePreferences(); };
                 toggle.Unchecked += (_, __) => { s.Enabled = false; SavePreferences(); };
@@ -185,12 +186,12 @@ namespace Cat5201
 
                 var nameText = new TextBlock
                 {
-                    Text = string.IsNullOrWhiteSpace(s.Name) ? "(未命名技能)" : s.Name,
+                    Text = string.IsNullOrWhiteSpace(s.Name) ? UiLanguage.P("(未命名技能)", "(Untitled skill)") : s.Name,
                     FontSize = 12.5,
                     Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
-                    ToolTip = s.Content + "\n（點一下編輯）",
+                    ToolTip = s.Content + UiLanguage.P("\n（點一下編輯）", "\n(click to edit)"),
                     Cursor = Cursors.Hand,
                 };
                 nameText.MouseLeftButtonUp += (_, __) => EnterSkillEditMode(s); // 就地編輯
@@ -206,7 +207,7 @@ namespace Cat5201
                     Background = Brushes.Transparent,
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     BorderThickness = new Thickness(0),
-                    ToolTip = "刪除此技能",
+                    ToolTip = UiLanguage.P("刪除此技能", "Delete this skill"),
                 };
                 del.Click += (_, __) =>
                 {

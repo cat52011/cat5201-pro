@@ -331,8 +331,10 @@ namespace Cat5201.Tests
         {
             var (result, ws, prompts) = await RunAsync("寫一個 Python 程式計算 BMI，並附上一份書面報告說明");
 
-            // 程式碼只出現在主回覆的輸出；之後任何一步（報告撰寫等）的輸入都不能再帶著原始碼。
-            Assert.DoesNotContain(prompts, p => p.Contains("def bmi", StringComparison.Ordinal));
+            // 程式碼只出現在主回覆的輸出；之後的報告撰寫等步驟不能再帶著原始碼。
+            // 例外是獨立審查：它要對照程式核對報告寫的做法（2026-11-04），本來就會看到 .py。
+            Assert.DoesNotContain(prompts, p => p.Contains("def bmi", StringComparison.Ordinal) &&
+                                                !p.StartsWith("你是獨立的審查者", StringComparison.Ordinal));
 
             var files = Files(ws);
             var code = Assert.Single(files, f => f.FileName == "bmi.py");

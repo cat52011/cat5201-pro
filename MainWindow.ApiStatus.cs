@@ -49,12 +49,12 @@ namespace Cat5201
             public string Note { get; init; } = "";
             public string BillingUrl { get; init; } = "";
 
-            private string _state = "尚未檢查";
+            private string _state = UiLanguage.P("尚未檢查", "Not checked yet");
             private string _detail = "";
             private string _dot = "#C9CDD4";
             private string _spend = "";
             private string _topUp = "";
-            private string _balanceText = "未設定";
+            private string _balanceText = UiLanguage.P("未設定", "Not set");
             private string _problem = "";
             private string _problemVisible = "Collapsed";
             private string _meta = "";
@@ -160,13 +160,13 @@ namespace Cat5201
 
         private static string StateLabel(ApiHealthChecker.HealthState state) => state switch
         {
-            ApiHealthChecker.HealthState.Ok => "可用",
-            ApiHealthChecker.HealthState.NoKey => "未設定金鑰",
-            ApiHealthChecker.HealthState.InvalidKey => "金鑰無效",
-            ApiHealthChecker.HealthState.NoCredit => "餘額不足",
-            ApiHealthChecker.HealthState.RateLimited => "已達上限",
-            ApiHealthChecker.HealthState.Offline => "連不上",
-            _ => "狀態未知"
+            ApiHealthChecker.HealthState.Ok => UiLanguage.P("可用", "Available"),
+            ApiHealthChecker.HealthState.NoKey => UiLanguage.P("未設定金鑰", "No key"),
+            ApiHealthChecker.HealthState.InvalidKey => UiLanguage.P("金鑰無效", "Invalid key"),
+            ApiHealthChecker.HealthState.NoCredit => UiLanguage.P("餘額不足", "Out of credit"),
+            ApiHealthChecker.HealthState.RateLimited => UiLanguage.P("已達上限", "Limit reached"),
+            ApiHealthChecker.HealthState.Offline => UiLanguage.P("連不上", "Unreachable"),
+            _ => UiLanguage.P("狀態未知", "Unknown")
         };
 
         private static string StateColor(ApiHealthChecker.HealthState state) => state switch
@@ -209,8 +209,8 @@ namespace Cat5201
 
                 if (!ProviderBalance.Has(row.ProviderId))
                 {
-                    row.BalanceText = "未設定";
-                    row.Meta = "填入官網目前顯示的餘額，之後每一筆花費就會自動扣。";
+                    row.BalanceText = UiLanguage.P("未設定", "Not set");
+                    row.Meta = UiLanguage.P("填入官網目前顯示的餘額，之後每一筆花費就會自動扣。", "Enter the balance currently shown on the provider's site; every charge after that is deducted automatically.");
                 }
                 else
                 {
@@ -221,7 +221,7 @@ namespace Cat5201
                     row.Meta = BuildBalanceMeta(row, left);
                 }
 
-                row.Spend = $"今日 {ModelCostEstimator.FormatTwd(SpendLedger.TodayUsdFor(row.ProviderId))}";
+                row.Spend = UiLanguage.P($"今日 {ModelCostEstimator.FormatTwd(SpendLedger.TodayUsdFor(row.ProviderId))}", $"Today {ModelCostEstimator.FormatTwd(SpendLedger.TodayUsdFor(row.ProviderId))}");
             }
         }
 
@@ -232,15 +232,15 @@ namespace Cat5201
 
             var reconciled = ProviderBalance.LastReconciledUtc(row.ProviderId);
             parts.Add(reconciled == null
-                ? "本機記帳"
-                : $"{reconciled.Value.ToLocalTime():M/d HH:mm} 對帳");
+                ? UiLanguage.P("本機記帳", "Tracked locally")
+                : UiLanguage.P($"{reconciled.Value.ToLocalTime():M/d HH:mm} 對帳", $"Reconciled {reconciled.Value.ToLocalTime():M/d HH:mm}"));
 
             double since = ProviderBalance.DeductedSinceReconcile(row.ProviderId);
             if (since > 0)
-                parts.Add($"之後扣了 {row.Symbol}{since:0.00}");
+                parts.Add(UiLanguage.P($"之後扣了 {row.Symbol}{since:0.00}", $"{row.Symbol}{since:0.00} deducted since"));
 
             if (left < -0.005)
-                parts.Add($"已超出 {row.Symbol}{-left:0.00}，建議重新對帳");
+                parts.Add(UiLanguage.P($"已超出 {row.Symbol}{-left:0.00}，建議重新對帳", $"Over by {row.Symbol}{-left:0.00}, please reconcile"));
 
             return string.Join("・", parts);
         }
@@ -293,8 +293,8 @@ namespace Cat5201
             }
             else
             {
-                MenuConfirmDialog.ShowMessage(this, "目前餘額",
-                    $"請輸入目前的餘額（{row.Symbol}），例如 20。\n清空後送出＝不再追蹤這個服務。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("目前餘額", "Current balance"),
+                    UiLanguage.P($"請輸入目前的餘額（{row.Symbol}），例如 20。\n清空後送出＝不再追蹤這個服務。", $"Enter your current balance ({row.Symbol}), e.g. 20.\nSubmit it empty to stop tracking this service."), this);
                 return;
             }
 

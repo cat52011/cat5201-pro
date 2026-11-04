@@ -47,11 +47,11 @@ namespace Cat5201
             try
             {
                 MessageBox.Show(
-                    "程式遇到未預期的錯誤，已記錄到診斷日誌。\n\n" +
+                    UiLanguage.P("程式遇到未預期的錯誤，已記錄到診斷日誌。\n\n", "The app hit an unexpected error. It has been written to the diagnostic log.\n\n") +
                     $"{e.Exception.GetType().Name}: {e.Exception.Message}\n\n" +
-                    "建議立即存檔後重新啟動程式。\n" +
-                    $"日誌位置：%LOCALAPPDATA%\\cat5201-pro\\logs",
-                    "cat5201-pro — 發生錯誤",
+                    UiLanguage.P("建議立即存檔後重新啟動程式。\n", "Save your work and restart the app.\n") +
+                    UiLanguage.P($"日誌位置：%LOCALAPPDATA%\\cat5201-pro\\logs", $"Log folder: %LOCALAPPDATA%\\cat5201-pro\\logs"),
+                    UiLanguage.P("cat5201-pro — 發生錯誤", "cat5201-pro — Error"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Error);
             }

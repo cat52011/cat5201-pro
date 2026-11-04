@@ -15,9 +15,12 @@ namespace Cat5201
         // 通用確認框（兩顆鈕）。回傳 true = 按下確認鈕。取代原生 MessageBox 的 Yes/No、OKCancel。
         public static bool ShowConfirm(
             Window owner, string title, string message, FrameworkElement resourceHost,
-            string confirmText = "確定", string cancelText = "取消", bool danger = false,
+            string? confirmText = null, string? cancelText = null, bool danger = false,
             Action<Window>? onShown = null, int autoConfirmSeconds = 0)
         {
+            // 預設按鈕字依介面語言決定（預設參數只能是常數，所以用 null 代表「用預設」）。
+            confirmText ??= UiLanguage.P("確定", "OK");
+            cancelText ??= UiLanguage.P("取消", "Cancel");
             var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, confirmText, cancelText, danger, autoConfirmSeconds);
             // 手機鏡像（§17 階段二）遠端回答用：把視窗參照交給呼叫端，讓手機也能設 DialogResult 關閉此框。
             // 其他呼叫者不傳 onShown / autoConfirmSeconds，行為完全不變。
@@ -29,16 +32,16 @@ namespace Cat5201
         // 通用訊息框（單顆鈕，純告知）。取代原生 MessageBox 的 OK 訊息/錯誤/警告。
         public static void ShowMessage(
             Window owner, string title, string message, FrameworkElement resourceHost,
-            string okText = "確定")
+            string? okText = null)
         {
-            var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, okText, null, false, 0);
+            var dlg = new MenuConfirmWindow(owner, title, message, resourceHost, okText ?? UiLanguage.P("確定", "OK"), null, false, 0);
             dlg.ShowDialog();
         }
 
         // 刪除確認（紅色「刪除」鈕）。
         public static bool ShowDeleteConfirm(Window owner, string title, string message, FrameworkElement resourceHost)
         {
-            return ShowConfirm(owner, title, message, resourceHost, confirmText: "刪除", cancelText: "取消", danger: true);
+            return ShowConfirm(owner, title, message, resourceHost, confirmText: UiLanguage.P("刪除", "Delete"), cancelText: UiLanguage.P("取消", "Cancel"), danger: true);
         }
 
         private sealed class MenuConfirmWindow : Window

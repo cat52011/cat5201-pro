@@ -63,33 +63,33 @@ namespace Cat5201
             switch (taskType)
             {
                 case OrchestrationTaskType.VideoGeneration:
-                    AddTarget("影片", "依秒計費，需較長時間", videoUsd);
+                    AddTarget(UiLanguage.P("影片", "Video"), UiLanguage.P("依秒計費，需較長時間", "Billed per second, takes a while"), videoUsd);
                     break;
                 case OrchestrationTaskType.ImageGeneration:
-                    AddTarget("圖片", ModelCostEstimator.ImageUnitCostText(), imageUsd);
+                    AddTarget(UiLanguage.P("圖片", "Image"), ModelCostEstimator.ImageUnitCostText(), imageUsd);
                     break;
                 case OrchestrationTaskType.ImageEdit:
-                    AddTarget("圖片編輯", ModelCostEstimator.ImageUnitCostText(), imageUsd);
+                    AddTarget(UiLanguage.P("圖片編輯", "Image edit"), ModelCostEstimator.ImageUnitCostText(), imageUsd);
                     break;
                 case OrchestrationTaskType.Presentation:
-                    AddTarget("簡報", DocumentDetail(DeckFormats(), engine), documentUsd);
+                    AddTarget(UiLanguage.P("簡報", "Deck"), DocumentDetail(DeckFormats(), engine), documentUsd);
                     break;
                 case OrchestrationTaskType.GenerateFile:
-                    AddTarget("檔案", "");
+                    AddTarget(UiLanguage.P("檔案", "File"), "");
                     break;
             }
 
             if (outputIntent != null)
             {
-                if (outputIntent.WantsPresentation) AddTarget("簡報", DocumentDetail(DeckFormats(), engine), documentUsd);
-                if (outputIntent.WantsReport) AddTarget("書面報告", DocumentDetail(WithPdf("Word"), engine), documentUsd);
-                if (outputIntent.WantsTable) AddTarget("表格", DocumentDetail(WithPdf("Excel"), engine), documentUsd);
-                if (outputIntent.WantsImage) AddTarget("圖片", ModelCostEstimator.ImageUnitCostText(), imageUsd);
-                if (outputIntent.WantsVideo) AddTarget("影片", "依秒計費，需較長時間", videoUsd);
+                if (outputIntent.WantsPresentation) AddTarget(UiLanguage.P("簡報", "Deck"), DocumentDetail(DeckFormats(), engine), documentUsd);
+                if (outputIntent.WantsReport) AddTarget(UiLanguage.P("書面報告", "Written report"), DocumentDetail(WithPdf("Word"), engine), documentUsd);
+                if (outputIntent.WantsTable) AddTarget(UiLanguage.P("表格", "Spreadsheet"), DocumentDetail(WithPdf("Excel"), engine), documentUsd);
+                if (outputIntent.WantsImage) AddTarget(UiLanguage.P("圖片", "Image"), ModelCostEstimator.ImageUnitCostText(), imageUsd);
+                if (outputIntent.WantsVideo) AddTarget(UiLanguage.P("影片", "Video"), UiLanguage.P("依秒計費，需較長時間", "Billed per second, takes a while"), videoUsd);
             }
 
             if (items.Count == 0)
-                AddTarget("檔案／媒體", "");
+                AddTarget(UiLanguage.P("檔案／媒體", "Files / media"), "");
 
             // 手機端橫幅文字（名稱＋說明合併成一行）。
             string what = string.Join("、", items.ConvertAll(x =>
@@ -157,8 +157,8 @@ namespace Cat5201
         // 不寫「文件技能」——那是實作名稱，使用者在個人化裡看到的選項叫「最佳品質」。
         private static string DocumentDetail(string formats, DocumentEngine engine)
             => engine == DocumentEngine.ClaudeSkills
-                ? $"{formats}・最佳品質模式，約需數分鐘"
-                : $"{formats}・快速版";
+                ? UiLanguage.P($"{formats}・最佳品質模式，約需數分鐘", $"{formats} · best-quality mode, takes a few minutes")
+                : UiLanguage.P($"{formats}・快速版", $"{formats} · fast mode");
 
         // 花錢安全：每日花費上限（台幣，0 = 不限制）。存個人化偏好。
         // MVP 安全預設＝NT$100/天（只在沒有偏好檔時生效；使用者存過的值一律優先）。
@@ -175,8 +175,8 @@ namespace Cat5201
             if (SpendLedger.IsOverDailyBudget(_dailyBudgetTwd))
             {
                 message =
-                    $"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.CommittedDisplay()}）。\n" +
-                    "今天不再執行新任務。可到 設定 → 個人化 → 花費 調高或清除上限。";
+                    UiLanguage.P($"已達今日花費上限 NT${_dailyBudgetTwd}（今日已花 {SpendLedger.CommittedDisplay()}）。\n", $"Today's spending limit of NT${_dailyBudgetTwd} has been reached (spent today: {SpendLedger.CommittedDisplay()}).\n") +
+                    UiLanguage.P("今天不再執行新任務。可到 設定 → 個人化 → 花費 調高或清除上限。", "No new tasks will run today. You can raise or remove the limit under Settings → Personal → Spending.");
                 return false;
             }
             message = "";

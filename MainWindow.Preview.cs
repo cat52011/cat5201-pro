@@ -87,15 +87,15 @@ namespace Cat5201
             catch (IOException ex)
             {
                 AppLog.Warn("Preview", $"就地編輯失敗（檔案被佔用）：{action}", ex);
-                MenuConfirmDialog.ShowMessage(this, "改不了這一頁",
-                    "這個檔案正被其他程式開著（PowerPoint、LibreOffice…），沒辦法寫入。\n" +
-                    "請先把它關掉，再回來編輯。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改不了這一頁", "Can't edit this page"),
+                    UiLanguage.P("這個檔案正被其他程式開著（PowerPoint、LibreOffice…），沒辦法寫入。\n", "This file is open in another program (PowerPoint, LibreOffice…), so it can't be written.\n") +
+                    UiLanguage.P("請先把它關掉，再回來編輯。", "Close it there first, then come back and edit."), this);
             }
             catch (Exception ex)
             {
                 AppLog.Warn("Preview", $"就地編輯失敗：{action}", ex);
-                MenuConfirmDialog.ShowMessage(this, "改不了這一頁",
-                    "這一頁沒有改成功：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改不了這一頁", "Can't edit this page"),
+                    UiLanguage.P("這一頁沒有改成功：", "This page wasn't updated:") + ex.Message, this);
             }
         }
 
@@ -119,7 +119,7 @@ namespace Cat5201
 
             // 關掉預覽視窗之後這件事仍然在跑（path 與 node 進來時就抓好了），
             // 但使用者看不到任何東西在動，會以為自己把它取消了——所以在節點上掛一個提示。
-            node.SetLoadingHint($"正在套用第 {order} 頁的修改…");
+            node.SetLoadingHint(UiLanguage.P($"正在套用第 {order} 頁的修改…", $"Applying changes to page {order}…"));
             try
             {
                 var native = NativeDeckStorage.Read(path);
@@ -161,7 +161,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "儲存修改", "存回簡報失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("儲存修改", "Save changes"), UiLanguage.P("存回簡報失敗：", "Couldn't save back to the deck:") + ex.Message, this);
             }
             finally
             {
@@ -190,13 +190,13 @@ namespace Cat5201
 
             // 關掉預覽視窗之後這件事仍然在跑（path 與 node 進來時就抓好了），
             // 但使用者看不到任何東西在動，會以為自己把它取消了——所以在節點上掛一個提示。
-            node.SetLoadingHint($"正在更新第 {page} 頁的圖…");
+            node.SetLoadingHint(UiLanguage.P($"正在更新第 {page} 頁的圖…", $"Updating the image on page {page}…"));
             try
             {
                 var native = NativeDeckStorage.Read(path);
                 if (native == null)
                 {
-                    MenuConfirmDialog.ShowMessage(this, "保留簡報設計", "這份簡報未包含可安全編輯的原始大綱，無法在這裡換圖。請用 PowerPoint 修改。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("保留簡報設計", "Keep deck design"), UiLanguage.P("這份簡報未包含可安全編輯的原始大綱，無法在這裡換圖。請用 PowerPoint 修改。", "This deck doesn't include an outline that can be edited safely, so its images can't be replaced here. Please edit it in PowerPoint."), this);
                     return;
                 }
 
@@ -218,7 +218,7 @@ namespace Cat5201
                 {
                     if (!CheckDailyBudgetAllows(out string budgetMessage))
                     {
-                        MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                        MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已達今日花費上限", "Today's spending limit reached"), budgetMessage, this);
                         return;
                     }
 
@@ -228,8 +228,8 @@ namespace Cat5201
 
                     if (png == null || png.Length == 0)
                     {
-                        MenuConfirmDialog.ShowMessage(this, "這一頁的配圖",
-                            string.IsNullOrWhiteSpace(error) ? "配圖沒有產生出來。" : error, this);
+                        MenuConfirmDialog.ShowMessage(this, UiLanguage.P("這一頁的配圖", "Illustration for this page"),
+                            string.IsNullOrWhiteSpace(error) ? UiLanguage.P("配圖沒有產生出來。", "The illustration wasn't generated.") : error, this);
                         if (string.Equals(_previewPath, path, StringComparison.OrdinalIgnoreCase))
                             OpenPreview(path, node);
                         return;
@@ -248,7 +248,7 @@ namespace Cat5201
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "這一頁的配圖", "換圖失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("這一頁的配圖", "Illustration for this page"), UiLanguage.P("換圖失敗：", "Image replacement failed:") + ex.Message, this);
             }
             finally
             {
@@ -343,9 +343,9 @@ namespace Cat5201
 
             if (lines.Count != slide.Lines.Count)
             {
-                MenuConfirmDialog.ShowMessage(this, "套用文字",
-                    $"這一頁原本有 {slide.Lines.Count} 段，你給了 {lines.Count} 段。\n" +
-                    "行數必須一樣——多一行或少一行就對不回原本的段落，版面會錯位。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("套用文字", "Apply text"),
+                    UiLanguage.P($"這一頁原本有 {slide.Lines.Count} 段，你給了 {lines.Count} 段。\n", $"This page has {slide.Lines.Count} paragraphs, but you gave {lines.Count}.\n") +
+                    UiLanguage.P("行數必須一樣——多一行或少一行就對不回原本的段落，版面會錯位。", "The line count must match. One line more or less can't be mapped back to the original paragraphs and the layout would shift."), this);
                 return;
             }
 
@@ -354,7 +354,7 @@ namespace Cat5201
 
             if (changed == 0)
             {
-                MenuConfirmDialog.ShowMessage(this, "套用文字", "文字沒有變化，檔案保持原樣。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("套用文字", "Apply text"), UiLanguage.P("文字沒有變化，檔案保持原樣。", "The text didn't change, so the file was left as it is."), this);
                 return;
             }
 
@@ -377,7 +377,7 @@ namespace Cat5201
             var slide = deck?.Slides.FirstOrDefault(x => x.Order == order);
             if (slide == null || slide.Images.Count == 0)
             {
-                MenuConfirmDialog.ShowMessage(this, "移除配圖", $"第 {order} 頁沒有圖可以移除。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("移除配圖", "Remove illustration"), UiLanguage.P($"第 {order} 頁沒有圖可以移除。", $"Page {order} has no image to remove."), this);
                 return;
             }
 
@@ -409,13 +409,13 @@ namespace Cat5201
             var slide = deck?.Slides.FirstOrDefault(x => x.Order == order);
             if (slide == null || slide.Images.Count == 0)
             {
-                MenuConfirmDialog.ShowMessage(this, "換圖", $"第 {order} 頁沒有圖可以換。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("換圖", "Replace image"), UiLanguage.P($"第 {order} 頁沒有圖可以換。", $"Page {order} has no image to replace."), this);
                 return;
             }
 
             if (!CheckDailyBudgetAllows(out string budget))
             {
-                MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budget, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已達今日花費上限", "Today's spending limit reached"), budget, this);
                 return;
             }
 
@@ -437,7 +437,7 @@ namespace Cat5201
                 },
             };
 
-            node.SetLoadingHint($"正在換第 {order} 頁的圖…");
+            node.SetLoadingHint(UiLanguage.P($"正在換第 {order} 頁的圖…", $"Replacing the image on page {order}…"));
             try
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
@@ -445,15 +445,15 @@ namespace Cat5201
 
                 if (png == null || png.Length == 0)
                 {
-                    MenuConfirmDialog.ShowMessage(this, "換圖",
-                        string.IsNullOrWhiteSpace(error) ? "這次沒有生成出圖片。" : error, this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("換圖", "Replace image"),
+                        string.IsNullOrWhiteSpace(error) ? UiLanguage.P("這次沒有生成出圖片。", "No image was generated this time.") : error, this);
                     return;
                 }
 
                 GeneratedFileHistory.SaveVersion(path);
                 if (!PptxTextEditor.ReplaceSlideImage(path, order, png))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "換圖", "圖生出來了，但寫回檔案失敗。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("換圖", "Replace image"), UiLanguage.P("圖生出來了，但寫回檔案失敗。", "The image was generated, but writing it back to the file failed."), this);
                     return;
                 }
 
@@ -472,10 +472,10 @@ namespace Cat5201
         {
             if (string.IsNullOrWhiteSpace(instruction))
             {
-                MenuConfirmDialog.ShowMessage(this, "改這一頁的文字",
-                    "這份簡報是由模型直接排版的，程式內不能重做它的版面，但可以改文字。\n\n" +
-                    "請在輸入框寫出要怎麼改（例如：第 2 段改短一點、把「虛以藝術」改成「侘寂美學」），再按重新生成。\n" +
-                    "要改版面的話只能整份重做（清空頁碼欄位）。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改這一頁的文字", "Edit this page's text"),
+                    UiLanguage.P("這份簡報是由模型直接排版的，程式內不能重做它的版面，但可以改文字。\n\n", "This deck was laid out by the model directly, so the app can't redo its layout, but it can change the text.\n\n") +
+                    UiLanguage.P("請在輸入框寫出要怎麼改（例如：第 2 段改短一點、把「虛以藝術」改成「侘寂美學」），再按重新生成。\n", "Write how it should change in the input box (e.g. shorten paragraph 2, change one phrase to another), then press Regenerate.\n") +
+                    UiLanguage.P("要改版面的話只能整份重做（清空頁碼欄位）。", "To change the layout, the whole deck has to be redone (clear the page number box)."), this);
                 return;
             }
 
@@ -483,13 +483,13 @@ namespace Cat5201
             var slide = deck?.Slides.FirstOrDefault(x => x.Order == order);
             if (slide == null || slide.Lines.Count == 0)
             {
-                MenuConfirmDialog.ShowMessage(this, "改這一頁的文字", $"第 {order} 頁沒有可以改的文字。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改這一頁的文字", "Edit this page's text"), UiLanguage.P($"第 {order} 頁沒有可以改的文字。", $"Page {order} has no text that can be edited."), this);
                 return;
             }
 
             if (!CheckDailyBudgetAllows(out string budget))
             {
-                MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budget, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已達今日花費上限", "Today's spending limit reached"), budget, this);
                 return;
             }
 
@@ -498,8 +498,8 @@ namespace Cat5201
 
             if (rewritten.Count != slide.Lines.Count)
             {
-                MenuConfirmDialog.ShowMessage(this, "改這一頁的文字",
-                    "這次改寫的段落數跟原本對不起來，為了不讓版面錯位，沒有寫回去。\n請換個說法再試一次。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改這一頁的文字", "Edit this page's text"),
+                    UiLanguage.P("這次改寫的段落數跟原本對不起來，為了不讓版面錯位，沒有寫回去。\n請換個說法再試一次。", "The rewritten paragraph count didn't match the original, so it wasn't written back to avoid shifting the layout.\nPlease try wording it differently."), this);
                 return;
             }
 
@@ -508,7 +508,7 @@ namespace Cat5201
 
             if (changed == 0)
             {
-                MenuConfirmDialog.ShowMessage(this, "改這一頁的文字", "文字沒有變化，檔案保持原樣。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("改這一頁的文字", "Edit this page's text"), UiLanguage.P("文字沒有變化，檔案保持原樣。", "The text didn't change, so the file was left as it is."), this);
                 return;
             }
 
@@ -537,7 +537,7 @@ namespace Cat5201
 
             // 關掉預覽視窗之後這件事仍然在跑（path 與 node 進來時就抓好了），
             // 但使用者看不到任何東西在動，會以為自己把它取消了——所以在節點上掛一個提示。
-            node.SetLoadingHint($"正在重做第 {order} 頁…");
+            node.SetLoadingHint(UiLanguage.P($"正在重做第 {order} 頁…", $"Redoing page {order}…"));
             try
             {
                 var native = NativeDeckStorage.Read(path);
@@ -551,7 +551,7 @@ namespace Cat5201
                 }
                 if (!CheckDailyBudgetAllows(out string budgetMessage))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已達今日花費上限", "Today's spending limit reached"), budgetMessage, this);
                     return;
                 }
                 var sourceOrder = NativeDeckStorage.SourceOrderForPage(native, order);
@@ -608,8 +608,8 @@ namespace Cat5201
                     }
                     else
                     {
-                        extraNote = "這一頁的配圖沒有生成：" +
-                                    (string.IsNullOrWhiteSpace(imageError) ? "圖片步驟沒有產出。" : imageError);
+                        extraNote = UiLanguage.P("這一頁的配圖沒有生成：", "The illustration for this page wasn't generated:") +
+                                    (string.IsNullOrWhiteSpace(imageError) ? UiLanguage.P("圖片步驟沒有產出。", "the image step produced nothing.") : imageError);
                     }
                 }
 
@@ -631,17 +631,17 @@ namespace Cat5201
                 int pagesAfter = CountPagesForSlide(NativeDeckStorage.Read(path), order);
                 if (pagesAfter < pagesBefore)
                 {
-                    extraNote = $"這張投影片原本因為內容太長被拆成 {pagesBefore} 頁，重寫後變短，已合併成 {pagesAfter} 頁。" +
+                    extraNote = UiLanguage.P($"這張投影片原本因為內容太長被拆成 {pagesBefore} 頁，重寫後變短，已合併成 {pagesAfter} 頁。", $"This slide was split into {pagesBefore} pages because it was too long; after the rewrite it's shorter, so it was merged into {pagesAfter} page(s).") +
                                 (string.IsNullOrWhiteSpace(extraNote) ? "" : "\n\n" + extraNote);
                 }
 
                 if (!string.IsNullOrWhiteSpace(extraNote))
-                    MenuConfirmDialog.ShowMessage(this, "這一頁已更新", extraNote, this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("這一頁已更新", "Page updated"), extraNote, this);
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "重生投影片", "重生投影片失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("重生投影片", "Regenerate slide"), UiLanguage.P("重生投影片失敗：", "Slide regeneration failed:") + ex.Message, this);
             }
             finally
             {
@@ -686,10 +686,10 @@ namespace Cat5201
                 string html = DeckHtmlRenderer.Build(read.Data.Outline, new[] { read.Data.Cover }, allowEdit: false);
                 return InsertDeckBanner(
                     html,
-                    "這份簡報在 PowerPoint 裡被改過",
-                    "下面顯示的是本程式最後一次產出的版本，不是你手動修改後的樣子。" +
-                    "單頁編輯已關閉，以免覆蓋掉你的修改——要看實際版面請用「外部開啟」。" +
-                    "若想讓本程式重新接管，請重新產生一份新的簡報。");
+                    UiLanguage.P("這份簡報在 PowerPoint 裡被改過", "This deck was changed in PowerPoint"),
+                    UiLanguage.P("下面顯示的是本程式最後一次產出的版本，不是你手動修改後的樣子。", "What's shown below is the last version this app produced, not your manual edits.") +
+                    UiLanguage.P("單頁編輯已關閉，以免覆蓋掉你的修改——要看實際版面請用「外部開啟」。", "Single-page editing is turned off so your edits aren't overwritten. Use \"Open externally\" to see the actual layout.") +
+                    UiLanguage.P("若想讓本程式重新接管，請重新產生一份新的簡報。", "To let the app take over again, generate a new deck."));
             }
 
             // 沒有版面資料的簡報（Claude 在沙箱裡排的、外部拿來的）：照實際幾何畫出版面，
@@ -700,9 +700,9 @@ namespace Cat5201
 
             return "<!doctype html><html lang='zh-TW'><meta charset='utf-8'>" +
                    "<body style='font-family:Microsoft JhengHei;padding:48px;color:#1b1b1f'>" +
-                   "<h2 style='margin:0 0 12px'>這份簡報讀不開</h2>" +
-                   "<p style='color:#5f6368;line-height:1.7'>檔案可能損壞，或不是有效的 PPTX。<br>" +
-                   "請用右上角的「用系統程式開啟」確認。</p>" +
+                   UiLanguage.P("<h2 style='margin:0 0 12px'>這份簡報讀不開</h2>", "<h2 style='margin:0 0 12px'>This deck can't be opened</h2>") +
+                   UiLanguage.P("<p style='color:#5f6368;line-height:1.7'>檔案可能損壞，或不是有效的 PPTX。<br>", "<p style='color:#5f6368;line-height:1.7'>The file may be damaged or isn't a valid PPTX.<br>") +
+                   UiLanguage.P("請用右上角的「用系統程式開啟」確認。</p>", "Check it with \"Open with default app\" at the top right.</p>") +
                    "</body></html>";
         }
 
@@ -770,7 +770,7 @@ namespace Cat5201
               .Append(".pg{font:600 12px/1 'Segoe UI';letter-spacing:1.5px;color:#").Append(accent).Append("}")
               .Append(".ttl{flex:1;color:#44443F;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}")
               .Append(".act{color:#77776F;font-size:12px}")
-              .Append("details[open] .act::after{content:'（收合）'}")
+              .Append(UiLanguage.P("details[open] .act::after{content:'（收合）'}", "details[open] .act::after{content:' (collapse)'}"))
               .Append(".panel{display:grid;grid-template-columns:1fr 1fr;gap:22px;padding:4px 16px 18px;border-top:1px solid #EDEDE8}")
               .Append(".col{display:flex;flex-direction:column;min-width:0}")
               .Append("label{display:block;margin-top:14px;font-size:12px;color:#6E6E66;letter-spacing:.3px}")
@@ -797,8 +797,8 @@ namespace Cat5201
               .Append("@media(max-width:820px){.panel{grid-template-columns:1fr}}")
               .Append("</style><body>");
 
-            sb.Append("<div class='lead'>這份簡報的版面不是本程式排的，下面是依檔案裡的實際座標重畫的近似版面")
-              .Append("（陰影、漸層等特效沒有重現）。要改內容，用每一頁下面的「編輯這一頁」。</div>");
+            sb.Append(UiLanguage.P("<div class='lead'>這份簡報的版面不是本程式排的，下面是依檔案裡的實際座標重畫的近似版面", "<div class='lead'>This deck wasn't laid out by this app. Below is an approximate layout redrawn from the actual coordinates in the file"))
+              .Append(UiLanguage.P("（陰影、漸層等特效沒有重現）。要改內容，用每一頁下面的「編輯這一頁」。</div>", "(shadows, gradients and similar effects aren't reproduced). To change the content, use \"Edit this page\" under each page.</div>"));
 
             foreach (var slide in deck.Slides)
             {
@@ -894,50 +894,50 @@ namespace Cat5201
             sb.Append("<details data-page='").Append(slide.Order).Append("'>")
               .Append("<summary><span class='pg'>").Append(slide.Order.ToString("00")).Append("</span>")
               .Append("<span class='ttl'>").Append(System.Net.WebUtility.HtmlEncode(heading)).Append("</span>")
-              .Append("<span class='act'>編輯這一頁</span></summary>")
+              .Append(UiLanguage.P("<span class='act'>編輯這一頁</span></summary>", "<span class='act'>Edit this page</span></summary>"))
               .Append("<div class='panel'>");
 
             // 左欄：直接改這一頁的文字
-            sb.Append("<div class='col'><label>這一頁的文字（一行一段，可直接增刪字）</label>")
+            sb.Append(UiLanguage.P("<div class='col'><label>這一頁的文字（一行一段，可直接增刪字）</label>", "<div class='col'><label>Text on this page (one paragraph per line; edit freely)</label>"))
               .Append("<textarea class='lines' rows='").Append(Math.Clamp(slide.Lines.Count, 4, 12)).Append("'>")
               .Append(System.Net.WebUtility.HtmlEncode(string.Join("\n", slide.Lines)))
               .Append("</textarea>")
-              .Append("<div class='row'><button class='primary' data-action='editText'>儲存文字</button>")
-              .Append("<span class='hint'>只改文字，版面與其他頁不動（可用「回到上一版」還原）</span></div>")
+              .Append(UiLanguage.P("<div class='row'><button class='primary' data-action='editText'>儲存文字</button>", "<div class='row'><button class='primary' data-action='editText'>Save text</button>"))
+              .Append(UiLanguage.P("<span class='hint'>只改文字，版面與其他頁不動（可用「回到上一版」還原）</span></div>", "<span class='hint'>Only the text changes; the layout and other pages stay the same (use \"Previous\" to undo)</span></div>"))
               .Append("</div>");
 
             // 右欄：交給模型重做這一頁
-            sb.Append("<div class='col'><label>重新生成這一頁</label>")
-              .Append("<textarea class='instruction' rows='3' placeholder='想怎麼改？例如：改寫得更精簡、多強調成本效益、換一個切入角度（留空＝照原需求重寫）'></textarea>")
-              .Append("<div class='row'><button data-action='rewriteText'>只重新生成這一頁</button></div>")
-              .Append("<span class='hint'>這份簡報的版面不是本程式排的，所以只會改寫文字、版面維持原樣</span>")
+            sb.Append(UiLanguage.P("<div class='col'><label>重新生成這一頁</label>", "<div class='col'><label>Regenerate this page</label>"))
+              .Append(UiLanguage.P("<textarea class='instruction' rows='3' placeholder='想怎麼改？例如：改寫得更精簡、多強調成本效益、換一個切入角度（留空＝照原需求重寫）'></textarea>", "<textarea class='instruction' rows='3' placeholder='How should it change? e.g. make it more concise, emphasize cost-effectiveness, take a different angle (blank = rewrite from the original request)'></textarea>"))
+              .Append(UiLanguage.P("<div class='row'><button data-action='rewriteText'>只重新生成這一頁</button></div>", "<div class='row'><button data-action='rewriteText'>Regenerate only this page</button></div>"))
+              .Append(UiLanguage.P("<span class='hint'>這份簡報的版面不是本程式排的，所以只會改寫文字、版面維持原樣</span>", "<span class='hint'>This deck wasn't laid out by this app, so only the text is rewritten and the layout stays as it is</span>"))
               .Append("</div>");
 
-            sb.Append("<p class='note'>行數不要增減——增減會讓版面錯位。")
-              .Append("頁首、頁碼、條列序號也是段落，會一起列出來；不想動的就原樣留著。</p>");
+            sb.Append(UiLanguage.P("<p class='note'>行數不要增減——增減會讓版面錯位。", "<p class='note'>Don't add or remove lines, or the layout will shift."))
+              .Append(UiLanguage.P("頁首、頁碼、條列序號也是段落，會一起列出來；不想動的就原樣留著。</p>", "Headers, page numbers and bullet numbers are paragraphs too and are listed as well; leave anything you don't want to change as it is.</p>"));
 
             if (slide.Images.Count > 0)
             {
-                sb.Append("<div class='imgrow'><label>這一頁的配圖（目前有 ").Append(slide.Images.Count).Append(" 張）</label>")
-                  .Append("<textarea class='image-brief' rows='2' placeholder='想要什麼畫面？例如：清晨霧氣中的湖面與岩石、紙與金屬的質感靜物（留空＝依這一頁的內容自動決定）'></textarea>")
-                  .Append("<div class='row'><button data-action='replaceImage'>換一張配圖</button>")
-                  .Append("<button data-action='removeImage'>移除配圖</button>")
-                  .Append("<span class='hint'>生成一張圖會實際呼叫圖片模型（")
+                sb.Append(UiLanguage.P("<div class='imgrow'><label>這一頁的配圖（目前有 ", "<div class='imgrow'><label>Illustrations on this page (currently")).Append(slide.Images.Count).Append(UiLanguage.P(" 張）</label>", ")</label>"))
+                  .Append(UiLanguage.P("<textarea class='image-brief' rows='2' placeholder='想要什麼畫面？例如：清晨霧氣中的湖面與岩石、紙與金屬的質感靜物（留空＝依這一頁的內容自動決定）'></textarea>", "<textarea class='image-brief' rows='2' placeholder='What should it show? e.g. a lake and rocks in morning mist, a still life of paper and metal textures (blank = decide from this page’s content)'></textarea>"))
+                  .Append(UiLanguage.P("<div class='row'><button data-action='replaceImage'>換一張配圖</button>", "<div class='row'><button data-action='replaceImage'>Replace illustration</button>"))
+                  .Append(UiLanguage.P("<button data-action='removeImage'>移除配圖</button>", "<button data-action='removeImage'>Remove illustration</button>"))
+                  .Append(UiLanguage.P("<span class='hint'>生成一張圖會實際呼叫圖片模型（", "<span class='hint'>Generating an image calls the image model ("))
                   .Append(ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, AgentRuntime.IllustrationQuality))
-                  .Append("）；地圖、國旗、商標這類查得到正確答案的東西不會生成</span></div></div>");
+                  .Append(UiLanguage.P("）；地圖、國旗、商標這類查得到正確答案的東西不會生成</span></div></div>", "); things with a single correct answer, like maps, flags and logos, are never generated</span></div></div>"));
             }
 
             sb.Append("<p class='status' hidden></p></div></details>");
         }
 
         /// <summary>面板按鈕 → postMessage（跟內建版型預覽同一條通道）。</summary>
-        private const string PanelScript =
+        private static string PanelScript =>
             "<script>document.addEventListener('click',e=>{" +
             "const b=e.target.closest('.panel button[data-action]');if(!b||!window.chrome?.webview)return;" +
             "const d=b.closest('details'),a=b.dataset.action,s=d.querySelector('.status');" +
             "d.querySelectorAll('button').forEach(x=>x.disabled=true);s.hidden=false;" +
-            "s.textContent={editText:'正在寫回文字…',replaceImage:'正在生成新的圖…通常要一兩分鐘。'," +
-            "removeImage:'正在移除配圖…'}[a]||'正在重新生成這一頁…';" +
+            UiLanguage.P("s.textContent={editText:'正在寫回文字…',replaceImage:'正在生成新的圖…通常要一兩分鐘。',", "s.textContent={editText:'Writing the text back…',replaceImage:'Generating a new image… this usually takes a minute or two.',") +
+            UiLanguage.P("removeImage:'正在移除配圖…'}[a]||'正在重新生成這一頁…';", "removeImage:'Removing the illustration…'}[a]||'Regenerating this page…';") +
             "window.chrome.webview.postMessage(JSON.stringify({action:a,order:Number(d.dataset.page)," +
             "bullets:(d.querySelector('.lines')?.value||'').split('\\n')," +
             "instruction:(a==='replaceImage'?d.querySelector('.image-brief')?.value:d.querySelector('.instruction')?.value)||''}));" +
@@ -991,7 +991,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 AppLog.Warn("Preview", "開啟預覽失敗", ex);
-                ShowFallback("預覽失敗：" + ex.Message);
+                ShowFallback(UiLanguage.P("預覽失敗：", "Preview failed:") + ex.Message);
             }
         }
 
@@ -1003,7 +1003,7 @@ namespace Cat5201
 
             if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
             {
-                MenuConfirmDialog.ShowMessage(this, "預覽失敗", "找不到生成的檔案（可能已被刪除）。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("預覽失敗", "Preview failed"), UiLanguage.P("找不到生成的檔案（可能已被刪除）。", "Generated file not found (it may have been deleted)."), this);
                 return;
             }
 
@@ -1015,7 +1015,7 @@ namespace Cat5201
             string targetFull = System.IO.Path.GetFullPath(fullPath);
             if (!targetFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
             {
-                MenuConfirmDialog.ShowMessage(this, "預覽失敗", "檔案不在允許預覽的範圍內。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("預覽失敗", "Preview failed"), UiLanguage.P("檔案不在允許預覽的範圍內。", "This file is outside the folders the app is allowed to preview."), this);
                 return;
             }
 
@@ -1133,13 +1133,13 @@ namespace Cat5201
                         break;
 
                     default:
-                        ShowFallback($"「.{ext}」格式無法在這裡預覽，可用系統程式開啟。");
+                        ShowFallback(UiLanguage.P($"「.{ext}」格式無法在這裡預覽，可用系統程式開啟。", $"\".{ext}\" files can't be previewed here. Open it with the default app instead."));
                         break;
                 }
             }
             catch (Exception ex)
             {
-                ShowFallback($"預覽失敗：{ex.Message}");
+                ShowFallback(UiLanguage.P($"預覽失敗：{ex.Message}", $"Preview failed: {ex.Message}"));
             }
         }
 
@@ -1160,7 +1160,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                ShowFallback($"圖片載入失敗：{ex.Message}");
+                ShowFallback(UiLanguage.P($"圖片載入失敗：{ex.Message}", $"Image failed to load: {ex.Message}"));
             }
         }
 
@@ -1203,7 +1203,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 PreviewWeb.Visibility = Visibility.Collapsed;
-                ShowFallback($"無法載入預覽器（WebView2）：{ex.Message}");
+                ShowFallback(UiLanguage.P($"無法載入預覽器（WebView2）：{ex.Message}", $"Couldn't load the previewer (WebView2): {ex.Message}"));
             }
             finally
             {
@@ -1244,7 +1244,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 PreviewWeb.Visibility = Visibility.Collapsed;
-                ShowFallback($"無法載入預覽器（WebView2）：{ex.Message}");
+                ShowFallback(UiLanguage.P($"無法載入預覽器（WebView2）：{ex.Message}", $"Couldn't load the previewer (WebView2): {ex.Message}"));
             }
             finally
             {
@@ -1254,7 +1254,7 @@ namespace Cat5201
 
         private void ShowTextPreview(string? text)
         {
-            PreviewText.Text = string.IsNullOrWhiteSpace(text) ? "（沒有可顯示的文字內容）" : text;
+            PreviewText.Text = string.IsNullOrWhiteSpace(text) ? UiLanguage.P("（沒有可顯示的文字內容）", "(No text to show)") : text;
             PreviewTextScroll.Visibility = Visibility.Visible;
         }
 
@@ -1335,11 +1335,11 @@ namespace Cat5201
                 ? GeneratedFileHistory.HasNext(path)
                 : GeneratedFileHistory.HasPrevious(path);
 
-            string label = forward ? "下一版" : "上一版";
+            string label = forward ? UiLanguage.P("下一版", "next version") : UiLanguage.P("上一版", "previous version");
 
             if (!available)
             {
-                MenuConfirmDialog.ShowMessage(this, label, $"沒有可以切換的{label}。", this);
+                MenuConfirmDialog.ShowMessage(this, label, UiLanguage.P($"沒有可以切換的{label}。", $"There's no {label} to switch to."), this);
                 return;
             }
 
@@ -1371,12 +1371,12 @@ namespace Cat5201
                 // PDF 沒跟上：檔案本身還是另一版的內容，使用者打開它會看到不一致的東西，要講。
                 if (step.StaleCompanions.Count > 0)
                     MenuConfirmDialog.ShowMessage(this, label,
-                        $"簡報已切換到{label}，但同資料夾的 PDF 沒有對應的版本，內容仍是切換前的那一版。\n" +
-                        "預覽改用簡報本身顯示；需要 PDF 請從 PowerPoint 另存一份。", this);
+                        UiLanguage.P($"簡報已切換到{label}，但同資料夾的 PDF 沒有對應的版本，內容仍是切換前的那一版。\n", $"The deck was switched to the {label}, but the PDF in the same folder has no matching version, so it still shows the earlier one.\n") +
+                        UiLanguage.P("預覽改用簡報本身顯示；需要 PDF 請從 PowerPoint 另存一份。", "The preview now shows the deck itself. If you need a PDF, save one from PowerPoint."), this);
             }
             else
             {
-                MenuConfirmDialog.ShowMessage(this, label, $"沒有可以切換的{label}。", this);
+                MenuConfirmDialog.ShowMessage(this, label, UiLanguage.P($"沒有可以切換的{label}。", $"There's no {label} to switch to."), this);
             }
 
             RefreshPreviewUndoState();
@@ -1392,13 +1392,13 @@ namespace Cat5201
 
             if (node.IsGenerating)
             {
-                MenuConfirmDialog.ShowMessage(this, "重新生成", "這個節點正在執行中，請等它跑完再重新生成。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("重新生成", "Regenerate"), UiLanguage.P("這個節點正在執行中，請等它跑完再重新生成。", "This node is still running. Wait for it to finish, then regenerate."), this);
                 return;
             }
 
             if (!CheckDailyBudgetAllows(out string budgetMessage))
             {
-                MenuConfirmDialog.ShowMessage(this, "已達今日花費上限", budgetMessage, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已達今日花費上限", "Today's spending limit reached"), budgetMessage, this);
                 return;
             }
 
@@ -1420,9 +1420,9 @@ namespace Cat5201
 
             // 沒填頁碼＝整份重跑。簡報可以單頁重生，別讓使用者以為按下去只會改一頁。
             if ((_previewPath ?? "").EndsWith(".pptx", StringComparison.OrdinalIgnoreCase) &&
-                !MenuConfirmDialog.ShowConfirm(this, "重新生成整份簡報",
-                    "沒有指定頁碼，這會重跑整個節點、整份簡報重做（費用與時間都是整份的）。\n\n只想改某一頁的話：取消後在預覽裡展開那一頁的「編輯第 N 頁」，用「只重新生成這一頁」。",
-                    this, "整份重做", "取消"))
+                !MenuConfirmDialog.ShowConfirm(this, UiLanguage.P("重新生成整份簡報", "Regenerate the whole deck"),
+                    UiLanguage.P("沒有指定頁碼，這會重跑整個節點、整份簡報重做（費用與時間都是整份的）。\n\n只想改某一頁的話：取消後在預覽裡展開那一頁的「編輯第 N 頁」，用「只重新生成這一頁」。", "No page number was given, so this reruns the whole node and redoes the entire deck (full cost and time).\n\nTo change just one page: cancel, expand that page in the preview, and use \"Regenerate only this page\"."),
+                    this, UiLanguage.P("整份重做", "Redo all"), UiLanguage.P("取消", "Cancel")))
             {
                 return;
             }

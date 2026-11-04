@@ -52,7 +52,7 @@ namespace Cat5201
             {
                 "API Auto" => "API Auto",
                 "Auto" => "Rule Auto",
-                "Collaboration" => "協作",
+                "Collaboration" => UiLanguage.P("協作", "Collaboration"),
                 _ => "Manual"
             };
 
@@ -182,9 +182,9 @@ namespace Cat5201
             // 第一行就是清楚的 Manual/Auto 提示。
             string modeLine = log.SelectionMode switch
             {
-                "Manual" => $"🛠 手動指定模型：{actual}",
-                "API Auto" => $"🤖 自動選模型：{actual}（AI 先判斷任務再挑）",
-                _ => $"🤖 自動選模型：{actual}（依關鍵字規則挑）"
+                "Manual" => UiLanguage.P($"🛠 手動指定模型：{actual}", $"🛠 Model chosen manually: {actual}"),
+                "API Auto" => UiLanguage.P($"🤖 自動選模型：{actual}（AI 先判斷任務再挑）", $"🤖 Model chosen automatically: {actual} (AI judged the task first)"),
+                _ => UiLanguage.P($"🤖 自動選模型：{actual}（依關鍵字規則挑）", $"🤖 Model chosen automatically: {actual} (by keyword rules)")
             };
 
             var lines = new List<string> { modeLine };
@@ -192,11 +192,11 @@ namespace Cat5201
             if (!string.IsNullOrWhiteSpace(log.TaskMode))
                 // 分數留在下面的「任務判斷」區塊。摘要第一眼只要回答「它把這件事當成什麼」，
                 // 一個沒有校準過、也不是機率的小數放在這裡只會讓人停下來想它是什麼意思。
-                lines.Add($"📌 判斷任務：{Safe(log.TaskMode)}");
+                lines.Add(UiLanguage.P($"📌 判斷任務：{Safe(log.TaskMode)}", $"📌 Task: {Safe(log.TaskMode)}"));
 
             // §6 第一層輸出判斷：這次想要的輸出（報告 / 表格 / 簡報）。
             if (!string.IsNullOrWhiteSpace(log.OutputIntentSummary))
-                lines.Add($"🎯 想要的輸出：{Safe(log.OutputIntentSummary)}");
+                lines.Add(UiLanguage.P($"🎯 想要的輸出：{Safe(log.OutputIntentSummary)}", $"🎯 Wanted output: {Safe(log.OutputIntentSummary)}"));
 
             // 各步驟實際收到了什麼——「要求有沒有傳到」要能查，不能只靠設計上應該如此。
             foreach (string line in BuildStepInputLines(log))
@@ -204,9 +204,9 @@ namespace Cat5201
 
             var recall = log.MemoryRecall ?? MemoryRecallStats.Empty;
             if (recall.Suppressed)
-                lines.Add("🧠 記憶：本次略過");
+                lines.Add(UiLanguage.P("🧠 記憶：本次略過", "🧠 Memory: skipped this time"));
             else if (recall.HasAny)
-                lines.Add($"🧠 記憶：用了偏好 {recall.PreferenceCount} 條、相關歷史 {recall.EpisodicCount} 筆");
+                lines.Add(UiLanguage.P($"🧠 記憶：用了偏好 {recall.PreferenceCount} 條、相關歷史 {recall.EpisodicCount} 筆", $"🧠 Memory: {recall.PreferenceCount} preference(s), {recall.EpisodicCount} related history item(s)"));
 
             // 即時資料：照實呈現拿到了什麼（官方來源 / 搜尋摘錄 / 服務失敗），不讓決策窗看起來「已完成查證」。
             var evidence = (log.WorkspaceArtifacts ?? Array.Empty<AgentWorkspaceArtifactRecord>())
@@ -215,18 +215,18 @@ namespace Cat5201
                 .Distinct()
                 .ToList();
             if (evidence.Count > 0)
-                lines.Add("🔎 即時資料：" + string.Join("；", evidence));
+                lines.Add(UiLanguage.P("🔎 即時資料：", "🔎 Live data:") + string.Join("；", evidence));
 
             var files = CollectOutputFileNames(log);
             if (files.Count > 0)
-                lines.Add("📄 產出：" + string.Join("、", files));
+                lines.Add(UiLanguage.P("📄 產出：", "📄 Output:") + string.Join("、", files));
 
             string durationText = FormatDuration(log.DurationMs);
 
             var failure = FailureExplainer.Explain(log.ErrorMessage);
             string resultLine = log.Success
-                ? $"✅ 結果：成功 · {durationText}"
-                : $"❌ 結果：失敗 · {(failure != null ? failure.Title : Safe(log.ErrorMessage))}";
+                ? UiLanguage.P($"✅ 結果：成功 · {durationText}", $"✅ Result: success · {durationText}")
+                : UiLanguage.P($"❌ 結果：失敗 · {(failure != null ? failure.Title : Safe(log.ErrorMessage))}", $"❌ Result: failed · {(failure != null ? failure.Title : Safe(log.ErrorMessage))}");
 
             if (log.Success && !string.IsNullOrWhiteSpace(log.CostDisplay))
                 resultLine += $" · {log.CostDisplay}";
@@ -235,7 +235,7 @@ namespace Cat5201
 
             // 失敗時：把「該怎麼辦」直接寫出來（餘額不足、金鑰無效、沒網路…原本只有翻日誌才知道）。
             if (!log.Success && failure != null && !string.IsNullOrWhiteSpace(failure.Action))
-                lines.Add($"💡 怎麼辦：{failure.Action}");
+                lines.Add(UiLanguage.P($"💡 怎麼辦：{failure.Action}", $"💡 What to do: {failure.Action}"));
 
             // 哪個模型不能用、換成了誰（自動後備本來只寫在技術區的英文行裡）。
             foreach (var attemptLine in FailureExplainer.DescribeAttempts(log.FallbackAttempts, GetModelLabel))
@@ -243,23 +243,23 @@ namespace Cat5201
 
             // 個人化可稽查：這次實際採用了哪些偏好、哪一項被本次請求覆寫。
             if (!string.IsNullOrWhiteSpace(log.EffectivePreferences))
-                lines.Add("⚙ 個人化：" + log.EffectivePreferences);
+                lines.Add(UiLanguage.P("⚙ 個人化：", "⚙ Personal:") + log.EffectivePreferences);
 
             // 成本可稽查：逐筆明細（用途 · 模型 · 用量 · 金額）。失敗的執行也照列——錢可能已經花了。
             var breakdown = UsageSummary.BuildBreakdownLines(log.UsageRecords);
             if (breakdown.Count > 0)
             {
-                lines.Add("💰 成本明細：");
+                lines.Add(UiLanguage.P("💰 成本明細：", "💰 Cost breakdown:"));
                 foreach (var item in breakdown)
                     lines.Add("　・" + item);
             }
 
-            string detail = (string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? "手動" : "自動")
-                            + $" · {actual} · " + (log.Success ? "成功" : "失敗");
+            string detail = (string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? UiLanguage.P("手動", "Manual") : UiLanguage.P("自動", "Auto"))
+                            + $" · {actual} · " + (log.Success ? UiLanguage.P("成功", "success") : UiLanguage.P("失敗", "failed"));
 
             return new NodeDecisionStepViewData
             {
-                Title = "執行摘要",
+                Title = UiLanguage.P("執行摘要", "Run summary"),
                 Detail = detail,
                 State = log.Success ? NodeDecisionStepState.Success : NodeDecisionStepState.Error,
                 Highlight = true,
@@ -308,19 +308,19 @@ namespace Cat5201
 
             int missing = steps.Count(s => !s.ContainsOriginalRequest);
             yield return missing == 0
-                ? $"📥 各步驟收到的內容：{steps.Count} 步，每一步都完整包含原始要求"
-                : $"📥 各步驟收到的內容：{steps.Count} 步，其中 {missing} 步**沒有完整包含**原始要求";
+                ? UiLanguage.P($"📥 各步驟收到的內容：{steps.Count} 步，每一步都完整包含原始要求", $"📥 Input to each step: {steps.Count} step(s), each containing the full original request")
+                : UiLanguage.P($"📥 各步驟收到的內容：{steps.Count} 步，其中 {missing} 步**沒有完整包含**原始要求", $"📥 Input to each step: {steps.Count} step(s), {missing} of which **don't fully include** the original request");
 
             foreach (var s in steps)
             {
                 string model = string.IsNullOrWhiteSpace(s.ModelId) ? "—" : ParticipantLabel(s.ModelId);
-                yield return $"　· {s.Step}｜{model}｜{s.Chars:N0} 字｜" +
-                             (s.ContainsOriginalRequest ? "含原始要求 ✓" : "未完整包含原始要求 ✗") +
+                yield return UiLanguage.P($"　· {s.Step}｜{model}｜{s.Chars:N0} 字｜", $"　· {s.Step}｜{model}｜{s.Chars:N0} chars｜") +
+                             (s.ContainsOriginalRequest ? UiLanguage.P("含原始要求 ✓", "includes original request ✓") : UiLanguage.P("未完整包含原始要求 ✗", "doesn't fully include original request ✗")) +
                              $"｜{s.Sha256}";
             }
 
             if (!string.IsNullOrWhiteSpace(log!.StepInputLogPath))
-                yield return $"　完整內容：{log.StepInputLogPath}";
+                yield return UiLanguage.P($"　完整內容：{log.StepInputLogPath}", $"　Full content: {log.StepInputLogPath}");
         }
 
         /// <summary>
@@ -333,7 +333,7 @@ namespace Cat5201
             // 經 Perplexity Agent API 跑的模型（例如 anthropic/claude-sonnet-5-5）：
             // 模型就是使用者認得的那一個，只是搜尋是透過 Perplexity 的服務做的——兩件事都照實寫。
             if (ModelScope.IsAgentApiModel(modelId))
-                return ParticipantLabel(ModelScope.FromAgentApiModel(modelId)) + " 經 Perplexity";
+                return ParticipantLabel(ModelScope.FromAgentApiModel(modelId)) + UiLanguage.P(" 經 Perplexity", " via Perplexity");
 
             var legacy = AiModelRegistry.TryGetLegacyDisplayName(modelId);
             if (legacy != null) return legacy;
@@ -467,12 +467,12 @@ namespace Cat5201
         {
             var lines = new List<string>
             {
-                $"判斷為：{Safe(log.TaskMode)}",
-                $"判斷分數：{log.Confidence:0.00}（0～1 的比對分數，不是機率）"
+                UiLanguage.P($"判斷為：{Safe(log.TaskMode)}", $"Judged as: {Safe(log.TaskMode)}"),
+                UiLanguage.P($"判斷分數：{log.Confidence:0.00}（0～1 的比對分數，不是機率）", $"Score: {log.Confidence:0.00} (a 0–1 match score, not a probability)")
             };
 
             if (!string.IsNullOrWhiteSpace(log.ResolverReason))
-                lines.Add($"判斷理由：{log.ResolverReason}");
+                lines.Add(UiLanguage.P($"判斷理由：{log.ResolverReason}", $"Reason: {log.ResolverReason}"));
 
             if (log.ResolverKeywords != null && log.ResolverKeywords.Count > 0)
             {
@@ -480,14 +480,14 @@ namespace Cat5201
                     .Where(x => !string.IsNullOrWhiteSpace(x))
                     .Distinct(StringComparer.OrdinalIgnoreCase);
 
-                lines.Add("命中的字詞：" + string.Join("、", keywords));
+                lines.Add(UiLanguage.P("命中的字詞：", "Matched words:") + string.Join("、", keywords));
             }
 
             return new NodeDecisionStepViewData
             {
-                Title = "任務判斷",
+                Title = UiLanguage.P("任務判斷", "Task detection"),
                 IsTechnical = true,
-                Detail = $"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}",
+                Detail = UiLanguage.P($"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}", $"{Safe(log.TaskMode)} · score {log.Confidence:0.00}"),
                 State = NodeDecisionStepState.Info,
                 Highlight = true,
                 DetailLines = lines
@@ -512,20 +512,20 @@ namespace Cat5201
 
             if (!string.Equals(requestedLabel, actualLabel, StringComparison.OrdinalIgnoreCase))
             {
-                lines.Add($"原本要用：{requestedLabel}");
-                lines.Add($"實際執行：{actualLabel}");
+                lines.Add(UiLanguage.P($"原本要用：{requestedLabel}", $"Originally requested: {requestedLabel}"));
+                lines.Add(UiLanguage.P($"實際執行：{actualLabel}", $"Actually ran: {actualLabel}"));
             }
             else
             {
-                lines.Add($"使用模型：{actualLabel}");
+                lines.Add(UiLanguage.P($"使用模型：{actualLabel}", $"Model used: {actualLabel}"));
             }
 
             if (log.CapabilityAdjusted &&
                 !string.IsNullOrWhiteSpace(log.CapabilityRequestedModelId) &&
                 !string.IsNullOrWhiteSpace(log.CapabilityResolvedModelId))
             {
-                string why = string.IsNullOrWhiteSpace(log.CapabilityReason) ? "這個任務需要的能力它沒有" : Safe(log.CapabilityReason);
-                lines.Add($"換模型原因：{why}");
+                string why = string.IsNullOrWhiteSpace(log.CapabilityReason) ? UiLanguage.P("這個任務需要的能力它沒有", "it lacks a capability this task needs") : Safe(log.CapabilityReason);
+                lines.Add(UiLanguage.P($"換模型原因：{why}", $"Why the model changed: {why}"));
             }
 
             foreach (var attemptLine in FailureExplainer.DescribeAttempts(log.FallbackAttempts, GetModelLabel))
@@ -534,8 +534,8 @@ namespace Cat5201
             var actualDef = AiModelHelper.GetDefinition(log.ActualModelId);
             if (actualDef != null)
             {
-                lines.Add($"成本等級：{actualDef.CostTierLabel}");
-                lines.Add($"擅長：{actualDef.CapabilitySummary}");
+                lines.Add(UiLanguage.P($"成本等級：{actualDef.CostTierLabel}", $"Cost tier: {actualDef.CostTierLabel}"));
+                lines.Add(UiLanguage.P($"擅長：{actualDef.CapabilitySummary}", $"Good at: {actualDef.CapabilitySummary}"));
             }
 
             var state =
@@ -546,7 +546,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "使用的模型",
+                Title = UiLanguage.P("使用的模型", "Model used"),
                 Detail = summary,
                 State = state,
                 Highlight = true,
@@ -604,55 +604,55 @@ namespace Cat5201
                                           !verification.Contains("官方") &&
                                           !verification.Contains("報價") &&
                                           !verification.Contains("新聞");
-                        RoleFor("research", "🔍", "研究 AI", 1).Add(searchOnly ? "整理搜尋摘錄" : "查證事實", a.ModelId);
+                        RoleFor("research", "🔍", UiLanguage.P("研究 AI", "Research AI"), 1).Add(searchOnly ? UiLanguage.P("整理搜尋摘錄", "Summarize search excerpts") : UiLanguage.P("查證事實", "Verify facts"), a.ModelId);
                         break;
 
                     case "search":
                     case "search_summary":
-                        RoleFor("research", "🔍", "研究 AI", 1).Add("查資料", a.ModelId);
+                        RoleFor("research", "🔍", UiLanguage.P("研究 AI", "Research AI"), 1).Add(UiLanguage.P("查資料", "Look things up"), a.ModelId);
                         break;
 
                     case "analysis":
                     case "reasoning_analysis":
-                        RoleFor("reasoning", "🧠", "分析 AI", 2).Add("分析推理", a.ModelId);
+                        RoleFor("reasoning", "🧠", UiLanguage.P("分析 AI", "Analysis AI"), 2).Add(UiLanguage.P("分析推理", "Analysis & reasoning"), a.ModelId);
                         break;
 
                     case "presentation":
                     case "presentation_outline":
-                        RoleFor("author", "📊", "簡報 AI", 3).Add("撰寫簡報", a.ModelId);
+                        RoleFor("author", "📊", UiLanguage.P("簡報 AI", "Deck AI"), 3).Add(UiLanguage.P("撰寫簡報", "Write the deck"), a.ModelId);
                         break;
 
                     case "media":
                     case "image":
                         if (format.Contains("video") || itemType.Contains("video"))
-                            RoleFor("video", "🎬", "影片 AI", 5).Add("生成影片", a.ModelId);
+                            RoleFor("video", "🎬", UiLanguage.P("影片 AI", "Video AI"), 5).Add(UiLanguage.P("生成影片", "Generate video"), a.ModelId);
                         else
-                            RoleFor("image", "🖼", "圖片 AI", 4).Add("生成圖片", a.ModelId);
+                            RoleFor("image", "🖼", UiLanguage.P("圖片 AI", "Image AI"), 4).Add(UiLanguage.P("生成圖片", "Generate image"), a.ModelId);
                         break;
 
                     case "video":
-                        RoleFor("video", "🎬", "影片 AI", 5).Add("生成影片", a.ModelId);
+                        RoleFor("video", "🎬", UiLanguage.P("影片 AI", "Video AI"), 5).Add(UiLanguage.P("生成影片", "Generate video"), a.ModelId);
                         break;
 
                     case "code":
                     case "code_snapshot":
-                        RoleFor("coder", "💻", "程式 AI", 6).Add("產生程式碼", a.ModelId);
+                        RoleFor("coder", "💻", UiLanguage.P("程式 AI", "Code AI"), 6).Add(UiLanguage.P("產生程式碼", "Write code"), a.ModelId);
                         break;
 
                     case "diff":
                     case "patch":
                     case "code_diff":
-                        RoleFor("coder", "💻", "程式 AI", 6).Add("產生修改", a.ModelId);
+                        RoleFor("coder", "💻", UiLanguage.P("程式 AI", "Code AI"), 6).Add(UiLanguage.P("產生修改", "Write changes"), a.ModelId);
                         break;
 
                     case "final":
                     case "final_synthesis":
-                        RoleFor("primary", "🧠", "統整 AI", 7).Add("統整最終答案", a.ModelId);
+                        RoleFor("primary", "🧠", UiLanguage.P("統整 AI", "Synthesis AI"), 7).Add(UiLanguage.P("統整最終答案", "Combine the final answer"), a.ModelId);
                         break;
 
                     case "file":
                     case "generated_file":
-                        var f = RoleFor("file", "📄", "檔案輸出", 8);
+                        var f = RoleFor("file", "📄", UiLanguage.P("檔案輸出", "File output"), 8);
                         f.IsSystem = true;
                         f.Add(StripGeneratedFilePrefix(a.Title), null);
                         break;
@@ -666,7 +666,7 @@ namespace Cat5201
             if (!hasAiRole)
             {
                 RoleFor("primary", "🧠", "", 7)
-                    .Add("回答", log.ActualModelId);
+                    .Add(UiLanguage.P("回答", "Answer"), log.ActualModelId);
             }
 
             var lines = roles
@@ -677,11 +677,11 @@ namespace Cat5201
             int aiCount = roles.Count(r => !r.IsSystem);
             string detail = aiCount <= 1
                 ? (roles.FirstOrDefault(r => !r.IsSystem)?.Head() ?? GetModelLabel(log.ActualModelId))
-                : $"{aiCount} 個 AI 協作";
+                : UiLanguage.P($"{aiCount} 個 AI 協作", $"{aiCount} AIs collaborating");
 
             return new NodeDecisionStepViewData
             {
-                Title = "參與的 AI",
+                Title = UiLanguage.P("參與的 AI", "AIs involved"),
                 Detail = detail,
                 State = NodeDecisionStepState.Info,
                 Highlight = aiCount > 1,
@@ -749,19 +749,19 @@ namespace Cat5201
         {
             var lines = new List<string>
             {
-                $"挑選方式：{Safe(resolver)}",
-                $"模式：{(string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? "手動指定" : "自動選擇")}"
+                UiLanguage.P($"挑選方式：{Safe(resolver)}", $"Selection: {Safe(resolver)}"),
+                UiLanguage.P("模式：", "Mode: ") + (string.Equals(log.SelectionMode, "Manual", StringComparison.Ordinal) ? UiLanguage.P("手動指定", "manual") : UiLanguage.P("自動選擇", "automatic"))
             };
 
             if (!string.IsNullOrWhiteSpace(log.ResolverReason))
-                lines.Add($"理由：{log.ResolverReason}");
+                lines.Add(UiLanguage.P($"理由：{log.ResolverReason}", $"Reason: {log.ResolverReason}"));
 
             if (apiFallbackUsed)
-                lines.Add("讓 AI 判斷這一步沒成功，已改用關鍵字規則挑模型。");
+                lines.Add(UiLanguage.P("讓 AI 判斷這一步沒成功，已改用關鍵字規則挑模型。", "Letting the AI decide failed for this step, so keyword rules were used to pick the model."));
 
             return new NodeDecisionStepViewData
             {
-                Title = "怎麼挑模型的",
+                Title = UiLanguage.P("怎麼挑模型的", "How the model was chosen"),
                 IsTechnical = true,
                 Detail = Safe(resolver),
                 State = apiFallbackUsed ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
@@ -800,7 +800,7 @@ namespace Cat5201
 
             return new NodeDecisionStepViewData
             {
-                Title = "模型能力檢查",
+                Title = UiLanguage.P("模型能力檢查", "Model capability check"),
                 IsTechnical = true,
                 Detail = detail,
                 State = state,
@@ -817,41 +817,41 @@ namespace Cat5201
             {
                 return new NodeDecisionStepViewData
                 {
-                    Title = "記憶",
+                    Title = UiLanguage.P("記憶", "Memory"),
                     IsTechnical = true,
-                    Detail = "本次略過記憶",
+                    Detail = UiLanguage.P("本次略過記憶", "Memory skipped this time"),
                     State = NodeDecisionStepState.Info,
                     DetailLines = new List<string>
                     {
                         string.IsNullOrWhiteSpace(recall.SuppressReason)
-                            ? "本次未注入記憶。"
+                            ? UiLanguage.P("本次未注入記憶。", "No memory was injected this time.")
                             : recall.SuppressReason
                     }
                 };
             }
 
-            string detail = $"偏好 {recall.PreferenceCount}・記憶 {recall.EpisodicCount}";
+            string detail = UiLanguage.P($"偏好 {recall.PreferenceCount}・記憶 {recall.EpisodicCount}", $"Preferences {recall.PreferenceCount} · memories {recall.EpisodicCount}");
 
             var lines = new List<string>
             {
-                $"偏好（一律注入）：{recall.PreferenceCount} 條",
-                $"相關記憶（召回）：{recall.EpisodicCount} 筆"
-                    + (recall.EpisodicCount > 0 ? $"（Agent {recall.AgentCount}・共享 {recall.SharedCount}）" : "")
+                UiLanguage.P($"偏好（一律注入）：{recall.PreferenceCount} 條", $"Preferences (always injected): {recall.PreferenceCount}"),
+                UiLanguage.P($"相關記憶（召回）：{recall.EpisodicCount} 筆", $"Related memories (recalled): {recall.EpisodicCount}")
+                    + (recall.EpisodicCount > 0 ? UiLanguage.P($"（Agent {recall.AgentCount}・共享 {recall.SharedCount}）", $" (agent {recall.AgentCount} · shared {recall.SharedCount})") : "")
             };
 
             if (recall.Details != null && recall.Details.Count > 0)
             {
-                lines.Add("--- 本次召回內容 ---");
+                lines.Add(UiLanguage.P("--- 本次召回內容 ---", "--- Recalled this time ---"));
                 lines.AddRange(recall.Details);
             }
             else if (!recall.HasAny)
             {
-                lines.Add("本次沒有可用的偏好或相關記憶。");
+                lines.Add(UiLanguage.P("本次沒有可用的偏好或相關記憶。", "No preferences or related memories were available this time."));
             }
 
             return new NodeDecisionStepViewData
             {
-                Title = "記憶",
+                Title = UiLanguage.P("記憶", "Memory"),
                 IsTechnical = true,
                 Detail = detail,
                 State = recall.HasAny ? NodeDecisionStepState.Success : NodeDecisionStepState.Info,
@@ -902,7 +902,7 @@ namespace Cat5201
 
             if (detailLines.Count == 0)
             {
-                detail = "這次沒有產生共享資料";
+                detail = UiLanguage.P("這次沒有產生共享資料", "No shared data was produced this time");
             }
             else
             {
@@ -919,7 +919,7 @@ namespace Cat5201
                 if (factCount == 0 && log.WorkspaceArtifacts != null)
                     factCount = log.WorkspaceArtifacts.Sum(x => x?.FactCount ?? 0);
 
-                detail = $"資料 {artifactCount} 項・查到的事實 {factCount} 筆";
+                detail = UiLanguage.P($"資料 {artifactCount} 項・查到的事實 {factCount} 筆", $"{artifactCount} data item(s) · {factCount} fact(s) found");
                 state = factCount > 0 ? NodeDecisionStepState.Success : NodeDecisionStepState.Info;
             }
 
@@ -928,13 +928,13 @@ namespace Cat5201
             if (detail == "-" && artifactRecords.Count > 0)
             {
                 int visible = artifactRecords.Count(x => x != null && x.IsUserVisible);
-                detail = $"產出物 {artifactRecords.Count} 項（可見 {visible}）";
+                detail = UiLanguage.P($"產出物 {artifactRecords.Count} 項（可見 {visible}）", $"{artifactRecords.Count} output(s) ({visible} visible)");
                 state = NodeDecisionStepState.Success;
             }
 
             return new NodeDecisionStepViewData
             {
-                Title = "共享工作區",
+                Title = UiLanguage.P("共享工作區", "Shared workspace"),
                 IsTechnical = true,
                 Detail = detail,
                 State = state,
@@ -949,25 +949,25 @@ namespace Cat5201
             var lines = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequestedModelId))
-                lines.Add($"原本要用：{GetModelLabel(log.CapabilityRequestedModelId)}");
+                lines.Add(UiLanguage.P($"原本要用：{GetModelLabel(log.CapabilityRequestedModelId)}", $"Originally requested: {GetModelLabel(log.CapabilityRequestedModelId)}"));
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityResolvedModelId))
-                lines.Add($"實際改用：{GetModelLabel(log.CapabilityResolvedModelId)}");
+                lines.Add(UiLanguage.P($"實際改用：{GetModelLabel(log.CapabilityResolvedModelId)}", $"Switched to: {GetModelLabel(log.CapabilityResolvedModelId)}"));
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequired))
-                lines.Add($"這個任務需要：{log.CapabilityRequired}");
+                lines.Add(UiLanguage.P($"這個任務需要：{log.CapabilityRequired}", $"This task needs: {log.CapabilityRequired}"));
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityMissing))
-                lines.Add($"原本那個模型沒有：{log.CapabilityMissing}");
+                lines.Add(UiLanguage.P($"原本那個模型沒有：{log.CapabilityMissing}", $"The original model lacks: {log.CapabilityMissing}"));
 
             if (log.CapabilityStreamingAdjusted)
-                lines.Add("已關閉逐字輸出（這個模型不支援）");
+                lines.Add(UiLanguage.P("已關閉逐字輸出（這個模型不支援）", "Streaming output turned off (this model doesn't support it)"));
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityReason))
-                lines.Add($"原因：{log.CapabilityReason}");
+                lines.Add(UiLanguage.P($"原因：{log.CapabilityReason}", $"Reason: {log.CapabilityReason}"));
 
             if (lines.Count == 0)
-                lines.Add("模型能力符合這個任務，沒有調整。");
+                lines.Add(UiLanguage.P("模型能力符合這個任務，沒有調整。", "The model's capabilities fit this task; nothing was changed."));
 
             return lines;
         }
@@ -976,15 +976,15 @@ namespace Cat5201
         {
             string detail = BuildFallbackDetail(log, apiFallbackUsed);
             if (string.IsNullOrWhiteSpace(detail))
-                detail = "無";
+                detail = UiLanguage.P("無", "None");
 
             var lines = new List<string>();
 
             if (apiFallbackUsed)
-                lines.Add("讓 AI 挑模型失敗，改用關鍵字規則。");
+                lines.Add(UiLanguage.P("讓 AI 挑模型失敗，改用關鍵字規則。", "Letting the AI pick the model failed, so keyword rules were used."));
 
             if (log.RuntimeFallbackUsed && !string.IsNullOrWhiteSpace(log.RuntimeFallbackSummary))
-                lines.Add($"經過：{log.RuntimeFallbackSummary}");
+                lines.Add(UiLanguage.P($"經過：{log.RuntimeFallbackSummary}", $"What happened: {log.RuntimeFallbackSummary}"));
 
             if (log.FallbackAttempts != null && log.FallbackAttempts.Count > 0)
             {
@@ -1003,11 +1003,11 @@ namespace Cat5201
             }
 
             if (lines.Count == 0)
-                lines.Add("第一個模型就成功了，沒有換過。");
+                lines.Add(UiLanguage.P("第一個模型就成功了，沒有換過。", "The first model succeeded; no switch was needed."));
 
             return new NodeDecisionStepViewData
             {
-                Title = "換過的模型",
+                Title = UiLanguage.P("換過的模型", "Model switches"),
                 IsTechnical = true,
                 Detail = detail,
                 State = (log.RuntimeFallbackUsed || apiFallbackUsed)
@@ -1020,48 +1020,48 @@ namespace Cat5201
         /// <summary>毫秒 → 人類可讀時長：850 毫秒 / 12.4 秒 / 2 分 50 秒。</summary>
         internal static string FormatDuration(long ms)
         {
-            if (ms < 1000) return $"{ms} 毫秒";
-            if (ms < 60_000) return $"{ms / 1000.0:0.#} 秒";
+            if (ms < 1000) return UiLanguage.P($"{ms} 毫秒", $"{ms} ms");
+            if (ms < 60_000) return UiLanguage.P($"{ms / 1000.0:0.#} 秒", $"{ms / 1000.0:0.#} s");
             long totalSec = (long)Math.Round(ms / 1000.0);
-            return $"{totalSec / 60} 分 {totalSec % 60} 秒";
+            return UiLanguage.P($"{totalSec / 60} 分 {totalSec % 60} 秒", $"{totalSec / 60} min {totalSec % 60} s");
         }
 
         private static NodeDecisionStepViewData BuildExecutionStep(AiExecutionLogEntry log)
         {
             string executionDetail = log.Success
-                ? $"成功 · {FormatDuration(log.DurationMs)}"
-                : $"失敗 / {Safe(log.ErrorMessage)}";
+                ? UiLanguage.P($"成功 · {FormatDuration(log.DurationMs)}", $"Success · {FormatDuration(log.DurationMs)}")
+                : UiLanguage.P($"失敗 / {Safe(log.ErrorMessage)}", $"Failed / {Safe(log.ErrorMessage)}");
 
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
                 executionDetail += $" · {log.CostDisplay}";
 
             var lines = new List<string>
             {
-                $"開始：{log.StartedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
-                $"結束：{log.EndedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}",
-                $"花了：{FormatDuration(log.DurationMs)}",
-                $"結果：{(log.Success ? "成功" : "失敗")}"
+                UiLanguage.P($"開始：{log.StartedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}", $"Start: {log.StartedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}"),
+                UiLanguage.P($"結束：{log.EndedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}", $"End: {log.EndedAtUtc.ToLocalTime():yyyy-MM-dd HH:mm:ss}"),
+                UiLanguage.P($"花了：{FormatDuration(log.DurationMs)}", $"Took: {FormatDuration(log.DurationMs)}"),
+                UiLanguage.P("結果：", "Result: ") + (log.Success ? UiLanguage.P("成功", "success") : UiLanguage.P("失敗", "failed"))
             };
 
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
-                lines.Add($"成本：{log.CostDisplay}（讀進 {log.InputTokens}、寫出 {log.OutputTokens} 個 token）");
+                lines.Add(UiLanguage.P($"成本：{log.CostDisplay}（讀進 {log.InputTokens}、寫出 {log.OutputTokens} 個 token）", $"Cost: {log.CostDisplay} ({log.InputTokens} tokens in, {log.OutputTokens} out)"));
 
             foreach (var r in log.UsageRecords ?? Array.Empty<UsageRecord>())
             {
                 string amount = r.Kind == UsageKinds.Llm
-                    ? $"讀進 {r.InputTokens}、寫出 {r.OutputTokens} 個 token"
+                    ? UiLanguage.P($"讀進 {r.InputTokens}、寫出 {r.OutputTokens} 個 token", $"{r.InputTokens} tokens in, {r.OutputTokens} out")
                     : $"{r.Quantity:0.##} {r.Unit}";
                 string note = string.IsNullOrWhiteSpace(r.Note) ? "" : $"（{r.Note}）";
-                string estimated = r.IsActual ? "" : "（估算）";
+                string estimated = r.IsActual ? "" : UiLanguage.P("（估算）", " (estimate)");
                 lines.Add($"{r.AtUtc.ToLocalTime():HH:mm:ss}　{r.Purpose}・{GetModelLabel(r.ModelId)}・{amount}・{ModelCostEstimator.FormatTwd(r.UsdCost)}{estimated}{note}");
             }
 
             if (!string.IsNullOrWhiteSpace(log.ErrorMessage))
-                lines.Add($"錯誤訊息：{log.ErrorMessage}");
+                lines.Add(UiLanguage.P($"錯誤訊息：{log.ErrorMessage}", $"Error message: {log.ErrorMessage}"));
 
             return new NodeDecisionStepViewData
             {
-                Title = "執行細節",
+                Title = UiLanguage.P("執行細節", "Run details"),
                 IsTechnical = true,
                 Detail = executionDetail,
                 State = log.Success ? NodeDecisionStepState.Success : NodeDecisionStepState.Error,
@@ -1072,7 +1072,7 @@ namespace Cat5201
 
         private static string BuildTaskSummary(AiExecutionLogEntry log)
         {
-            return $"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}・{FormatDuration(log.DurationMs)}";
+            return UiLanguage.P($"{Safe(log.TaskMode)}・分數 {log.Confidence:0.00}・{FormatDuration(log.DurationMs)}", $"{Safe(log.TaskMode)} · score {log.Confidence:0.00} · {FormatDuration(log.DurationMs)}");
         }
 
         private static string BuildKeywordSummary(AiExecutionLogEntry log)
@@ -1141,7 +1141,7 @@ namespace Cat5201
                 extraParts.Add(log.ErrorMessage);
 
             if (!string.IsNullOrWhiteSpace(log.WorkspaceSummary))
-                extraParts.Add("多代理協作：" + Trim(log.WorkspaceSummary, 360));
+                extraParts.Add(UiLanguage.P("多代理協作：", "Multi-agent collaboration:") + Trim(log.WorkspaceSummary, 360));
 
 
             return extraParts.Count == 0 ? "" : string.Join(" / ", extraParts);
@@ -1158,19 +1158,19 @@ namespace Cat5201
             var parts = new List<string>();
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityMissing))
-                parts.Add($"缺少 {log.CapabilityMissing}");
+                parts.Add(UiLanguage.P($"缺少 {log.CapabilityMissing}", $"missing {log.CapabilityMissing}"));
 
             if (!string.IsNullOrWhiteSpace(log.CapabilityRequired) &&
                 !string.Equals(log.CapabilityRequired, AiModelCapability.None.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                parts.Add($"需要 {log.CapabilityRequired}");
+                parts.Add(UiLanguage.P($"需要 {log.CapabilityRequired}", $"needs {log.CapabilityRequired}"));
             }
 
             if (!string.Equals(requestedLabel, resolvedLabel, StringComparison.OrdinalIgnoreCase))
                 parts.Add($"{requestedLabel} → {resolvedLabel}");
 
             if (log.CapabilityStreamingAdjusted)
-                parts.Add("改成不逐字輸出");
+                parts.Add(UiLanguage.P("改成不逐字輸出", "switched to non-streaming output"));
 
             return parts.Count == 0 ? "" : string.Join(" / ", parts);
         }

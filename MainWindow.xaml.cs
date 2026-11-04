@@ -441,7 +441,7 @@ namespace Cat5201
         {
             var dlg = new Microsoft.Win32.OpenFolderDialog
             {
-                Title = "選擇產出檔案要存到哪裡",
+                Title = UiLanguage.P("選擇產出檔案要存到哪裡", "Choose where to save output files"),
                 InitialDirectory = GeneratedFilesDir,
             };
 
@@ -823,7 +823,7 @@ namespace Cat5201
                     : DecisionPanelExpandIconData);
 
             if (DecisionPanelToggleButton != null)
-                DecisionPanelToggleButton.ToolTip = _isDecisionPanelExpanded ? "縮回決策窗" : "放大決策窗";
+                DecisionPanelToggleButton.ToolTip = _isDecisionPanelExpanded ? UiLanguage.P("縮回決策窗", "Collapse decision panel") : UiLanguage.P("放大決策窗", "Expand decision panel");
         }
 
         private void ShowDecisionForNode(NodeControl node)
@@ -877,16 +877,16 @@ namespace Cat5201
             {
                 modeText = "Auto";
                 statusText = "API Auto";
-                resolverText = "Responses API（預估）";
+                resolverText = UiLanguage.P("Responses API（預估）", "Responses API (estimate)");
             }
             else
             {
                 modeText = "Auto";
                 statusText = "Rule Auto";
-                resolverText = "Rules（預估）";
+                resolverText = UiLanguage.P("Rules（預估）", "Rules (estimate)");
             }
 
-            string previewSummary = $"{previewTaskName} / 尚未執行";
+            string previewSummary = UiLanguage.P($"{previewTaskName} / 尚未執行", $"{previewTaskName} / not run yet");
 
             string previewReason = string.IsNullOrWhiteSpace(previewResolution.Reason)
                 ? "-"
@@ -923,7 +923,7 @@ namespace Cat5201
         new NodeDecisionStepViewData
         {
             Title = "Task Mode",
-            Detail = $"{previewTaskName} / 預估",
+            Detail = UiLanguage.P($"{previewTaskName} / 預估", $"{previewTaskName} / estimate"),
             State = NodeDecisionStepState.Info,
             Highlight = true
         },
@@ -937,27 +937,27 @@ namespace Cat5201
         new NodeDecisionStepViewData
         {
             Title = "Capability",
-            Detail = "尚未觸發",
+            Detail = UiLanguage.P("尚未觸發", "Not triggered"),
             State = NodeDecisionStepState.Info,
             DetailLines = new[]
             {
-                "Preview 階段尚未實際執行 capability"
+                UiLanguage.P("Preview 階段尚未實際執行 capability", "Capabilities aren't actually run during preview")
             }
         },
         new NodeDecisionStepViewData
         {
             Title = "Delegation",
-            Detail = "尚未觸發",
+            Detail = UiLanguage.P("尚未觸發", "Not triggered"),
             State = NodeDecisionStepState.Info,
             DetailLines = new[]
             {
-                "Preview 階段尚未實際執行 agent delegation"
+                UiLanguage.P("Preview 階段尚未實際執行 agent delegation", "Agent delegation isn't actually run during preview")
             }
         },
         new NodeDecisionStepViewData
         {
             Title = "Execution",
-            Detail = "尚未執行",
+            Detail = UiLanguage.P("尚未執行", "Not run yet"),
             State = NodeDecisionStepState.Info
         }
     }
@@ -1318,7 +1318,7 @@ namespace Cat5201
      status: "API Auto",
      mode: "Auto",
      resolver: "Responses API",
-     model: "等待送出",
+     model: UiLanguage.P("等待送出", "Waiting to send"),
      taskSummary: "-",
      reason: "-",
      keywords: "-",
@@ -1332,7 +1332,7 @@ namespace Cat5201
      status: "Rule Auto",
      mode: "Auto",
      resolver: "Rules",
-     model: "等待送出",
+     model: UiLanguage.P("等待送出", "Waiting to send"),
      taskSummary: "-",
      reason: "-",
      keywords: "-",
@@ -1670,6 +1670,9 @@ namespace Cat5201
 
             // 全域個人化偏好先載入（在同步開關之前），確保所有設定一律以個人化為準，跨專案、跨重啟一致。
             LoadPreferences();
+            // 介面語言：沒選過就先問（後面的金鑰精靈、開始畫面都要用選好的語言顯示）。
+            AskInterfaceLanguageIfNeeded();
+            SyncUiLanguageRadios();
             SyncDownstreamAutoModeRadios();
             SyncPresentationEngineRadios();
             SyncDocumentEngineRadios();
@@ -1724,10 +1727,10 @@ namespace Cat5201
         {
             string[] messages =
             {
-                "讓我們有個新的開始！",
-                "或許我們該從頭來過…",
-                "再來一次吧！忘掉過去的那些…",
-                "來點新的？"
+                UiLanguage.P("讓我們有個新的開始！", "Let's make a fresh start!"),
+                UiLanguage.P("或許我們該從頭來過…", "Maybe we should start over…"),
+                UiLanguage.P("再來一次吧！忘掉過去的那些…", "One more time! Forget what came before…"),
+                UiLanguage.P("來點新的？", "Something new?")
             };
             StartMessage.Text = messages[_random.Next(messages.Length)];
         }
@@ -1738,7 +1741,7 @@ namespace Cat5201
             MainUI.Visibility = Visibility.Visible;
 
             _currentFilePath = System.IO.Path.Combine(SavesDir, DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".json");
-            CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
+            RefreshCurrentFileLabel();
             _hasStarted = true;
 
             if (AutoModelSwitch != null)
@@ -1802,7 +1805,7 @@ namespace Cat5201
 
             _hasStarted = false;
             _currentFilePath = null;
-            CurrentFileLabel.Text = "目前檔案：尚未建立";
+            RefreshCurrentFileLabel();
             ClearAll();
 
             _fileNameLockedByUser = false;
@@ -1848,10 +1851,10 @@ namespace Cat5201
                 PlacementTarget = FileList
             };
 
-            var miRename = new MenuItem { Header = "重新命名", Style = miStyle };
+            var miRename = new MenuItem { Header = UiLanguage.P("重新命名", "Rename"), Style = miStyle };
             miRename.Click += (_, __) => BeginInlineRename(item);
 
-            var miDelete = new MenuItem { Header = "刪除", Style = miStyle };
+            var miDelete = new MenuItem { Header = UiLanguage.P("刪除", "Delete"), Style = miStyle };
             miDelete.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F")!);
             miDelete.Click += (_, __) => DeleteFile(item.FullPath);
 
@@ -1890,8 +1893,8 @@ namespace Cat5201
             // 真正想知道保留規則的人會去「最近刪除」那一頁看。
             bool ok = MenuConfirmDialog.ShowDeleteConfirm(
                 owner: this,
-                title: "刪除確認",
-                message: $"要刪除「{name}」嗎？",
+                title: UiLanguage.P("刪除確認", "Confirm delete"),
+                message: UiLanguage.P($"要刪除「{name}」嗎？", $"Delete \"{name}\"?"),
                 resourceHost: this);
 
             if (!ok) return;
@@ -1913,7 +1916,7 @@ namespace Cat5201
                 {
                     _currentFilePath = null;
                     _hasStarted = false;
-                    CurrentFileLabel.Text = "目前檔案：尚未建立";
+                    RefreshCurrentFileLabel();
                     _fileNameLockedByUser = false;
                     _lastAppliedAutoKeyword = "";
                     _lastInitialTopSnapshot = "";
@@ -1928,7 +1931,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "錯誤", $"刪除失敗：{ex.Message}", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("錯誤", "Error"), UiLanguage.P($"刪除失敗：{ex.Message}", $"Delete failed: {ex.Message}"), this);
             }
         }
 
@@ -1948,12 +1951,12 @@ namespace Cat5201
 
                 bool ok = MenuConfirmDialog.ShowConfirm(
                     owner: this,
-                    title: "未完成的影片任務",
-                    message: $"偵測到 {pending.Count} 個上次未完成的影片生成（費用已支付）：\n{preview}\n\n" +
-                             "要接續查詢並取回嗎？只是查詢雲端進度，不會重新付費。",
+                    title: UiLanguage.P("未完成的影片任務", "Unfinished video jobs"),
+                    message: UiLanguage.P($"偵測到 {pending.Count} 個上次未完成的影片生成（費用已支付）：\n{preview}\n\n", $"Found {pending.Count} unfinished video generation(s) from last time (already paid):\n{preview}\n\n") +
+                             UiLanguage.P("要接續查詢並取回嗎？只是查詢雲端進度，不會重新付費。", "Check their progress and retrieve them? This only checks the cloud status; you won't be charged again."),
                     resourceHost: this,
-                    confirmText: "取回",
-                    cancelText: "略過");
+                    confirmText: UiLanguage.P("取回", "Retrieve"),
+                    cancelText: UiLanguage.P("略過", "Skip"));
 
                 if (ok)
                     _ = ResumePendingVideoJobsAsync(pending);
@@ -1978,10 +1981,10 @@ namespace Cat5201
                         var payload = GeneratedFileWriter.WriteVideo(
                             GetGeneratedFilesDir(),
                             title: string.IsNullOrWhiteSpace(job.Prompt)
-                                ? "恢復的影片"
-                                : "恢復的影片_" + VideoJobJournal.Summarize(job.Prompt, 24).TrimEnd('…'),
+                                ? UiLanguage.P("恢復的影片", "Recovered video")
+                                : UiLanguage.P("恢復的影片_", "Recovered video_") + VideoJobJournal.Summarize(job.Prompt, 24).TrimEnd('…'),
                             content: result.Mp4Bytes,
-                            sourceSummary: "程式重啟後接續取回（Veo operation 續輪詢，未重新付費）");
+                            sourceSummary: UiLanguage.P("程式重啟後接續取回（Veo operation 續輪詢，未重新付費）", "Retrieved after restart (Veo operation polled again, no new charge)"));
 
                         if (payload.Success)
                         {
@@ -1996,7 +1999,7 @@ namespace Cat5201
                     }
                     else
                     {
-                        failMsgs.Add(string.IsNullOrWhiteSpace(result.ErrorMessage) ? "未知原因" : result.ErrorMessage);
+                        failMsgs.Add(string.IsNullOrWhiteSpace(result.ErrorMessage) ? UiLanguage.P("未知原因", "Unknown reason") : result.ErrorMessage);
                     }
                 }
                 catch (Exception ex)
@@ -2006,12 +2009,12 @@ namespace Cat5201
                 }
             }
 
-            string summary = okCount > 0 ? $"已取回 {okCount} 支影片到產出資料夾（_generated）。" : "";
+            string summary = okCount > 0 ? UiLanguage.P($"已取回 {okCount} 支影片到產出資料夾（_generated）。", $"Retrieved {okCount} video(s) to the output folder (_generated).") : "";
             if (failMsgs.Count > 0)
-                summary += $"\n{failMsgs.Count} 個未能取回：{failMsgs[0]}";
+                summary += UiLanguage.P($"\n{failMsgs.Count} 個未能取回：{failMsgs[0]}", $"\n{failMsgs.Count} couldn't be retrieved: {failMsgs[0]}");
 
-            MenuConfirmDialog.ShowMessage(this, "影片任務恢復",
-                string.IsNullOrWhiteSpace(summary) ? "沒有可取回的影片。" : summary.Trim(), this);
+            MenuConfirmDialog.ShowMessage(this, UiLanguage.P("影片任務恢復", "Video job recovery"),
+                string.IsNullOrWhiteSpace(summary) ? UiLanguage.P("沒有可取回的影片。", "No videos to retrieve.") : summary.Trim(), this);
         }
 
         // ===== 就地改名（右鍵→重新命名）：名稱原地變輸入框，Enter 確認 / Esc 取消 / 失焦確認 =====
@@ -2098,7 +2101,7 @@ namespace Cat5201
                 if (!result.Ok)
                 {
                     if (!string.IsNullOrWhiteSpace(result.Error))
-                        MenuConfirmDialog.ShowMessage(this, "重新命名失敗", result.Error, this);
+                        MenuConfirmDialog.ShowMessage(this, UiLanguage.P("重新命名失敗", "Rename failed"), result.Error, this);
                     return;
                 }
 
@@ -2111,7 +2114,7 @@ namespace Cat5201
                     UpdateAttachmentRelativePathsInMemory(oldBaseName, DisplayNameFromPath(result.NewPath));
                     RefreshAllNodeAttachmentUIs();
 
-                    CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
+                    RefreshCurrentFileLabel();
 
                     SaveState();
                 }
@@ -2121,7 +2124,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "錯誤", $"重新命名失敗：{ex.Message}", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("錯誤", "Error"), UiLanguage.P($"重新命名失敗：{ex.Message}", $"Rename failed: {ex.Message}"), this);
             }
         }
 
@@ -2356,8 +2359,8 @@ namespace Cat5201
             if (conn?.HitPath == null) return;
 
             conn.HitPath.ToolTip = conn.FlowMode
-                ? "流動連線（藍色虛線）\n上游跑完會自動帶著結果往下游跑；匯流節點會等所有上游都完成。\n右鍵：改回一般連線"
-                : "一般連線（灰線）\n只把上游內容當背景，不會自動往下跑。\n右鍵：改成流動連線";
+                ? UiLanguage.P("流動連線（藍色虛線）\n上游跑完會自動帶著結果往下游跑；匯流節點會等所有上游都完成。\n右鍵：改回一般連線", "Flow link (blue dashed)\nWhen the upstream finishes, its result flows downstream automatically; merge nodes wait for every upstream.\nRight-click: switch back to a normal link")
+                : UiLanguage.P("一般連線（灰線）\n只把上游內容當背景，不會自動往下跑。\n右鍵：改成流動連線", "Normal link (gray)\nUpstream content is only used as background and doesn't run downstream automatically.\nRight-click: switch to a flow link");
         }
 
         // #4：依流動模式套用連接線外觀——流動時藍色虛線 + 上游→下游的行進動畫；否則回灰色實線。
@@ -2752,13 +2755,13 @@ namespace Cat5201
                 void Fill(System.Windows.Controls.RadioButton? btn, string quality, string label)
                 {
                     if (btn == null) return;
-                    btn.Content = $"{label}（約 {ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, quality)}）";
+                    btn.Content = UiLanguage.P($"{label}（約 {ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, quality)}）", $"{label} (about {ModelCostEstimator.ImageUnitCostText(AgentRuntime.DeckImageSize, quality)})");
                     btn.IsChecked = current == quality;
                 }
 
-                Fill(IllustrationQualityHigh, ImageQuality.High, "高品質");
-                Fill(IllustrationQualityMedium, ImageQuality.Medium, "標準（建議）");
-                Fill(IllustrationQualityLow, ImageQuality.Low, "最省");
+                Fill(IllustrationQualityHigh, ImageQuality.High, UiLanguage.P("高品質", "High quality"));
+                Fill(IllustrationQualityMedium, ImageQuality.Medium, UiLanguage.P("標準（建議）", "Standard (recommended)"));
+                Fill(IllustrationQualityLow, ImageQuality.Low, UiLanguage.P("最省", "Cheapest"));
             }
             finally
             {
@@ -3321,8 +3324,8 @@ namespace Cat5201
 
             if (string.IsNullOrWhiteSpace(bottomText))
             {
-                MenuConfirmDialog.ShowMessage(this, "加入記憶",
-                    "這個節點還沒有產出內容，無法加入記憶。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("加入記憶", "Add to memory"),
+                    UiLanguage.P("這個節點還沒有產出內容，無法加入記憶。", "This node hasn't produced anything yet, so it can't be added to memory."), this);
                 return;
             }
 
@@ -3340,7 +3343,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 AppLog.Warn("Memory", "加入記憶失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "加入記憶", "加入記憶失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("加入記憶", "Add to memory"), UiLanguage.P("加入記憶失敗：", "Couldn't add to memory:") + ex.Message, this);
                 return;
             }
 
@@ -3352,8 +3355,8 @@ namespace Cat5201
                 RefreshMemoryPanel();
             }
 
-            MenuConfirmDialog.ShowMessage(this, "加入記憶",
-                $"已加入記憶：\n⭐ {title}", this);
+            MenuConfirmDialog.ShowMessage(this, UiLanguage.P("加入記憶", "Add to memory"),
+                UiLanguage.P($"已加入記憶：\n⭐ {title}", $"Added to memory:\n⭐ {title}"), this);
         }
 
         // ===== 右鍵：更換連接方向 =====
@@ -3587,7 +3590,7 @@ namespace Cat5201
             var folder = GetCurrentAttachmentFolder();
             if (folder == null)
             {
-                MenuConfirmDialog.ShowMessage(this, "提示", "目前尚未建立檔案，無法上傳附件。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("提示", "Notice"), UiLanguage.P("目前尚未建立檔案，無法上傳附件。", "No project file has been created yet, so attachments can't be uploaded."), this);
                 return;
             }
 
@@ -3737,7 +3740,7 @@ namespace Cat5201
                 var abs = System.IO.Path.Combine(AttachmentsRootDir, relativePath);
                 if (!File.Exists(abs))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "開啟失敗", "找不到附件檔案（可能已被移動或刪除）。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("開啟失敗", "Couldn't open"), UiLanguage.P("找不到附件檔案（可能已被移動或刪除）。", "Attachment not found (it may have been moved or deleted)."), this);
                     return;
                 }
 
@@ -3749,7 +3752,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "錯誤", $"開啟附件失敗：{ex.Message}", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("錯誤", "Error"), UiLanguage.P($"開啟附件失敗：{ex.Message}", $"Couldn't open attachment: {ex.Message}"), this);
             }
         }
 
@@ -3761,7 +3764,7 @@ namespace Cat5201
                 fullPath = ResolveGeneratedFile(fullPath) ?? "";
                 if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "開啟失敗", "找不到生成的檔案（可能已被刪除）。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("開啟失敗", "Couldn't open"), UiLanguage.P("找不到生成的檔案（可能已被刪除）。", "Generated file not found (it may have been deleted)."), this);
                     return;
                 }
 
@@ -3770,7 +3773,7 @@ namespace Cat5201
                 string targetFull = System.IO.Path.GetFullPath(fullPath);
                 if (!targetFull.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
                 {
-                    MenuConfirmDialog.ShowMessage(this, "開啟失敗", "檔案不在允許開啟的範圍內。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("開啟失敗", "Couldn't open"), UiLanguage.P("檔案不在允許開啟的範圍內。", "This file is outside the folders the app is allowed to open."), this);
                     return;
                 }
 
@@ -3782,7 +3785,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(this, "錯誤", $"開啟檔案失敗：{ex.Message}", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("錯誤", "Error"), UiLanguage.P($"開啟檔案失敗：{ex.Message}", $"Couldn't open file: {ex.Message}"), this);
             }
         }
 
@@ -3947,7 +3950,7 @@ namespace Cat5201
             // 個人化偏好與專案檔分離，但任何一次存檔都順手把全域偏好也寫回，確保隨時最新。
             SavePreferences();
 
-            CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
+            RefreshCurrentFileLabel();
         }
 
         private void LoadState(string path)
@@ -3962,7 +3965,7 @@ namespace Cat5201
             MainUI.Visibility = Visibility.Visible;
             _hasStarted = true;
             _currentFilePath = path;
-            CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
+            RefreshCurrentFileLabel();
 
             _fileNameLockedByUser = state.FileNameLocked;
 
@@ -4245,7 +4248,7 @@ namespace Cat5201
 
                 _lastAppliedAutoKeyword = keyword;
 
-                CurrentFileLabel.Text = $"目前檔案：{DisplayNameFromPath(_currentFilePath)}";
+                RefreshCurrentFileLabel();
                 RefreshFileList();
                 SelectFileInList(newPath);
             }
@@ -4645,7 +4648,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             }
             else
             {
-                capabilityDetail = decision.CapabilityAdjusted ? "已調整" : "OK";
+                capabilityDetail = decision.CapabilityAdjusted ? UiLanguage.P("已調整", "Adjusted") : "OK";
                 capabilityLines.AddRange(BuildCapabilityLines(decision, forcePendingText: false));
             }
 
@@ -4660,8 +4663,8 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             }
             else
             {
-                delegationDetail = "尚未觸發";
-                delegationLines.Add("目前尚未進入 agent delegation");
+                delegationDetail = UiLanguage.P("尚未觸發", "Not triggered");
+                delegationLines.Add(UiLanguage.P("目前尚未進入 agent delegation", "Agent delegation not reached yet"));
             }
 
             // ===== Fallback =====
@@ -4669,14 +4672,14 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
             if (isFallbackAttempt)
             {
-                fallbackLines.Add($"目前為第 {attemptIndex} 次嘗試");
-                fallbackLines.Add($"候選模型：{plannedLabel}");
-                fallbackLines.Add($"原因：{(string.IsNullOrWhiteSpace(reason) ? "-" : reason)}");
+                fallbackLines.Add(UiLanguage.P($"目前為第 {attemptIndex} 次嘗試", $"Attempt {attemptIndex}"));
+                fallbackLines.Add(UiLanguage.P($"候選模型：{plannedLabel}", $"Candidate model: {plannedLabel}"));
+                fallbackLines.Add(UiLanguage.P("原因：", "Reason: ") + (string.IsNullOrWhiteSpace(reason) ? "-" : reason));
             }
             else
             {
-                fallbackLines.Add("目前使用 primary candidate 執行");
-                fallbackLines.Add($"模型：{plannedLabel}");
+                fallbackLines.Add(UiLanguage.P("目前使用 primary candidate 執行", "Running with the primary candidate"));
+                fallbackLines.Add(UiLanguage.P($"模型：{plannedLabel}", $"Model: {plannedLabel}"));
             }
 
             if (decision.RuntimeFallbackAttempts != null && decision.RuntimeFallbackAttempts.Count > 0)
@@ -4697,7 +4700,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             // ===== Execution =====
             var executionLines = new List<string>
     {
-        "Execution 狀態：執行中",
+        UiLanguage.P("Execution 狀態：執行中", "Execution status: running"),
         $"Model：{plannedLabel}",
         $"Streaming：{decision.UseStreaming}"
     };
@@ -4750,7 +4753,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
         new NodeDecisionStepViewData
         {
             Title = "Fallback",
-            Detail = isFallbackAttempt ? $"已進入第 {attemptIndex} 次嘗試" : "尚未觸發",
+            Detail = isFallbackAttempt ? UiLanguage.P($"已進入第 {attemptIndex} 次嘗試", $"On attempt {attemptIndex}") : UiLanguage.P("尚未觸發", "Not triggered"),
             State = isFallbackAttempt ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
             Highlight = isFallbackAttempt,
             IsActive = isFallbackAttempt,
@@ -4759,7 +4762,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
         new NodeDecisionStepViewData
         {
             Title = "Execution",
-            Detail = "執行中",
+            Detail = UiLanguage.P("執行中", "Running"),
             State = NodeDecisionStepState.Info,
             Highlight = true,
             IsActive = true,
@@ -4783,7 +4786,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             var view = BuildLiveDecisionViewData(
                 decision,
                 modelText,
-                $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / 執行中",
+                UiLanguage.P($"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / 執行中", $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / running"),
                 extra: extraParts.Count == 0 ? "-" : string.Join(" / ", extraParts),
                 steps: steps);
 
@@ -4820,7 +4823,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             }
             else
             {
-                capabilityDetail = decision.CapabilityAdjusted ? "已調整" : "OK";
+                capabilityDetail = decision.CapabilityAdjusted ? UiLanguage.P("已調整", "Adjusted") : "OK";
                 capabilityLines.AddRange(BuildCapabilityLines(decision, forcePendingText: false));
             }
 
@@ -4835,8 +4838,8 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             }
             else
             {
-                delegationDetail = "尚未觸發";
-                delegationLines.Add("目前尚未進入 agent delegation");
+                delegationDetail = UiLanguage.P("尚未觸發", "Not triggered");
+                delegationLines.Add(UiLanguage.P("目前尚未進入 agent delegation", "Agent delegation not reached yet"));
             }
 
             var steps = new List<NodeDecisionStepViewData>
@@ -4887,14 +4890,14 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
         new NodeDecisionStepViewData
         {
             Title = "Fallback",
-            Detail = decision.RuntimeFallbackUsed ? "已觸發" : "無",
+            Detail = decision.RuntimeFallbackUsed ? UiLanguage.P("已觸發", "Triggered") : UiLanguage.P("無", "None"),
             State = decision.RuntimeFallbackUsed ? NodeDecisionStepState.Warning : NodeDecisionStepState.Success,
             DetailLines = BuildFallbackLines(decision)
         },
         new NodeDecisionStepViewData
         {
             Title = "Execution",
-            Detail = "失敗",
+            Detail = UiLanguage.P("失敗", "Failed"),
             State = NodeDecisionStepState.Error,
             Highlight = true,
             DetailLines = new[]
@@ -4918,7 +4921,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
             var view = BuildLiveDecisionViewData(
                 decision,
                 modelText,
-                $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / 失敗",
+                UiLanguage.P($"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / 失敗", $"{NodeTaskModeHelper.ToDisplayName(decision.TaskMode)} / failed"),
                 extra: extraParts.Count == 0 ? "-" : string.Join(" / ", extraParts),
                 steps: steps);
 
@@ -5059,7 +5062,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                     .Count(x => x.TrimStart().StartsWith("Fact:", StringComparison.OrdinalIgnoreCase)) ?? 0);
 
             string workspaceDetail = safeArtifacts.Count > 0
-                ? $"產出物 {artifactCount} 項（可見 {safeArtifacts.Count(x => x != null && x.IsUserVisible)}）"
+                ? UiLanguage.P($"產出物 {artifactCount} 項（可見 {safeArtifacts.Count(x => x != null && x.IsUserVisible)}）", $"{artifactCount} output(s) ({safeArtifacts.Count(x => x != null && x.IsUserVisible)} visible)")
                 : $"Artifacts: {artifactCount}, facts: {factCount}";
 
             result.Insert(Math.Max(0, result.Count - 2), new NodeDecisionStepViewData
@@ -5264,7 +5267,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                     HorizontalAlignment = HorizontalAlignment.Right
                 };
 
-                var ok = new Button { Content = "確定", Width = 72, Margin = new Thickness(0, 0, 8, 0) };
+                var ok = new Button { Content = UiLanguage.P("確定", "OK"), Width = 72, Margin = new Thickness(0, 0, 8, 0) };
                 ok.Click += (_, __) =>
                 {
                     _result = _tb.Text;
@@ -5272,7 +5275,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                     Close();
                 };
 
-                var cancel = new Button { Content = "取消", Width = 72 };
+                var cancel = new Button { Content = UiLanguage.P("取消", "Cancel"), Width = 72 };
                 cancel.Click += (_, __) =>
                 {
                     DialogResult = false;
@@ -5440,14 +5443,14 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
         // ===== 任務 → AI 自訂路由（個人化設定中的下拉清單）=====
 
         // 只列出真正會被路由特化的任務模式（Chat 為自由對話、沿用當前選定模型，不在此處覆蓋）。
-        private static readonly (NodeTaskMode Mode, string Label)[] _routingModes = new[]
+        private static (NodeTaskMode Mode, string Label)[] _routingModes => new[]
         {
-            (NodeTaskMode.Research, "研究 / 查資料"),
-            (NodeTaskMode.Code, "程式碼"),
-            (NodeTaskMode.Translate, "翻譯"),
-            (NodeTaskMode.Summarize, "摘要"),
-            (NodeTaskMode.Rewrite, "改寫 / 潤稿"),
-            (NodeTaskMode.Extract, "資訊擷取"),
+            (NodeTaskMode.Research, UiLanguage.P("研究 / 查資料", "Research / look up")),
+            (NodeTaskMode.Code, UiLanguage.P("程式碼", "Code")),
+            (NodeTaskMode.Translate, UiLanguage.P("翻譯", "Translation")),
+            (NodeTaskMode.Summarize, UiLanguage.P("摘要", "Summary")),
+            (NodeTaskMode.Rewrite, UiLanguage.P("改寫 / 潤稿", "Rewrite / polish")),
+            (NodeTaskMode.Extract, UiLanguage.P("資訊擷取", "Information extraction")),
         };
 
         // 每種任務真正需要的能力；只有具備該能力的已啟用模型才會出現在該任務的下拉中。
@@ -5503,7 +5506,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                         combo.Style = comboStyle;
 
                     // 第一項固定為「自動」（= 清除 override，回退內建建議）。
-                    var autoItem = new ComboBoxItem { Content = "自動（建議）", Tag = null };
+                    var autoItem = new ComboBoxItem { Content = UiLanguage.P("自動（建議）", "Auto (recommended)"), Tag = null };
                     combo.Items.Add(autoItem);
 
                     string? current = GetTaskRoutingOverride(mode);
@@ -5582,7 +5585,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                 if (DriveConvertSwitch != null)
                     DriveConvertSwitch.IsChecked = _driveConvertGoogle;
                 if (SpendTodayText != null)
-                    SpendTodayText.Text = $"今日已花：{SpendLedger.TodayDisplay()}";
+                    SpendTodayText.Text = UiLanguage.P($"今日已花：{SpendLedger.TodayDisplay()}", $"Spent today: {SpendLedger.TodayDisplay()}");
                 RefreshSkillsList();   // §19：開設定面板時同步技能清單
                 RefreshOutputDirLabel();
             }
@@ -5723,11 +5726,11 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
             bool ok = MenuConfirmDialog.ShowConfirm(
                 this,
-                "清除記憶",
-                "確定要清除全部記憶嗎？此動作無法復原。",
+                UiLanguage.P("清除記憶", "Clear memory"),
+                UiLanguage.P("確定要清除全部記憶嗎？此動作無法復原。", "Clear all memories? This can't be undone."),
                 this,
-                confirmText: "清除",
-                cancelText: "取消",
+                confirmText: UiLanguage.P("清除", "Clear"),
+                cancelText: UiLanguage.P("取消", "Cancel"),
                 danger: true);
 
             if (!ok)
@@ -6000,8 +6003,8 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                     if (ShouldStopBeforeUnsupportedDownstreamNode(current))
                     {
                         current.SetBottomText(
-                            "（此下游節點需要尚未接上的專用代理，已停止以避免不必要的 token 消耗。）\n" +
-                            "目前可先使用前一個節點的結果；等 presentation/file/media/workflow agent 完成後再啟用此步。");
+                            UiLanguage.P("（此下游節點需要尚未接上的專用代理，已停止以避免不必要的 token 消耗。）\n", "(This downstream node needs a specialized agent that isn't connected yet, so it stopped to avoid wasting tokens.)\n") +
+                            UiLanguage.P("目前可先使用前一個節點的結果；等 presentation/file/media/workflow agent 完成後再啟用此步。", "For now you can use the previous node's result; this step will be enabled once the presentation/file/media/workflow agents are ready."));
                         return;
                     }
 
@@ -6093,7 +6096,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
 
                 if (!visited.Add(current.Id))
                 {
-                    current.SetBottomText("（Dry run 停止：偵測到循環連線。）");
+                    current.SetBottomText(UiLanguage.P("（Dry run 停止：偵測到循環連線。）", "(Dry run stopped: a circular link was detected.)"));
                     FocusDecisionNode(current);
                     return;
                 }
@@ -6103,18 +6106,18 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                 if (ShouldStopBeforeUnsupportedDownstreamNode(current))
                 {
                     current.SetBottomText(
-                        "（Dry run 停止：此節點需要尚未接上的專用代理。）\n" +
-                        "真實執行時也會在此停止，以避免不必要的 token 消耗。");
+                        UiLanguage.P("（Dry run 停止：此節點需要尚未接上的專用代理。）\n", "(Dry run stopped: this node needs a specialized agent that isn't connected yet.)\n") +
+                        UiLanguage.P("真實執行時也會在此停止，以避免不必要的 token 消耗。", "A real run would also stop here to avoid wasting tokens."));
                     return;
                 }
 
                 string label = ExtractWorkflowStepLabel(current.GetTopText());
                 string inputSummary = string.IsNullOrWhiteSpace(upstreamText)
-                    ? "無上游輸出或由本節點原始輸入開始。"
+                    ? UiLanguage.P("無上游輸出或由本節點原始輸入開始。", "No upstream output, or starting from this node's own input.")
                     : SummarizeForDryRun(upstreamText);
 
                 current.SetBottomText(
-                    $"（Dry run，未呼叫模型）\n" +
+                    UiLanguage.P($"（Dry run，未呼叫模型）\n", $"(Dry run, no model called)\n") +
                     $"Step: {label}\n" +
                     $"Input: {inputSummary}\n" +
                     $"Output: simulated result for downstream wiring test.");
@@ -6310,7 +6313,7 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
         private static string ShortLabel(NodeControl node)
         {
             string text = (node?.GetTopText() ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
-            return text.Length <= 18 ? (text.Length == 0 ? "（空節點）" : text) : text.Substring(0, 18) + "…";
+            return text.Length <= 18 ? (text.Length == 0 ? UiLanguage.P("（空節點）", "(empty node)") : text) : text.Substring(0, 18) + "…";
         }
 
         // 這一輪會走到哪些節點：沿流動邊從起點展開（含起點）。
@@ -6435,8 +6438,8 @@ $@"請將下面內容取一個標題，規則：{ShortTitle.Rules}
                 if (ShouldStopBeforeUnsupportedDownstreamNode(node))
                 {
                     node.SetBottomText(
-                        "（此下游節點需要尚未接上的專用代理，已停止以避免不必要的 token 消耗。）\n" +
-                        "目前可先使用前一個節點的結果；等 presentation/file/media/workflow agent 完成後再啟用此步。");
+                        UiLanguage.P("（此下游節點需要尚未接上的專用代理，已停止以避免不必要的 token 消耗。）\n", "(This downstream node needs a specialized agent that isn't connected yet, so it stopped to avoid wasting tokens.)\n") +
+                        UiLanguage.P("目前可先使用前一個節點的結果；等 presentation/file/media/workflow agent 完成後再啟用此步。", "For now you can use the previous node's result; this step will be enabled once the presentation/file/media/workflow agents are ready."));
                     return;
                 }
 

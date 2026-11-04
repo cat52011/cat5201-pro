@@ -52,14 +52,14 @@ namespace Cat5201
             var root = new StackPanel();
             root.Children.Add(new TextBlock
             {
-                Text = "這個節點由哪幾個模型一起回答？",
+                Text = UiLanguage.P("這個節點由哪幾個模型一起回答？", "Which models should answer this node together?"),
                 FontSize = 16, FontWeight = FontWeights.Bold, Foreground = ink,
                 Margin = new Thickness(0, 0, 0, 8),
             });
             root.Children.Add(new TextBlock
             {
-                Text = "每個模型會各自回答，再看過彼此的回答後交叉檢視，最後列出共識與分歧——分歧由你決定。" +
-                       $"選 {ModelCollaboration.MinModels}～{ModelCollaboration.MaxModels} 個；費用約為單一模型的兩倍乘以模型數。",
+                Text = UiLanguage.P("每個模型會各自回答，再看過彼此的回答後交叉檢視，最後列出共識與分歧——分歧由你決定。", "Each model answers on its own, then reviews the others' answers, and finally the agreements and disagreements are listed. You decide on the disagreements.") +
+                       UiLanguage.P($"選 {ModelCollaboration.MinModels}～{ModelCollaboration.MaxModels} 個；費用約為單一模型的兩倍乘以模型數。", $"Pick {ModelCollaboration.MinModels}–{ModelCollaboration.MaxModels}. The cost is roughly twice a single model, times the number of models."),
                 FontSize = 11.5, Foreground = muted, TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 12),
             });
@@ -78,7 +78,7 @@ namespace Cat5201
                 int n = boxes.Count(b => b.Box.IsChecked == true);
                 foreach (var (box, _) in boxes)
                     box.IsEnabled = box.IsChecked == true || n < ModelCollaboration.MaxModels;
-                hint.Text = n == 1 ? "只選一個不會啟用協作——那跟一般模式一樣。" : "";
+                hint.Text = n == 1 ? UiLanguage.P("只選一個不會啟用協作——那跟一般模式一樣。", "Picking only one doesn't turn on collaboration; that's the same as normal mode.") : "";
             }
 
             // 深度研究不列：一次以美元計、跑好幾分鐘，乘上兩輪很容易失控。
@@ -129,12 +129,12 @@ namespace Cat5201
                 return b;
             }
 
-            var clear = Pill("關閉協作", Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
+            var clear = Pill(UiLanguage.P("關閉協作", "Turn off collaboration"), Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
             clear.Click += (_, __) => { SelectedModels = Array.Empty<string>(); DialogResult = true; Close(); };
-            var cancel = Pill("取消", Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
+            var cancel = Pill(UiLanguage.P("取消", "Cancel"), Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
             cancel.IsCancel = true;
             cancel.Click += (_, __) => { DialogResult = false; Close(); };
-            var ok = Pill("確定", Color.FromRgb(0x11, 0x11, 0x11), Colors.White);
+            var ok = Pill(UiLanguage.P("確定", "OK"), Color.FromRgb(0x11, 0x11, 0x11), Colors.White);
             ok.IsDefault = true;
             ok.Click += (_, __) =>
             {

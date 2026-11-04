@@ -58,7 +58,8 @@ namespace Cat5201
             bool ShowDecisionPanel = true,                   // 右上角決策可視化視窗
             string GeneratedFilesDir = "",                   // 產出檔案存放位置（空＝預設的 _generated）
             bool MobileMirrorReadOnly = true,                // 手機鏡像只能看、不能操作（預設開；舊偏好檔沒有這欄也是唯讀）
-            bool IndependentReviewEnabled = true             // 產出報告後跑獨立審查（預設開）
+            bool IndependentReviewEnabled = true,            // 產出報告後跑獨立審查（預設開）
+            string InterfaceLanguage = ""                    // 介面語言 zh-TW / en；空＝還沒選過，啟動時會問一次
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -89,11 +90,11 @@ namespace Cat5201
             AppLog.Info("Session", "偵測到上次未正常關閉，提示還原：" + _lastProjectPathFromPrefs);
             bool yes = MenuConfirmDialog.ShowConfirm(
                 this,
-                "還原上次的工作？",
-                $"偵測到程式上次未正常關閉。\n要開啟上次的專案「{DisplayNameFromPath(_lastProjectPathFromPrefs)}」嗎？",
+                UiLanguage.P("還原上次的工作？", "Restore your last session?"),
+                UiLanguage.P($"偵測到程式上次未正常關閉。\n要開啟上次的專案「{DisplayNameFromPath(_lastProjectPathFromPrefs)}」嗎？", $"The app didn't close properly last time.\nOpen your last project \"{DisplayNameFromPath(_lastProjectPathFromPrefs)}\"?"),
                 this,
-                confirmText: "開啟",
-                cancelText: "不用");
+                confirmText: UiLanguage.P("開啟", "Open"),
+                cancelText: UiLanguage.P("不用", "No thanks"));
             if (yes)
                 LoadState(_lastProjectPathFromPrefs);
         }
@@ -159,7 +160,8 @@ namespace Cat5201
                     LastProjectPath: _currentFilePath ?? "",
                     DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine),
                     ProviderTopUp: BuildProviderTopUpStorage(),
-                    ShowApiBalancePanel: _showApiBalancePanel
+                    ShowApiBalancePanel: _showApiBalancePanel,
+                    InterfaceLanguage: _interfaceLanguageChosen ? UiLanguage.Code : ""
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -245,6 +247,11 @@ namespace Cat5201
                 _documentEngine = DocumentEngineHelper.Parse(prefs.DocumentEngine);
                 _generatedFilesDirOverride = prefs.GeneratedFilesDir ?? "";
                 LoadProviderTopUpStorage(prefs.ProviderTopUp);
+
+                string lang = UiLanguage.Normalize(prefs.InterfaceLanguage);
+                _interfaceLanguageChosen = lang.Length > 0;
+                if (_interfaceLanguageChosen)
+                    UiLanguage.Code = lang;
             }
             catch (Exception ex)
             {

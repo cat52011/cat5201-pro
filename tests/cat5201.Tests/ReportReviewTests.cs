@@ -131,6 +131,125 @@ namespace Cat5201.Tests
             Assert.Contains("［圖］", prompt);
             Assert.Contains("程式已找到的問題（不要重複回報）", prompt);
             Assert.Contains("不會修改它", prompt);
+            Assert.DoesNotContain("=== 程式碼（核對做法描述用） ===", prompt);     // 沒給程式碼就不加這段
+        }
+
+        [Fact]
+        public void Prompt_IncludesTheCode_ForCheckingTheMethodDescription()
+        {
+            // 2026-11-04：HW1 的審查看不到程式，漏了「說懲罰公平但 0/1 欄沒標準化」與「用測試集 RMSE 選最佳模型」。
+            string code = "best = min(results, key=lambda m: m['test_rmse'])\nscaler.fit(X_train[num_cols])";
+            string prompt = ReportReview.BuildPrompt(
+                "HW1.docx", "以交叉驗證 RMSE 選出最佳模型。", null, null,
+                new[] { ("hw1.py", code), ("empty.py", "   ") });
+
+            Assert.Contains("=== 程式碼（核對做法描述用） ===", prompt);
+            Assert.Contains("--- 程式：hw1.py ---", prompt);
+            Assert.Contains("key=lambda m: m['test_rmse']", prompt);
+            Assert.DoesNotContain("empty.py", prompt);
+            Assert.True(prompt.IndexOf("=== 報告：HW1.docx ===", StringComparison.Ordinal)
+                        < prompt.IndexOf("=== 程式碼（核對做法描述用） ===", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void Prompt_TruncatesLongCode()
+        {
+            string longCode = "x = 1\n" + new string('#', ReportReview.MaxCodeChars * 2) + "\nTAIL_MARKER = 1";
+            string prompt = ReportReview.BuildPrompt("HW1.docx", "報告", null, null, new[] { ("hw1.py", longCode) });
+
+            int start = prompt.IndexOf("=== 程式碼（核對做法描述用） ===", StringComparison.Ordinal);
+            Assert.True(start >= 0);
+            Assert.Contains("…（程式後段省略）", prompt);
+            Assert.DoesNotContain("TAIL_MARKER", prompt);
+            Assert.True(prompt.Length - start < ReportReview.MaxCodeChars + 200, "程式碼段落要截在上限附近");
+        }
+
+        [Fact]
+        public void Instructions_CheckTheMethodDescriptionAgainstTheCode_WithoutJudgingTheMethod()
+        {
+            string i = ReportReview.Instructions;
+            Assert.Contains("4. 做法描述核對", i);
+            Assert.Contains("是否標準化", i);
+            Assert.Contains("挑模型、挑參數", i);
+            Assert.Contains("缺值數", i);
+            Assert.Contains("報告：『…』／程式：『…』", i);      // 要同時引用報告與程式
+            Assert.Contains("不評論文筆、段落結構、分析方法的選擇，也不提出新的分析", i);
+            Assert.Contains("只核對事實是否相符", i);
+            Assert.Contains("高＝影響結論或主要指標", i);
+            Assert.Contains("只差一、兩筆的小數字不一致", i);
+            // 2026-11-04 第二次 HW1：漏寫細節（如屋齡截為 0）被標成「中」，使用者要求改成「低」。
+            Assert.Contains("低＝殘留字句、用字；以及報告漏寫、但沒有寫錯的做法細節", i);
+            Assert.Contains("不會修改它", i);
+        }
+
+        [Fact]
+        public void Instructions_AreNotLimitedToMachineLearning()
+        {
+            // 2026-11-04 使用者要求：其他類型的作業與報告也要有用，不只是 HW1 這種機器學習作業。
+            string i = ReportReview.Instructions;
+            Assert.Contains("任何程式語言都一樣", i);
+            Assert.Contains("資料範圍與篩選條件", i);
+            Assert.Contains("公式、計算方式、加權與單位", i);
+            Assert.Contains("「報告」也包括簡報", i);
+            Assert.Contains("程式算錯而讓結果不可信", i);
+        }
+
+        [Theory]
+        [InlineData("hw1.py", true)]
+        [InlineData("analysis.R", true)]
+        [InlineData("分析.ipynb", true)]
+        [InlineData("query.sql", true)]
+        [InlineData("model.m", true)]
+        [InlineData("Main.java", true)]
+        [InlineData("index.html", false)]
+        [InlineData("說明.md", false)]
+        [InlineData("結果.xlsx", false)]
+        public void CodeFiles_InAnyLanguage_AreSentToReview(string name, bool expected)
+            => Assert.Equal(expected, ReportReview.IsCodeFile(name));
+
+        [Fact]
+        public void Notebook_OnlyCodeCellsAreSent()
+        {
+            string nb = "{\"cells\":[" +
+                "{\"cell_type\":\"markdown\",\"source\":[\"# 說明文字\"]}," +
+                "{\"cell_type\":\"code\",\"source\":[\"import pandas as pd\\n\",\"df = pd.read_csv('a.csv')\"],\"outputs\":[{\"data\":{\"image/png\":\"AAAA\"}}]}," +
+                "{\"cell_type\":\"code\",\"source\":\"df.describe()\"}," +
+                "{\"cell_type\":\"code\",\"source\":[]}" +
+                "]}";
+
+            string code = ReportReview.NotebookCode(nb);
+
+            Assert.Contains("# ── 第 1 格 ──", code);
+            Assert.Contains("df = pd.read_csv('a.csv')", code);
+            Assert.Contains("# ── 第 2 格 ──\r\ndf.describe()".Replace("\r\n", Environment.NewLine), code);
+            Assert.DoesNotContain("說明文字", code);
+            Assert.DoesNotContain("AAAA", code);
+            Assert.DoesNotContain("第 3 格", code);            // 空的程式碼格不算
+            Assert.Equal("", ReportReview.NotebookCode("not json"));
+
+            string path = Path.Combine(Path.GetTempPath(), "cat5201-tests", Guid.NewGuid().ToString("N") + ".ipynb");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            try
+            {
+                File.WriteAllText(path, nb);
+                Assert.Equal(code, ReportReview.ReadCode(path));
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        [Fact]
+        public void Prompt_ExplainsTheImageMarker_SoEmbeddedImagesAreNotReportedAsLeftovers()
+        {
+            // 2026-11-04：HW1 審查把每張圖換成的「［圖］」當成殘留佔位字回報。
+            string prompt = ReportReview.BuildPrompt(
+                "HW1.docx", "圖 1　總價分佈\n\n![圖](data:image/png;base64,AAAA)", null, null);
+
+            Assert.Contains(ReportReview.ImageMarker, prompt);
+            Assert.Contains("「" + ReportReview.ImageMarker + "」是系統替換的記號，代表那裡有一張已經嵌入的圖片", prompt);
+            Assert.Contains("不要回報", ReportReview.Instructions);
         }
 
         [Fact]

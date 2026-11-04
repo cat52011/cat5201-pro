@@ -98,15 +98,15 @@ namespace Cat5201
                 switch (ApiKeyStore.GetSource(row.Env))
                 {
                     case ApiKeyStore.KeySource.Environment:
-                        row.Status.Text = "環境變數";
+                        row.Status.Text = UiLanguage.P("環境變數", "Environment variable");
                         row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x1F, 0x9D, 0x55));
                         break;
                     case ApiKeyStore.KeySource.UserEntered:
-                        row.Status.Text = "已儲存";
+                        row.Status.Text = UiLanguage.P("已儲存", "Saved");
                         row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2E, 0x6B, 0xE6));
                         break;
                     default:
-                        row.Status.Text = "未設定";
+                        row.Status.Text = UiLanguage.P("未設定", "Not set");
                         row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xA8, 0xA8, 0xAC));
                         break;
                 }
@@ -133,7 +133,7 @@ namespace Cat5201
             RefreshApiPanel();
             if (ApiSaveHint != null)
             {
-                ApiSaveHint.Text = updates.Count > 0 ? "已儲存（已加密落地）。" : "沒有新輸入的金鑰。";
+                ApiSaveHint.Text = updates.Count > 0 ? UiLanguage.P("已儲存（已加密落地）。", "Saved (encrypted on disk).") : UiLanguage.P("沒有新輸入的金鑰。", "No new keys entered.");
                 ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(
                     updates.Count > 0
                         ? System.Windows.Media.Color.FromRgb(0x1F, 0x9D, 0x55)
@@ -152,7 +152,7 @@ namespace Cat5201
             RefreshApiPanel();
             if (ApiSaveHint != null)
             {
-                ApiSaveHint.Text = "已清除該金鑰。";
+                ApiSaveHint.Text = UiLanguage.P("已清除該金鑰。", "Key cleared.");
                 ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xA8, 0xA8, 0xAC));
                 ApiSaveHint.Visibility = Visibility.Visible;
             }

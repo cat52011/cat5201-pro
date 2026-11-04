@@ -177,5 +177,149 @@ namespace Cat5201.Tests
             string csv = "a,b\n1,2\n3,4";
             Assert.Equal(csv, AttachmentTextCache.TrimDataFile(csv));
         }
+
+        // ── 2026-11-04：HW1 實測後補的方法規則與交付檔名 ──
+
+        [Fact]
+        public void SystemPrompt_KeepsTheTestSetForTheFinalScoreOnly_AndFitsPreprocessingOnTrainingData()
+        {
+            // HW1 用測試集 RMSE 選最佳模型；報告寫懲罰對各特徵公平，但 0/1 欄沒有標準化。
+            string p = DataAnalysisJob.SystemPrompt;
+            Assert.Contains("測試集只用來報告最後結果", p);
+            Assert.Contains("只能用交叉驗證或驗證集", p);
+            Assert.Contains("離群值門檻、補值、標準化都只用訓練集決定", p);
+            Assert.Contains("最常見的類別當基準組", p);
+            Assert.Contains("由程式依最後實際使用的資料算出的變數產生", p);
+            Assert.Contains("不可宣稱正規化的懲罰「對各特徵公平」", p);
+        }
+
+        [Fact]
+        public void SystemPrompt_DoesEveryListedItem_AndRegularizedVariantsDoNotCountTowardTheModelLimit()
+        {
+            // HW1 因為「模型最多 4 個」省略了作業要求的 Ridge。
+            string p = DataAnalysisJob.SystemPrompt;
+            Assert.Contains("作業列出的每個項目都要做到", p);
+            Assert.Contains("RidgeCV、LassoCV", p);
+            Assert.Contains("不受 4 個模型的限制", p);
+            Assert.DoesNotContain("作業沒有指定時，模型最多 4 個", p);
+        }
+
+        [Fact]
+        public void SystemPrompt_AsksForSanityChecks_OnDerivedFeatures_AndDropsConstantColumns()
+        {
+            // 2026-11-04 第三次 HW1：交易年月日乘 100 再拆，屋齡變成約 11,400 年、月份最大 31；
+            // 另有整欄為 0 的「鄉鎮市區=其他」進了 OLS。兩個都是審查才抓到，沙箱自己檢查一下就能擋下。
+            string p = DataAnalysisJob.SystemPrompt;
+            Assert.Contains("用 assert 檢查範圍合理", p);
+            Assert.Contains("月份在 1～12、比例在 0～1、百分比在 0～100", p);
+            Assert.Contains("分項加總等於合計", p);
+            Assert.Contains("7 碼 yyymmdd", p);
+            Assert.Contains("刪除整欄都是同一個值的變數", p);
+            Assert.Contains("檢查不過就讓程式報錯，修好再跑", p);
+        }
+
+        [Fact]
+        public void SystemPrompt_ModelingRulesApplyOnlyWhenThereIsAModel()
+        {
+            // 2026-11-04 使用者要求規則要適用其他作業：描述統計、問卷分析這類作業不該被逼著切訓練集與測試集。
+            string p = DataAnalysisJob.SystemPrompt;
+            int general = p.IndexOf("分析方法規則", System.StringComparison.Ordinal);
+            int modeling = p.IndexOf("有建立預測或分類模型、或要比較多個模型時，另外遵守", System.StringComparison.Ordinal);
+            Assert.True(general >= 0 && modeling > general);
+
+            // 一般規則在建模規則之前；測試集、One-Hot、4 個模型的規則都在建模那一段裡。
+            Assert.InRange(p.IndexOf("作業列出的每個項目都要做到", System.StringComparison.Ordinal), general, modeling);
+            Assert.InRange(p.IndexOf("報告寫的做法要和程式實際做的一致", System.StringComparison.Ordinal), general, modeling);
+            Assert.InRange(p.IndexOf("不需要切訓練集與測試集", System.StringComparison.Ordinal), general, modeling);
+            Assert.True(p.IndexOf("測試集只用來報告最後結果", System.StringComparison.Ordinal) > modeling);
+            Assert.True(p.IndexOf("以最常見的類別當基準組", System.StringComparison.Ordinal) > modeling);
+            Assert.True(p.IndexOf("不受 4 個模型的限制", System.StringComparison.Ordinal) > modeling);
+        }
+
+        [Fact]
+        public void Prompt_TellsTheSandboxTheDeliveredFileNames()
+        {
+            string prompt = DataAnalysisJob.BuildUserPrompt(new DataAnalysisJob.Request
+            {
+                UserInput = "完成此作業",
+                DataFiles = new[] { "file_1.csv" },
+                WantsReport = true,
+                ReportFileName = "臺北市房價迴歸.docx",
+                TableFileName = "臺北市房價迴歸（結果表）.xlsx",
+            });
+
+            Assert.Contains("檔名必須是「臺北市房價迴歸.docx」", prompt);
+            Assert.Contains("檔名必須是「臺北市房價迴歸（結果表）.xlsx」", prompt);
+            Assert.Contains(".py 存檔時用同樣的檔名", prompt);
+        }
+
+        [Fact]
+        public void Prompt_WithoutFileNames_DoesNotMentionThem()
+        {
+            string prompt = DataAnalysisJob.BuildUserPrompt(new DataAnalysisJob.Request
+            {
+                UserInput = "完成此作業",
+                DataFiles = new[] { "file_1.csv" },
+                WantsReport = true,
+            });
+
+            Assert.DoesNotContain("檔名必須是", prompt);
+            Assert.Contains("- 報告 .docx：依要求", prompt);
+        }
+
+        [Fact]
+        public void PlannedFileNames_MatchWhatTheWriterSaves()
+        {
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201-tests", System.Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(dir);
+            try
+            {
+                string table = DataAnalysisJob.TableTitle("HW1/房價", wantsTable: false);
+                Assert.Equal("HW1/房價（結果表）", table);
+                Assert.Equal("HW1（表格）", DataAnalysisJob.TableTitle("HW1", wantsTable: true));
+
+                string plannedDocx = GeneratedFileWriter.PlannedFileName("HW1/房價", ".docx");
+                string plannedXlsx = GeneratedFileWriter.PlannedFileName(table, ".xlsx");
+                Assert.Equal("HW1_房價.docx", plannedDocx);
+
+                var docx = GeneratedFileWriter.WriteDocx(dir, "HW1/房價", new byte[] { 1 }, "");
+                var xlsx = GeneratedFileWriter.WriteXlsx(dir, table, new byte[] { 1 }, "");
+                Assert.Equal(plannedDocx, docx.FileName);
+                Assert.Equal(plannedXlsx, xlsx.FileName);
+            }
+            finally
+            {
+                System.IO.Directory.Delete(dir, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void UnusedTitle_SkipsNamesAlreadyTaken_SoTheWriterDoesNotRenameLater()
+        {
+            // 同一份作業再跑一次：沙箱被告知的檔名不能是已經存在的檔案，否則寫檔時會被改成 _2，又和報告對不上。
+            string dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "cat5201-tests", System.Guid.NewGuid().ToString("N"));
+            System.IO.Directory.CreateDirectory(dir);
+            try
+            {
+                System.Collections.Generic.IEnumerable<string> Names(string t) => new[]
+                {
+                    GeneratedFileWriter.PlannedFileName(t, ".docx"),
+                    GeneratedFileWriter.PlannedFileName(DataAnalysisJob.TableTitle(t, false), ".xlsx"),
+                };
+
+                Assert.Equal("HW1", GeneratedFileWriter.UnusedTitle(dir, "HW1", Names));
+
+                System.IO.File.WriteAllBytes(System.IO.Path.Combine(dir, "HW1（結果表）.xlsx"), new byte[] { 1 });
+                string title = GeneratedFileWriter.UnusedTitle(dir, "HW1", Names);
+                Assert.Equal("HW1_2", title);
+
+                var xlsx = GeneratedFileWriter.WriteXlsx(dir, DataAnalysisJob.TableTitle(title, false), new byte[] { 1 }, "");
+                Assert.Equal("HW1_2（結果表）.xlsx", xlsx.FileName);
+            }
+            finally
+            {
+                System.IO.Directory.Delete(dir, recursive: true);
+            }
+        }
     }
 }

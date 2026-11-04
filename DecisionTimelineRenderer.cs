@@ -192,7 +192,7 @@ namespace Cat5201
                         Padding = new Thickness(12),
                         Child = new TextBlock
                         {
-                            Text = "尚無 Decision Timeline",
+                            Text = UiLanguage.P("尚無 Decision Timeline", "No decision timeline yet"),
                             FontSize = 12,
                             Foreground = CreateBrush("#7A7A7A", "#7A7A7A")
                         }
@@ -244,8 +244,8 @@ namespace Cat5201
                     Child = new TextBlock
                     {
                         Text = _isDecisionTechExpanded
-                            ? $"🔧 技術細節（{technical.Count} 步）　收合 ▲"
-                            : $"🔧 技術細節（{technical.Count} 步）　展開 ▼",
+                            ? UiLanguage.P($"🔧 技術細節（{technical.Count} 步）　收合 ▲", $"🔧 Technical details ({technical.Count} steps)　Collapse ▲")
+                            : UiLanguage.P($"🔧 技術細節（{technical.Count} 步）　展開 ▼", $"🔧 Technical details ({technical.Count} steps)　Expand ▼"),
                         FontSize = 12,
                         FontWeight = FontWeights.Medium,
                         Foreground = CreateBrush("#5A6478", "#5A6478")
@@ -472,7 +472,7 @@ namespace Cat5201
 
                 var expandHint = new TextBlock
                 {
-                    Text = isExpanded ? "收合詳細資訊 ▲" : "展開詳細資訊 ▼",
+                    Text = isExpanded ? UiLanguage.P("收合詳細資訊 ▲", "Hide details ▲") : UiLanguage.P("展開詳細資訊 ▼", "Show details ▼"),
                     FontSize = 11.5,
                     Foreground = CreateBrush("#6F6F6F", "#6F6F6F"),
                     FontWeight = FontWeights.Medium
@@ -536,7 +536,7 @@ namespace Cat5201
 
             AttachCopyContextMenu(
                 cardBorder,
-                "複製此決策區塊",
+                UiLanguage.P("複製此決策區塊", "Copy this decision block"),
                 () => BuildDecisionStepCopyText(step, index));
 
             if (safeIsExpandable)
@@ -634,7 +634,7 @@ namespace Cat5201
 
             if (safe.Count == 0)
             {
-                root.Children.Add(CreateWorkspaceTextCard("本次沒有產出物。", muted: true));
+                root.Children.Add(CreateWorkspaceTextCard(UiLanguage.P("本次沒有產出物。", "No outputs this time."), muted: true));
                 return root;
             }
 
@@ -643,7 +643,7 @@ namespace Cat5201
 
             root.Children.Add(new TextBlock
             {
-                Text = $"共 {safe.Count} 項產出物，{visible.Count} 項對使用者可見。",
+                Text = UiLanguage.P($"共 {safe.Count} 項產出物，{visible.Count} 項對使用者可見。", $"{safe.Count} output(s) in total, {visible.Count} visible to you."),
                 FontSize = 11.5,
                 Foreground = CreateBrush("#57606A", "#57606A"),
                 Margin = new Thickness(0, 2, 0, 8),
@@ -655,7 +655,7 @@ namespace Cat5201
 
             if (internalItems.Count > 0)
             {
-                root.Children.Add(CreateWorkspaceSectionLabel($"內部中繼資料（{internalItems.Count}）"));
+                root.Children.Add(CreateWorkspaceSectionLabel(UiLanguage.P($"內部中繼資料（{internalItems.Count}）", $"Internal metadata ({internalItems.Count})")));
                 foreach (var r in internalItems)
                     root.Children.Add(CreateProductArtifactCard(r, dimmed: true));
             }
@@ -735,10 +735,10 @@ namespace Cat5201
                 var badges = new WrapPanel { Margin = new Thickness(0, 9, 0, 0) };
                 if (r.FactCount > 0)
                     badges.Children.Add(CreateWorkspaceBadge(
-                        string.IsNullOrWhiteSpace(r.VerificationLabel) ? $"{r.FactCount} 項事實" : r.VerificationLabel,
+                        string.IsNullOrWhiteSpace(r.VerificationLabel) ? UiLanguage.P($"{r.FactCount} 項事實", $"{r.FactCount} fact(s)") : r.VerificationLabel,
                         "#FFF6E5", "#9A6700"));
                 if (!r.IsUserVisible)
-                    badges.Children.Add(CreateWorkspaceBadge("內部中繼", "#F2F4F7", "#888888"));
+                    badges.Children.Add(CreateWorkspaceBadge(UiLanguage.P("內部中繼", "Internal"), "#F2F4F7", "#888888"));
                 panel.Children.Add(badges);
             }
 
@@ -766,9 +766,9 @@ namespace Cat5201
             // ── 來源 / 時間：footer 淡字 ──
             var metaParts = new List<string>();
             if (!string.IsNullOrWhiteSpace(r.SourceAgentId))
-                metaParts.Add($"代理 {r.SourceAgentId}");
+                metaParts.Add(UiLanguage.P($"代理 {r.SourceAgentId}", $"Agent {r.SourceAgentId}"));
             if (!string.IsNullOrWhiteSpace(r.CapabilityId))
-                metaParts.Add($"能力 {r.CapabilityId}");
+                metaParts.Add(UiLanguage.P($"能力 {r.CapabilityId}", $"Capability {r.CapabilityId}"));
             if (!string.IsNullOrWhiteSpace(r.CreatedAtLocalText))
                 metaParts.Add(r.CreatedAtLocalText);
 
@@ -790,7 +790,7 @@ namespace Cat5201
                 var dep = new WrapPanel { Margin = new Thickness(0, 8, 0, 0) };
                 dep.Children.Add(new TextBlock
                 {
-                    Text = "依賴",
+                    Text = UiLanguage.P("依賴", "Depends on"),
                     FontSize = 10.5,
                     Foreground = CreateBrush("#9AA4B2", "#9AA4B2"),
                     VerticalAlignment = VerticalAlignment.Center,
@@ -803,10 +803,10 @@ namespace Cat5201
 
             // ── 動作 chips：複製 / 匯出 / 開啟檔案 ──
             var actions = new WrapPanel { Margin = new Thickness(0, 11, 0, 0) };
-            actions.Children.Add(CreateWorkspaceActionButton("📋 複製", accentHex, () => CopyTextToClipboard(BuildArtifactCopyText(r))));
-            actions.Children.Add(CreateWorkspaceActionButton("💾 匯出", accentHex, () => ExportArtifactRecord(r)));
+            actions.Children.Add(CreateWorkspaceActionButton(UiLanguage.P("📋 複製", "📋 Copy"), accentHex, () => CopyTextToClipboard(BuildArtifactCopyText(r))));
+            actions.Children.Add(CreateWorkspaceActionButton(UiLanguage.P("💾 匯出", "💾 Export"), accentHex, () => ExportArtifactRecord(r)));
             if (!string.IsNullOrWhiteSpace(r.FilePath) && File.Exists(r.FilePath))
-                actions.Children.Add(CreateWorkspaceActionButton("📂 開啟檔案", accentHex, () => _openGeneratedFile(r.FilePath)));
+                actions.Children.Add(CreateWorkspaceActionButton(UiLanguage.P("📂 開啟檔案", "📂 Open file"), accentHex, () => _openGeneratedFile(r.FilePath)));
             panel.Children.Add(actions);
 
             var card = new Border
@@ -832,7 +832,7 @@ namespace Cat5201
                 };
             }
 
-            AttachCopyContextMenu(card, "複製此產出物", () => BuildArtifactCopyText(r));
+            AttachCopyContextMenu(card, UiLanguage.P("複製此產出物", "Copy this output"), () => BuildArtifactCopyText(r));
 
             return card;
         }
@@ -915,11 +915,11 @@ namespace Cat5201
         {
             return (itemType ?? "").Trim().ToLowerInvariant() switch
             {
-                "verified_facts" => "事實",
-                "search_summary" => "搜尋",
-                "final_synthesis" => "最終答案",
-                "reasoning_analysis" or "code_analysis" => "分析",
-                _ => string.IsNullOrWhiteSpace(itemType) ? "上游" : itemType
+                "verified_facts" => UiLanguage.P("事實", "Facts"),
+                "search_summary" => UiLanguage.P("搜尋", "Search"),
+                "final_synthesis" => UiLanguage.P("最終答案", "Final answer"),
+                "reasoning_analysis" or "code_analysis" => UiLanguage.P("分析", "Analysis"),
+                _ => string.IsNullOrWhiteSpace(itemType) ? UiLanguage.P("上游", "Upstream") : itemType
             };
         }
 
@@ -940,22 +940,22 @@ namespace Cat5201
             var lines = new List<string>
             {
                 $"{r.Title}",
-                $"類型：{r.KindLabel} / {r.FormatLabel} / 狀態：{(string.IsNullOrWhiteSpace(r.StatusLabel) ? ArtifactStatus.ToLabel(r.Status) : r.StatusLabel)}"
+                UiLanguage.P($"類型：{r.KindLabel} / {r.FormatLabel} / 狀態：{(string.IsNullOrWhiteSpace(r.StatusLabel) ? ArtifactStatus.ToLabel(r.Status) : r.StatusLabel)}", $"Type: {r.KindLabel} / {r.FormatLabel} / Status: {(string.IsNullOrWhiteSpace(r.StatusLabel) ? ArtifactStatus.ToLabel(r.Status) : r.StatusLabel)}")
             };
 
             var meta = new List<string>();
-            if (!string.IsNullOrWhiteSpace(r.SourceAgentId)) meta.Add($"代理 {r.SourceAgentId}");
-            if (!string.IsNullOrWhiteSpace(r.ModelId)) meta.Add($"模型 {r.ModelId}");
-            if (!string.IsNullOrWhiteSpace(r.CapabilityId)) meta.Add($"能力 {r.CapabilityId}");
+            if (!string.IsNullOrWhiteSpace(r.SourceAgentId)) meta.Add(UiLanguage.P($"代理 {r.SourceAgentId}", $"Agent {r.SourceAgentId}"));
+            if (!string.IsNullOrWhiteSpace(r.ModelId)) meta.Add(UiLanguage.P($"模型 {r.ModelId}", $"Model {r.ModelId}"));
+            if (!string.IsNullOrWhiteSpace(r.CapabilityId)) meta.Add(UiLanguage.P($"能力 {r.CapabilityId}", $"Capability {r.CapabilityId}"));
             if (!string.IsNullOrWhiteSpace(r.CreatedAtLocalText)) meta.Add(r.CreatedAtLocalText);
             if (meta.Count > 0)
-                lines.Add("來源：" + string.Join(" · ", meta));
+                lines.Add(UiLanguage.P("來源：", "Source:") + string.Join(" · ", meta));
 
             if (r.DependsOn != null && r.DependsOn.Count > 0)
-                lines.Add("依賴：" + string.Join(", ", r.DependsOn));
+                lines.Add(UiLanguage.P("依賴：", "Depends on:") + string.Join(", ", r.DependsOn));
 
             if (!string.IsNullOrWhiteSpace(r.FilePath))
-                lines.Add("檔案：" + r.FilePath);
+                lines.Add(UiLanguage.P("檔案：", "File:") + r.FilePath);
 
             if (!string.IsNullOrWhiteSpace(r.Preview))
             {
@@ -994,7 +994,7 @@ namespace Cat5201
             }
             catch (Exception ex)
             {
-                MenuConfirmDialog.ShowMessage(_owner, "錯誤", $"匯出產出物失敗：{ex.Message}", _owner);
+                MenuConfirmDialog.ShowMessage(_owner, UiLanguage.P("錯誤", "Error"), UiLanguage.P($"匯出產出物失敗：{ex.Message}", $"Couldn't export the output: {ex.Message}"), _owner);
             }
         }
 
@@ -1181,7 +1181,7 @@ namespace Cat5201
 
             AttachCopyContextMenu(
                 card,
-                "複製此主題區塊",
+                UiLanguage.P("複製此主題區塊", "Copy this topic block"),
                 copyTextProvider,
                 applyDownstreamPlan);
 
@@ -1423,7 +1423,7 @@ namespace Cat5201
 
             var item = new MenuItem
             {
-                Header = string.IsNullOrWhiteSpace(menuText) ? "複製" : menuText,
+                Header = string.IsNullOrWhiteSpace(menuText) ? UiLanguage.P("複製", "Copy") : menuText,
                 Style = _owner.TryFindResource("FileMenuItemStyle") as Style
             };
 
@@ -1455,7 +1455,7 @@ namespace Cat5201
                 var sepStyle = _owner.TryFindResource("FileSeparatorStyle") as Style;
                 var applyItem = new MenuItem
                 {
-                    Header = "套用到畫布",
+                    Header = UiLanguage.P("套用到畫布", "Apply to canvas"),
                     Style = _owner.TryFindResource("FileMenuItemStyle") as Style
                 };
 

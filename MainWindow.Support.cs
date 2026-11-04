@@ -35,18 +35,18 @@ namespace Cat5201
                     AppLog.Warn("Support", "開啟檔案總管失敗", ex);
                 }
 
-                MenuConfirmDialog.ShowMessage(this, "回報問題",
-                    $"已在桌面產生診斷檔：\n{Path.GetFileName(zipPath)}\n\n" +
-                    $"請把這個檔案寄到 {SupportEmail}，並簡單寫下：\n" +
-                    "・你做了什麼\n・預期會怎樣\n・實際發生什麼（有截圖更好）\n\n" +
-                    "檔案已自動遮蔽 API 金鑰與 Windows 使用者名稱，不含對話內容；寄出前也可以自己打開檢查。",
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("回報問題", "Report a problem"),
+                    UiLanguage.P($"已在桌面產生診斷檔：\n{Path.GetFileName(zipPath)}\n\n", $"A diagnostic file was created on your desktop:\n{Path.GetFileName(zipPath)}\n\n") +
+                    UiLanguage.P($"請把這個檔案寄到 {SupportEmail}，並簡單寫下：\n", $"Please email it to {SupportEmail} with a short note on:\n") +
+                    UiLanguage.P("・你做了什麼\n・預期會怎樣\n・實際發生什麼（有截圖更好）\n\n", "・What you did\n・What you expected\n・What actually happened (screenshots help)\n\n") +
+                    UiLanguage.P("檔案已自動遮蔽 API 金鑰與 Windows 使用者名稱，不含對話內容；寄出前也可以自己打開檢查。", "API keys and your Windows user name are masked automatically, and no conversation content is included. You can open the file to check before sending."),
                     this);
             }
             catch (Exception ex)
             {
                 AppLog.Error("Support", "產生回報診斷檔失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "回報問題",
-                    $"產生診斷檔失敗：{ex.Message}\n\n可以直接寄信到 {SupportEmail} 描述狀況。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("回報問題", "Report a problem"),
+                    UiLanguage.P($"產生診斷檔失敗：{ex.Message}\n\n可以直接寄信到 {SupportEmail} 描述狀況。", $"Couldn't create the diagnostic file: {ex.Message}\n\nYou can email {SupportEmail} directly to describe the problem."), this);
             }
         }
     }

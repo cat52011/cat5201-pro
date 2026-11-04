@@ -105,6 +105,27 @@ namespace Cat5201
             "   （例如 df.to_excel(writer, sheet_name=\"x\")），不要用已棄用的寫法。\n" +
             "6. Word 報告內同時設定東亞字型（East Asian）為 Microsoft JhengHei，讓中文在 Windows 上正確顯示。\n" +
             "\n" +
+            "分析方法規則（作業另有規定時以作業為準）：\n" +
+            "- 作業列出的每個項目都要做到，不可為了省時間省略。\n" +
+            "- 報告裡描述數字和做法的句子（筆數、缺值數、刪除筆數、門檻、選中的方法與參數、檢定結果），要由程式依最後實際使用的資料算出的變數產生，不要手打數字。\n" +
+            "- 報告寫的做法要和程式實際做的一致：用了哪些資料、篩選條件、前處理、加權、公式與單位，有做的照實寫，沒做的不要寫。\n" +
+            "- 沒有建立預測模型的分析（描述統計、交叉表、假設檢定、問卷分析等）不需要切訓練集與測試集。\n" +
+            "\n" +
+            "有建立預測或分類模型、或要比較多個模型時，另外遵守：\n" +
+            "- 測試集只用來報告最後結果；挑模型、挑超參數、選「最佳模型」都只能用交叉驗證或驗證集，不可以看測試集的成績來選。\n" +
+            "- 離群值門檻、補值、標準化都只用訓練集決定，再把同一組門檻與參數套到測試集。\n" +
+            "- 類別變數做 One-Hot 時，以最常見的類別當基準組（被省略的那一類）。\n" +
+            "- 0/1 或 One-Hot 欄位沒有標準化時，不可宣稱正規化的懲罰「對各特徵公平」；照實寫哪些欄位有標準化、哪些沒有。\n" +
+            "- 作業沒有指定模型時，模型最多 4 個；RidgeCV、LassoCV 這類使用內建路徑選參數的正規化變體，\n" +
+            "  和對應的線性模型算同一族，不受 4 個模型的限制。\n" +
+            "\n" +
+            "自我檢查（寫在 .py 裡、產生報告之前執行，檢查不過就讓程式報錯，修好再跑）：\n" +
+            "- 每個由原始欄位換算或解析出來的變數（日期拆出的年月日、年齡或年資、比例、單位換算、從文字解析出的數字等），\n" +
+            "  用 assert 檢查範圍合理，並印出最小值、最大值。例如：月份在 1～12、比例在 0～1、百分比在 0～100、\n" +
+            "  計數與金額不為負、年齡或屋齡在合理年數內、分項加總等於合計。\n" +
+            "  日期先看實際格式與位數再拆（民國日期常見 7 碼 yyymmdd 或 5 碼 yyymm）。\n" +
+            "- 建模或做統計檢定前，刪除整欄都是同一個值的變數（例如沒有任何一筆屬於的 One-Hot「其他」欄位），報告裡的變數數用刪除後的數字。\n" +
+            "\n" +
             "執行環境紀律（違反會讓整個任務失敗；整個任務有時間上限，約 10 分鐘內要交出檔案）：\n" +
             "- 做法固定：先用一兩個簡短指令看資料，然後把分析、圖表、報告全部寫進那一支 .py，執行一次就產出所有檔案。\n" +
             "  不要先在互動指令裡做一遍分析、再另外寫程式重做一遍；也不要為了驗證把整支程式再跑一次。\n" +
@@ -112,10 +133,11 @@ namespace Cat5201
             "- 不要把整份資料印出來：看資料用 head()、info()、describe()，每個指令的輸出控制在 50 行以內。\n" +
             "- 不要印出二進位檔或圖片的內容。\n" +
             "- 沙箱只有 1 顆 CPU：不做格狀搜尋或隨機搜尋（GridSearchCV、RandomizedSearchCV），用合理的預設參數；\n" +
-            "  作業沒有指定時，模型最多 4 個，樹模型的樹不超過 200 棵，交叉驗證最多 5 折。\n" +
+            "  樹模型的樹不超過 200 棵，交叉驗證最多 5 折。\n" +
             "\n" +
             "交付規則：\n" +
-            "- 每種檔案只交付一個最終版本（報告 .docx、結果表 .xlsx、程式 .py），檔名用有意義的名稱。\n" +
+            "- 每種檔案只交付一個最終版本（報告 .docx、結果表 .xlsx、程式 .py）。提示有指定檔名時一律照用，\n" +
+            "  .py 產生的檔案、報告裡引用的檔名也都用同一組名稱；沒有指定時用有意義的名稱。\n" +
             "- 報告裡提到的每一個檔案都要交付；沒有交付的檔案不要在報告裡引用。\n" +
             ClaudeDocumentSkillsService.DeliverRule + "\n" +
             "- 做完後用三到六句話回覆使用者：做了什麼、最重要的幾個結果數字、交付了哪些檔案。不要在回覆裡貼程式碼。";
@@ -134,7 +156,18 @@ namespace Cat5201
             public bool WantsReport { get; init; }
             public bool WantsTable { get; init; }
             public string Language { get; init; } = "";
+            /// <summary>報告交付時的檔名（含 .docx）。平台用這個名稱存檔，報告與 .py 裡也要用同一個名稱。</summary>
+            public string ReportFileName { get; init; } = "";
+            /// <summary>結果表交付時的檔名（含 .xlsx）。</summary>
+            public string TableFileName { get; init; } = "";
         }
+
+        /// <summary>
+        /// 結果表存檔用的標題。交付時（AgentRuntime.TryRunDataAnalysisAsync）和告訴沙箱的檔名都從這裡來，兩邊才會一樣。
+        /// 2026-11-04：原本沙箱跑完才決定檔名，.py 和報告裡寫的檔名跟交付的檔名對不上。
+        /// </summary>
+        public static string TableTitle(string title, bool wantsTable)
+            => title + (wantsTable ? "（表格）" : "（結果表）");
 
         public static string BuildUserPrompt(Request r)
         {
@@ -174,12 +207,17 @@ namespace Cat5201
                 sb.AppendLine();
             }
 
+            static string Named(string fileName) => string.IsNullOrWhiteSpace(fileName) ? "" : $"檔名必須是「{fileName}」；";
+
             sb.AppendLine("【需要交付的檔案】");
-            if (r.WantsReport) sb.AppendLine("- 報告 .docx：依要求（有範本就照範本）完成，內含實際執行得到的數字、表格與圖。");
+            if (r.WantsReport)
+                sb.AppendLine($"- 報告 .docx：{Named(r.ReportFileName)}依要求（有範本就照範本）完成，內含實際執行得到的數字、表格與圖。");
             sb.AppendLine(r.WantsTable
-                ? "- 表格 .xlsx：整理好的結果表。"
-                : "- 結果表 .xlsx（選擇性）：報告引用了整理好的結果表時才交付。");
+                ? $"- 表格 .xlsx：{Named(r.TableFileName)}整理好的結果表。"
+                : $"- 結果表 .xlsx（選擇性）：{Named(r.TableFileName)}報告引用了整理好的結果表時才交付。");
             sb.AppendLine("- 程式 .py：可獨立重現所有結果的完整程式。");
+            if (!string.IsNullOrWhiteSpace(r.ReportFileName) || !string.IsNullOrWhiteSpace(r.TableFileName))
+                sb.AppendLine("- 上面指定的檔名就是交到使用者手上的檔名：.py 存檔時用同樣的檔名，報告裡提到這些檔案時也寫同樣的檔名。");
 
             if (!string.IsNullOrWhiteSpace(r.Language))
                 sb.AppendLine().AppendLine($"報告內文使用：{r.Language}。");

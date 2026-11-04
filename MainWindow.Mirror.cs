@@ -69,12 +69,12 @@ namespace Cat5201
     State = NodeDecisionStepState.Info,
     Highlight = true,
     IsActive = true,
-    DetailLines = BuildResolverLines(decision, extra: "正在建立執行決策")
+    DetailLines = BuildResolverLines(decision, extra: UiLanguage.P("正在建立執行決策", "Building the run decision"))
 },
         new NodeDecisionStepViewData
 {
     Title = "Capability Guard",
-    Detail = decision.CapabilityAdjusted ? "已調整" : "檢查中",
+    Detail = decision.CapabilityAdjusted ? UiLanguage.P("已調整", "Adjusted") : UiLanguage.P("檢查中", "Checking"),
     State = decision.CapabilityAdjusted ? NodeDecisionStepState.Warning : NodeDecisionStepState.Info,
     IsActive = !decision.CapabilityAdjusted,
     DetailLines = BuildCapabilityLines(decision, forcePendingText: !decision.CapabilityAdjusted)
@@ -82,31 +82,31 @@ namespace Cat5201
         new NodeDecisionStepViewData
 {
     Title = "Delegation",
-    Detail = "尚未觸發",
+    Detail = UiLanguage.P("尚未觸發", "Not triggered"),
     State = NodeDecisionStepState.Info,
     DetailLines = new[]
     {
-        "目前尚未進入 agent delegation"
+        UiLanguage.P("目前尚未進入 agent delegation", "Agent delegation not reached yet")
     }
 },
         new NodeDecisionStepViewData
         {
             Title = "Fallback",
-            Detail = "尚未觸發",
+            Detail = UiLanguage.P("尚未觸發", "Not triggered"),
             State = NodeDecisionStepState.Info,
             DetailLines = new[]
             {
-                "目前尚未進入 runtime fallback"
+                UiLanguage.P("目前尚未進入 runtime fallback", "Runtime fallback not reached yet")
             }
         },
        new NodeDecisionStepViewData
 {
     Title = "Execution",
-    Detail = "等待執行",
+    Detail = UiLanguage.P("等待執行", "Waiting to run"),
     State = NodeDecisionStepState.Info,
     DetailLines = new[]
     {
-        "執行尚未開始"
+        UiLanguage.P("執行尚未開始", "Run hasn't started")
     }
 }
     };
@@ -217,8 +217,8 @@ namespace Cat5201
                 if (MobileMirrorSwitch != null) MobileMirrorSwitch.IsChecked = false;
                 if (MobileMirrorUrlBox != null) MobileMirrorUrlBox.Visibility = Visibility.Collapsed;
                 MessageBox.Show(
-                    "無法啟動手機鏡像伺服器（可能是 " + MobileMirrorServer.DefaultPort + " 埠被占用，或防火牆阻擋）。\n\n" + ex.Message,
-                    "手機鏡像", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    UiLanguage.P("無法啟動手機鏡像伺服器（可能是 ", "Couldn't start the phone mirror server (port") + MobileMirrorServer.DefaultPort + UiLanguage.P(" 埠被占用，或防火牆阻擋）。\n\n", " may be in use, or blocked by the firewall).\n\n") + ex.Message,
+                    UiLanguage.P("手機鏡像", "Phone mirror"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -350,7 +350,7 @@ namespace Cat5201
             {
                 string text = (cmd.Text ?? "").Trim();
                 if (string.IsNullOrWhiteSpace(text))
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "指令是空的" });
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("指令是空的", "The command is empty") });
 
                 // 放置 + 連線（§17-3）：手機可指定連接節點——
                 // ""＝自動（最後執行節點）；節點 Id＝連指定節點。找不到退回自動。
@@ -390,11 +390,11 @@ namespace Cat5201
                 _ = created.RunCurrentTopTextAsync();          // fire-and-forget，立即回應手機（會自動注入上游輸出）
                 BuildAndPublishMirrorSnapshot();
                 AppLog.Info("MobileMirror", $"手機下指令建節點：{(text.Length > 40 ? text[..40] + "…" : text)}" +
-                                            (anchor != null ? "（已接為下游）" : ""));
+                                            (anchor != null ? UiLanguage.P("（已接為下游）", " (linked as downstream)") : ""));
                 return Task.FromResult(new MirrorCommandResult
                 {
                     Ok = true,
-                    Message = anchor != null ? "已建立節點（接在最後執行節點下游）並開始執行" : "已建立節點並開始執行",
+                    Message = anchor != null ? UiLanguage.P("已建立節點（接在最後執行節點下游）並開始執行", "Node created (downstream of the last run node) and started") : UiLanguage.P("已建立節點並開始執行", "Node created and started"),
                 });
             }
 
@@ -403,20 +403,20 @@ namespace Cat5201
             {
                 var win = _pendingGenConfirmWindow;
                 if (win == null)
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "目前沒有待確認的項目" });
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("目前沒有待確認的項目", "Nothing is waiting for confirmation") });
                 try { win.DialogResult = (action == "confirm"); }
-                catch { return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "回覆失敗（可能已由電腦回答）" }); }
+                catch { return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("回覆失敗（可能已由電腦回答）", "Reply failed (the PC may have answered already)") }); }
                 return Task.FromResult(new MirrorCommandResult
                 {
                     Ok = true,
-                    Message = action == "confirm" ? "已確認執行" : "已取消，只給文字",
+                    Message = action == "confirm" ? UiLanguage.P("已確認執行", "Confirmed, running") : UiLanguage.P("已取消，只給文字", "Cancelled, text only"),
                 });
             }
 
             var node = MainCanvas.Children.OfType<NodeControl>()
                 .FirstOrDefault(n => n.Id.ToString() == cmd.NodeId);
             if (node == null)
-                return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "找不到節點" });
+                return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("找不到節點", "Node not found") });
 
             switch (action)
             {
@@ -425,18 +425,18 @@ namespace Cat5201
                     return Task.FromResult(new MirrorCommandResult
                     {
                         Ok = stopped,
-                        Message = stopped ? "已送出停止" : "節點不在執行中",
+                        Message = stopped ? UiLanguage.P("已送出停止", "Stop sent") : UiLanguage.P("節點不在執行中", "The node isn't running"),
                     });
 
                 case "rerun":
                     if (node.IsGenerating)
-                        return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "節點執行中，無法重跑" });
+                        return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("節點執行中，無法重跑", "The node is running and can't be rerun") });
                     _ = node.RerunFromMirrorAsync();  // 不等它跑完，立即回應手機
                     BuildAndPublishMirrorSnapshot();  // 立刻把「執行中」推給手機
-                    return Task.FromResult(new MirrorCommandResult { Ok = true, Message = "已開始重跑" });
+                    return Task.FromResult(new MirrorCommandResult { Ok = true, Message = UiLanguage.P("已開始重跑", "Rerun started") });
 
                 default:
-                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = "未知指令" });
+                    return Task.FromResult(new MirrorCommandResult { Ok = false, Message = UiLanguage.P("未知指令", "Unknown command") });
             }
         }
     }

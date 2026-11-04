@@ -481,6 +481,32 @@ namespace Cat5201
             };
         }
 
+        /// <summary>WriteDocx／WriteXlsx 會用的檔名（不含撞名時加的 _2）。要先告訴產檔的一方用什麼檔名時用。</summary>
+        public static string PlannedFileName(string title, string extension)
+        {
+            string baseName = SanitizeFileName(title);
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = "report";
+            return baseName + extension;
+        }
+
+        /// <summary>
+        /// 在 outputDir 裡找一個還沒用過的標題：fileNamesFor(標題) 列出的檔案都不存在才用，撞名就接 _2、_3…。
+        /// 檔名要在產檔前先定下來（例如沙箱裡的報告會引用自己的檔名），寫檔時才不會再被 UniquePath 改名。
+        /// </summary>
+        public static string UnusedTitle(string outputDir, string title, Func<string, IEnumerable<string>> fileNamesFor)
+        {
+            if (string.IsNullOrWhiteSpace(outputDir) || !Directory.Exists(outputDir))
+                return title;
+
+            for (int n = 1; n < 1000; n++)
+            {
+                string candidate = n == 1 ? title : $"{title}_{n}";
+                if (!fileNamesFor(candidate).Any(f => File.Exists(Path.Combine(outputDir, f))))
+                    return candidate;
+            }
+            return title;
+        }
+
         /// <summary>
         /// 讓檔名唯一。檔名時間戳只到秒，同一秒內寫兩份同標題的檔案會撞名，
         /// 後寫的那份會把先寫的覆蓋掉——覆蓋掉的是使用者已經拿到的產出。

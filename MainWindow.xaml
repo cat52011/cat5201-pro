@@ -335,7 +335,7 @@
         HorizontalAlignment="Right"
         VerticalAlignment="Top"
         Cursor="Hand"
-        ToolTip="新增"
+        ToolTip="{local:Tr '新增'}"
         Click="NewFile_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -492,7 +492,7 @@
 
                         <TextBlock x:Name="CurrentFileLabel"
                                    Grid.Column="0"
-                                   Text="目前檔案：尚未建立"
+                                   Text="{local:Tr '目前檔案：尚未建立'}"
                                    FontSize="12"
                                    Foreground="#555"
                                    VerticalAlignment="Center"
@@ -506,7 +506,7 @@
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
-                                ToolTip="個人化設定"
+                                ToolTip="{local:Tr '個人化設定'}"
                                 Click="OpenSettings_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -553,7 +553,7 @@
 
                 <TextBlock x:Name="StartMessage"
                            Grid.Row="1"
-                           Text="讓我們有個新的開始！"
+                           Text="{local:Tr '讓我們有個新的開始！'}"
                            FontSize="28"
                            Foreground="#222"
                            HorizontalAlignment="Center"
@@ -561,7 +561,7 @@
 
                 <Button x:Name="StartButton"
                         Grid.Row="2"
-                        Content="開始"
+                        Content="{local:Tr '開始'}"
                         Width="100"
                         Height="36"
                         Background="Black"
@@ -720,7 +720,7 @@ Margin="0,20,20,0"
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
 
-                        <TextBlock Text="決策可視化"
+                        <TextBlock Text="{local:Tr '決策可視化'}"
                        FontSize="15"
                        FontWeight="SemiBold"
                        Foreground="#303030"
@@ -737,8 +737,8 @@ Margin="0,20,20,0"
                                 Cursor="Hand"
                                 FontSize="12"
                                 Foreground="#4A4A4A"
-                                Content="匯出紀錄"
-                                ToolTip="匯出這個節點最近一次執行的 AI 使用紀錄（誰做了哪一段、哪些決策是誰提的、花了多少）"
+                                Content="{local:Tr '匯出紀錄'}"
+                                ToolTip="{local:Tr '匯出這個節點最近一次執行的 AI 使用紀錄（誰做了哪一段、哪些決策是誰提的、花了多少）'}"
                                 Click="DecisionExportButton_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -760,7 +760,7 @@ Margin="0,20,20,0"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
-                                ToolTip="放大決策窗"
+                                ToolTip="{local:Tr '放大決策窗'}"
                                 Click="DecisionPanelToggleButton_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -812,7 +812,7 @@ Margin="0,20,20,0"
                         <StackPanel Margin="0,0,6,0">
 
                             <!-- 模式 -->
-                            <TextBlock Text="模式"
+                            <TextBlock Text="{local:Tr '模式'}"
                    FontSize="12"
                    Foreground="#7A7A7A"
                    Margin="0,0,0,2"/>
@@ -837,7 +837,7 @@ Margin="0,20,20,0"
            Margin="0,0,0,10"/>
 
                             <!-- 策略 -->
-                            <TextBlock Text="策略"
+                            <TextBlock Text="{local:Tr '策略'}"
                    FontSize="12"
                    Foreground="#7A7A7A"
                    Margin="0,0,0,2"/>
@@ -850,7 +850,7 @@ Margin="0,20,20,0"
                    Margin="0,0,0,10"/>
 
                             <!-- 模型 -->
-                            <TextBlock Text="模型"
+                            <TextBlock Text="{local:Tr '模型'}"
                    FontSize="12"
                    Foreground="#7A7A7A"
                    Margin="0,0,0,2"/>
@@ -863,7 +863,7 @@ Margin="0,20,20,0"
                    Margin="0,0,0,10"/>
 
                             <!-- 參與的模型／服務（來自逐筆帳目，不是只有選模型時那一個） -->
-                            <TextBlock Text="這次實際參與"
+                            <TextBlock Text="{local:Tr '這次實際參與'}"
                    FontSize="12"
                    Foreground="#7A7A7A"
                    Margin="0,0,0,2"/>
@@ -876,7 +876,7 @@ Margin="0,20,20,0"
                    Margin="0,0,0,10"/>
 
                             <!-- 任務 -->
-                            <TextBlock Text="任務"
+                            <TextBlock Text="{local:Tr '任務'}"
                    FontSize="12"
                    Foreground="#7A7A7A"
                    Margin="0,0,0,2"/>
@@ -955,13 +955,13 @@ Margin="0,20,20,0"
                     Visibility="Collapsed"
                     Panel.ZIndex="9990"
                     MouseLeftButtonUp="ApiBalancePanel_Click"
-                    ToolTip="點一下開啟 API 狀態頁（填儲值金額、重新檢查）">
+                    ToolTip="{local:Tr '點一下開啟 API 狀態頁（填儲值金額、重新檢查）'}">
                 <Border.Effect>
                     <DropShadowEffect BlurRadius="14" ShadowDepth="1" Direction="270" Color="#000000" Opacity="0.10"/>
                 </Border.Effect>
 
                 <StackPanel>
-                    <TextBlock Text="API 餘額"
+                    <TextBlock Text="{local:Tr 'API 餘額'}"
                                FontSize="11"
                                FontWeight="SemiBold"
                                Foreground="#8A8A84"
@@ -991,7 +991,7 @@ Margin="0,20,20,0"
                     </ItemsControl>
 
                     <TextBlock x:Name="ApiBalanceEmptyText"
-                               Text="還沒有花費紀錄。到「個人化 → API」填入儲值金額，這裡就會顯示估計剩餘。"
+                               Text="{local:Tr '還沒有花費紀錄。到「個人化 → API」填入儲值金額，這裡就會顯示估計剩餘。'}"
                                FontSize="11"
                                Foreground="#A0A09A"
                                TextWrapping="Wrap"
@@ -1110,19 +1110,19 @@ Margin="0,20,20,0"
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0">
-                        <TextBlock Text="最近刪除" FontSize="16" FontWeight="SemiBold" Foreground="#2A2A28"/>
+                        <TextBlock Text="{local:Tr '最近刪除'}" FontSize="16" FontWeight="SemiBold" Foreground="#2A2A28"/>
                         <Button Content="&#215;" HorizontalAlignment="Right" Width="28" Height="28"
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"
                                 FontSize="15" Foreground="#8A8A84" Click="CloseTrash_Click"/>
                     </Grid>
 
                     <TextBlock Grid.Row="1" Margin="0,8,0,14" FontSize="11.5" Foreground="#9A9A94" TextWrapping="Wrap"
-                               Text="刪掉的存檔連同附件與該存檔的記憶都留在這裡，7 天後自動永久刪除。全域記憶不受影響。"/>
+                               Text="{local:Tr '刪掉的存檔連同附件與該存檔的記憶都留在這裡，7 天後自動永久刪除。全域記憶不受影響。'}"/>
 
                     <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                         <StackPanel>
                             <TextBlock x:Name="TrashEmptyText" Visibility="Collapsed"
-                                       Text="沒有最近刪除的存檔。" FontSize="12.5" Foreground="#A0A09A" Margin="0,8,0,0"/>
+                                       Text="{local:Tr '沒有最近刪除的存檔。'}" FontSize="12.5" Foreground="#A0A09A" Margin="0,8,0,0"/>
 
                             <ItemsControl x:Name="TrashList">
                                 <ItemsControl.ItemTemplate>
@@ -1144,7 +1144,7 @@ Margin="0,20,20,0"
                                                                Margin="0,3,0,0" TextWrapping="Wrap"/>
                                                 </StackPanel>
 
-                                                <Button Grid.Column="1" Content="復原" Height="30" Margin="10,0,0,0"
+                                                <Button Grid.Column="1" Content="{local:Tr '復原'}" Height="30" Margin="10,0,0,0"
                                                         FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
                                                         Background="#1F1F1C" Click="RestoreTrashItem_Click">
                                                     <Button.Template>
@@ -1163,7 +1163,7 @@ Margin="0,20,20,0"
                                                     </Button.Template>
                                                 </Button>
 
-                                                <Button Grid.Column="2" Content="永久刪除" Height="30" Margin="8,0,0,0"
+                                                <Button Grid.Column="2" Content="{local:Tr '永久刪除'}" Height="30" Margin="8,0,0,0"
                                                         FontSize="12" Cursor="Hand" Foreground="#C0453B" BorderThickness="0"
                                                         Background="Transparent" Click="PurgeTrashItem_Click">
                                                     <Button.Template>
@@ -1227,7 +1227,7 @@ Margin="0,20,20,0"
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0"
-                                   Text="設定"
+                                   Text="{local:Tr '設定'}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#303030"
@@ -1238,7 +1238,7 @@ Margin="0,20,20,0"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
-                                ToolTip="關閉"
+                                ToolTip="{local:Tr '關閉'}"
                                 Click="CloseSettings_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -1272,7 +1272,7 @@ Margin="0,20,20,0"
                         </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0" Orientation="Horizontal">
                         <Button x:Name="TabPersonalizationBtn"
-                                Content="個人化"
+                                Content="{local:Tr '個人化'}"
                                 Height="32"
                                 FontSize="13"
                                 FontWeight="SemiBold"
@@ -1335,7 +1335,7 @@ Margin="0,20,20,0"
 
                         <!-- 回報問題：打包日誌（金鑰已遮蔽）到桌面，任何分頁都看得到 -->
                         <Button x:Name="ReportProblemBtn"
-                                Content="回報問題"
+                                Content="{local:Tr '回報問題'}"
                                 Height="32"
                                 FontSize="12.5"
                                 Cursor="Hand"
@@ -1343,7 +1343,7 @@ Margin="0,20,20,0"
                                 Foreground="#777"
                                 BorderThickness="0"
                                 Margin="16,0,0,0"
-                                ToolTip="把最近 7 天的日誌打包到桌面（自動遮蔽 API 金鑰），寄給開發者"
+                                ToolTip="{local:Tr '把最近 7 天的日誌打包到桌面（自動遮蔽 API 金鑰），寄給開發者'}"
                                 Click="ReportProblem_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -1371,7 +1371,7 @@ Margin="0,20,20,0"
                             Foreground="#8A8A8F"
                             BorderThickness="0"
                             Cursor="Hand"
-                            ToolTip="使用說明"
+                            ToolTip="{local:Tr '使用說明'}"
                             Click="ShowOnboarding_Click">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -1398,7 +1398,38 @@ Margin="0,20,20,0"
                                   HorizontalScrollBarVisibility="Disabled"
                                   Margin="0,8,0,0">
                     <StackPanel Margin="0,8,4,0">
-                        <TextBlock Text="記憶與偏好"
+                        <!-- 介面語言：第一次啟動時問過一次，這裡隨時可以改，切換立即生效。
+                             選項名稱用各自的語言寫，不翻譯——看不懂目前語言的人也找得到自己的。 -->
+                        <TextBlock Text="{local:Tr '語言'}"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   Foreground="#444"
+                                   Margin="0,0,0,2"/>
+                        <TextBlock Text="{local:Tr '介面顯示的語言。AI 的回答一律跟著你提問的語言。'}"
+                                   FontSize="11.5"
+                                   Foreground="#9A9A9E"
+                                   TextWrapping="Wrap"
+                                   Margin="0,0,0,8"/>
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="UiLanguageZh"
+                                         GroupName="UiLanguage"
+                                         Content="繁體中文"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3,24,3"
+                                         Checked="UiLanguage_Checked"/>
+                            <RadioButton x:Name="UiLanguageEn"
+                                         GroupName="UiLanguage"
+                                         Content="English"
+                                         FontSize="12.5"
+                                         Foreground="#333"
+                                         Margin="0,3"
+                                         Checked="UiLanguage_Checked"/>
+                        </StackPanel>
+
+                        <Border Height="1" Background="#ECECEC" Margin="0,16,0,14"/>
+
+                        <TextBlock Text="{local:Tr '記憶與偏好'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1429,7 +1460,7 @@ Margin="0,20,20,0"
 
                             <Button x:Name="RememberButton"
                                     Grid.Column="0"
-                                    Content="記住"
+                                    Content="{local:Tr '記住'}"
                                     Height="34"
                                     FontSize="13"
                                     FontWeight="SemiBold"
@@ -1455,7 +1486,7 @@ Margin="0,20,20,0"
 
                             <Button x:Name="ClearMemoryButton"
                                     Grid.Column="2"
-                                    Content="當前記憶"
+                                    Content="{local:Tr '當前記憶'}"
                                     Height="34"
                                     FontSize="12.5"
                                     Cursor="Hand"
@@ -1481,7 +1512,7 @@ Margin="0,20,20,0"
                         <!-- 「當前記憶」展開區：點上面按鈕才顯示，逐條可刪、可一鍵清除 -->
                         <StackPanel x:Name="MemoryListPanel" Visibility="Collapsed" Margin="0,10,0,0">
                             <TextBlock x:Name="MemoryEmptyHint"
-                                       Text="目前沒有任何記憶。"
+                                       Text="{local:Tr '目前沒有任何記憶。'}"
                                        Visibility="Collapsed"
                                        FontSize="12"
                                        Foreground="#9A9A9E"
@@ -1522,7 +1553,7 @@ Margin="0,20,20,0"
                                                         Background="Transparent"
                                                         BorderThickness="0"
                                                         Cursor="Hand"
-                                                        ToolTip="刪除這條記憶"
+                                                        ToolTip="{local:Tr '刪除這條記憶'}"
                                                         Tag="{Binding Key}"
                                                         Click="DeletePreference_Click">
                                                     <Button.Template>
@@ -1551,7 +1582,7 @@ Margin="0,20,20,0"
                             </ItemsControl>
 
                             <Button x:Name="ClearAllMemoryButton"
-                                    Content="一鍵清除全部"
+                                    Content="{local:Tr '一鍵清除全部'}"
                                     Height="32"
                                     Margin="0,2,0,0"
                                     HorizontalAlignment="Left"
@@ -1579,7 +1610,7 @@ Margin="0,20,20,0"
                         <!-- §4 多階段任務自動展開 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="多階段任務自動展開"
+                        <TextBlock Text="{local:Tr '多階段任務自動展開'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1588,21 +1619,21 @@ Margin="0,20,20,0"
                         <StackPanel>
                             <RadioButton x:Name="DownstreamModeOneClick"
                                          GroupName="DownstreamAutoMode"
-                                         Content="一鍵展開並自動執行（建議）"
+                                         Content="{local:Tr '一鍵展開並自動執行（建議）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
                                          Checked="DownstreamMode_Checked"/>
                             <RadioButton x:Name="DownstreamModeFullyAuto"
                                          GroupName="DownstreamAutoMode"
-                                         Content="完全自動（送出後立即展開並執行）"
+                                         Content="{local:Tr '完全自動（送出後立即展開並執行）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
                                          Checked="DownstreamMode_Checked"/>
                             <RadioButton x:Name="DownstreamModeOff"
                                          GroupName="DownstreamAutoMode"
-                                         Content="關閉（只用單一節點作答）"
+                                         Content="{local:Tr '關閉（只用單一節點作答）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
@@ -1614,12 +1645,12 @@ Margin="0,20,20,0"
                              選項文字含單價，由 SyncIllustrationQualityRadios 依價目表填，不寫死在這裡。 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="配圖品質"
+                        <TextBlock Text="{local:Tr '配圖品質'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="簡報、報告以及影片第一格之配圖，單純圖片不受限制"
+                        <TextBlock Text="{local:Tr '簡報、報告以及影片第一格之配圖，單純圖片不受限制'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1649,7 +1680,7 @@ Margin="0,20,20,0"
                         <!-- 文件品質 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="簡報與報告品質"
+                        <TextBlock Text="{local:Tr '簡報與報告品質'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1657,14 +1688,14 @@ Margin="0,20,20,0"
                         <StackPanel>
                             <RadioButton x:Name="DocumentEngineSkills"
                                          GroupName="DocumentEngine"
-                                         Content="最佳品質（Claude 親自設計版面）"
+                                         Content="{local:Tr '最佳品質（Claude 親自設計版面）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
                                          Checked="DocumentEngine_Checked"/>
                             <RadioButton x:Name="DocumentEngineBuiltin"
                                          GroupName="DocumentEngine"
-                                         Content="快速版（內建版型，快又便宜）"
+                                         Content="{local:Tr '快速版（內建版型，快又便宜）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
@@ -1674,7 +1705,7 @@ Margin="0,20,20,0"
                         <!-- 簡報生成器 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="簡報生成器（快速版）"
+                        <TextBlock Text="{local:Tr '簡報生成器（快速版）'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1683,7 +1714,7 @@ Margin="0,20,20,0"
                         <StackPanel>
                             <RadioButton x:Name="PresentationEngineClaude"
                                          GroupName="PresentationEngine"
-                                         Content="Claude（建議）"
+                                         Content="{local:Tr 'Claude（建議）'}"
                                          FontSize="12.5"
                                          Foreground="#333"
                                          Margin="0,3"
@@ -1700,13 +1731,13 @@ Margin="0,20,20,0"
                         <!-- 影片風格 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="影片設定"
+                        <TextBlock Text="{local:Tr '影片設定'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
 
-                        <TextBlock Text="模型"
+                        <TextBlock Text="{local:Tr '模型'}"
                                    FontSize="12"
                                    Foreground="#666"
                                    Margin="0,8,0,4"/>
@@ -1715,12 +1746,12 @@ Margin="0,20,20,0"
                                   Width="260"
                                   HorizontalAlignment="Left"
                                   SelectionChanged="VideoModelTierCombo_SelectionChanged">
-                            <ComboBoxItem Tag="Standard" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 標準版（約 US$0.40/秒）"/>
-                            <ComboBoxItem Tag="Fast" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Fast（約 US$0.10/秒）"/>
-                            <ComboBoxItem Tag="Lite" Style="{StaticResource RoutingComboItemStyle}" Content="Veo 3.1 Lite（約 US$0.05/秒）"/>
+                            <ComboBoxItem Tag="Standard" Style="{StaticResource RoutingComboItemStyle}" Content="{local:Tr 'Veo 3.1 標準版（約 US$0.40/秒）'}"/>
+                            <ComboBoxItem Tag="Fast" Style="{StaticResource RoutingComboItemStyle}" Content="{local:Tr 'Veo 3.1 Fast（約 US$0.10/秒）'}"/>
+                            <ComboBoxItem Tag="Lite" Style="{StaticResource RoutingComboItemStyle}" Content="{local:Tr 'Veo 3.1 Lite（約 US$0.05/秒）'}"/>
                         </ComboBox>
 
-                        <TextBlock Text="風格"
+                        <TextBlock Text="{local:Tr '風格'}"
                                    FontSize="12"
                                    Foreground="#666"
                                    Margin="0,12,0,4"/>
@@ -1744,7 +1775,7 @@ Margin="0,20,20,0"
                         </Border>
 
                         <Button x:Name="ResetVideoStyleButton"
-                                Content="恢復原廠預設風格"
+                                Content="{local:Tr '恢復原廠預設風格'}"
                                 Height="32"
                                 Margin="0,8,0,0"
                                 HorizontalAlignment="Left"
@@ -1771,7 +1802,7 @@ Margin="0,20,20,0"
                         <!-- 任務 → AI 自訂路由 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="任務指定模型"
+                        <TextBlock Text="{local:Tr '任務指定模型'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
@@ -1781,17 +1812,17 @@ Margin="0,20,20,0"
 
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="產出檔案"
+                        <TextBlock Text="{local:Tr '產出檔案'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,0"/>
-                        <Grid Margin="0,12,0,0" ToolTip="簡報、報告、表格除了原始檔外再產一份 PDF。關閉可明顯加快產出與單頁編輯；已經有 PDF 的舊檔仍會跟著更新，以免兩份內容對不起來。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '簡報、報告、表格除了原始檔外再產一份 PDF。關閉可明顯加快產出與單頁編輯；已經有 PDF 的舊檔仍會跟著更新，以免兩份內容對不起來。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="同時產出對照 PDF"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '同時產出對照 PDF'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="CompanionPdfSwitch"
@@ -1802,12 +1833,12 @@ Margin="0,20,20,0"
                                       Unchecked="CompanionPdfSwitch_Changed"/>
                         </Grid>
                         <!-- 獨立審查（2026-11-04）：要另外花錢，用自己金鑰的人要能關掉 -->
-                        <Grid Margin="0,12,0,0" ToolTip="產出書面報告後，由沒有參與撰寫的模型核對數字與文字、找出矛盾，另存一份審查清單；不會修改報告。每份約 NT$1（Claude 審查）到 NT$10（GPT 審查）。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '產出書面報告後，由沒有參與撰寫的模型核對數字與文字、找出矛盾，另存一份審查清單；不會修改報告。每份約 NT$1（Claude 審查）到 NT$10（GPT 審查）。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="報告完成後獨立審查"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '報告完成後獨立審查'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="IndependentReviewSwitch"
@@ -1820,7 +1851,7 @@ Margin="0,20,20,0"
 
                         <!-- 存放位置：產出的檔案本來就不隨聊天刪除消失（它們在所有存檔共用的資料夾），
                              但使用者看不出這件事，也會想把成品放到自己的位置（雲端同步、交作業的資料夾）。 -->
-                        <TextBlock Text="存放位置"
+                        <TextBlock Text="{local:Tr '存放位置'}"
                                    FontSize="12.5" Foreground="#333"
                                    Margin="0,14,0,4"/>
                         <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1"
@@ -1831,7 +1862,7 @@ Margin="0,20,20,0"
                                        TextWrapping="Wrap" LineHeight="17"/>
                         </Border>
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                            <Button Content="變更…" Height="30" Margin="0,0,6,0"
+                            <Button Content="{local:Tr '變更…'}" Height="30" Margin="0,0,6,0"
                                     FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
                                     Background="#1F1F1C" Click="ChangeOutputDir_Click">
                                 <Button.Template>
@@ -1849,11 +1880,11 @@ Margin="0,20,20,0"
                                     </ControlTemplate>
                                 </Button.Template>
                             </Button>
-                            <Button Content="開啟資料夾" Height="30" Margin="0,0,6,0" Padding="12,0"
+                            <Button Content="{local:Tr '開啟資料夾'}" Height="30" Margin="0,0,6,0" Padding="12,0"
                                     FontSize="12" Cursor="Hand" Foreground="#66665F"
                                     Background="#F4F4F0" BorderThickness="0"
                                     Click="OpenOutputDir_Click"/>
-                            <Button Content="還原預設" Height="30" Padding="12,0"
+                            <Button Content="{local:Tr '還原預設'}" Height="30" Padding="12,0"
                                     FontSize="12" Cursor="Hand" Foreground="#8A8A82"
                                     Background="Transparent" BorderThickness="0"
                                     Click="ResetOutputDir_Click"/>
@@ -1861,17 +1892,17 @@ Margin="0,20,20,0"
 
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="畫面"
+                        <TextBlock Text="{local:Tr '畫面'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,0"/>
-                        <Grid Margin="0,12,0,0" ToolTip="每次執行用了哪個模型、為什麼選它、花了多少、根據哪些記憶。關掉只影響顯示，紀錄仍然會留下。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '每次執行用了哪個模型、為什麼選它、花了多少、根據哪些記憶。關掉只影響顯示，紀錄仍然會留下。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="右上角顯示決策視窗"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '右上角顯示決策視窗'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="DecisionPanelSwitch"
@@ -1881,12 +1912,12 @@ Margin="0,20,20,0"
                                       Checked="DecisionPanelSwitch_Changed"
                                       Unchecked="DecisionPanelSwitch_Changed"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0" ToolTip="各家都沒有查餘額的 API，這裡用「你填的餘額 − 本機記到的花費」推估；充值後到 API 分頁更新金額。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '各家都沒有查餘額的 API，這裡用「你填的餘額 − 本機記到的花費」推估；充值後到 API 分頁更新金額。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="右下角顯示 API 餘額"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '右下角顯示 API 餘額'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="ApiBalancePanelSwitch"
@@ -1899,22 +1930,22 @@ Margin="0,20,20,0"
 
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="成本控制"
+                        <TextBlock Text="{local:Tr '成本控制'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,0"/>
-                        <TextBlock Text="手動選擇不受影響"
+                        <TextBlock Text="{local:Tr '手動選擇不受影響'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
                                    Margin="0,4,0,0"/>
-                        <Grid Margin="0,12,0,0" ToolTip="Auto 不會選用，改用 Claude Sonnet。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr 'Auto 不會選用，改用 Claude Sonnet。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="關閉 Claude Opus（高成本）"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '關閉 Claude Opus（高成本）'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="BlockOpusSwitch"
@@ -1924,12 +1955,12 @@ Margin="0,20,20,0"
                                       Checked="BlockOpusSwitch_Changed"
                                       Unchecked="BlockOpusSwitch_Changed"/>
                         </Grid>
-                        <Grid Margin="0,12,0,0" ToolTip="Auto 不會選用，改用 Perplexity Sonar。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr 'Auto 不會選用，改用 Perplexity Sonar。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="關閉 Perplexity Deep Research（高成本）"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '關閉 Perplexity Deep Research（高成本）'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="BlockDeepResearchSwitch"
@@ -1942,17 +1973,17 @@ Margin="0,20,20,0"
 
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="上游附件"
+                        <TextBlock Text="{local:Tr '上游附件'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,0"/>
-                        <Grid Margin="0,12,0,0" ToolTip="開啟時讀取完整上游檔案，關閉時只讀取上游節點的文字輸出。">
+                        <Grid Margin="0,12,0,0" ToolTip="{local:Tr '開啟時讀取完整上游檔案，關閉時只讀取上游節點的文字輸出。'}">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="完整讀取上游附件"
+                            <TextBlock Grid.Column="0" Text="{local:Tr '完整讀取上游附件'}"
                                        FontSize="12.5" Foreground="#333"
                                        TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,12,0"/>
                             <CheckBox x:Name="ReadUpstreamAttachmentsSwitch"
@@ -1966,12 +1997,12 @@ Margin="0,20,20,0"
                         <!-- §15 逾時上限 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="逾時上限"
+                        <TextBlock Text="{local:Tr '逾時上限'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="設定範圍 30～1800 秒"
+                        <TextBlock Text="{local:Tr '設定範圍 30～1800 秒'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -1994,7 +2025,7 @@ Margin="0,20,20,0"
                                          MaxLength="4"
                                          TextChanged="TimeoutInput_Changed"/>
                             </Border>
-                            <TextBlock Text="秒"
+                            <TextBlock Text="{local:Tr '秒'}"
                                        VerticalAlignment="Center"
                                        Margin="8,0,0,0"
                                        FontSize="12.5"
@@ -2004,26 +2035,26 @@ Margin="0,20,20,0"
                         <!-- 花錢安全：今日累計花費 + 每日上限（0/留空 = 不限制） -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="花費"
+                        <TextBlock Text="{local:Tr '花費'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="達上限之後不再執行新開始的任務"
+                        <TextBlock Text="{local:Tr '達上限之後不再執行新開始的任務'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
                                    Margin="0,0,0,8"/>
 
                         <TextBlock x:Name="SpendTodayText"
-                                   Text="今日已花：約 NT$0"
+                                   Text="{local:Tr '今日已花：約 NT$0'}"
                                    FontSize="12.5"
                                    FontWeight="SemiBold"
                                    Foreground="#333"
                                    Margin="0,0,0,8"/>
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                            <TextBlock Text="每日上限"
+                            <TextBlock Text="{local:Tr '每日上限'}"
                                        VerticalAlignment="Center"
                                        FontSize="12.5"
                                        Foreground="#333"
@@ -2044,12 +2075,12 @@ Margin="0,20,20,0"
                                          MaxLength="6"
                                          TextChanged="DailyBudgetInput_Changed"/>
                             </Border>
-                            <TextBlock Text="NT$／天"
+                            <TextBlock Text="{local:Tr 'NT$／天'}"
                                        VerticalAlignment="Center"
                                        Margin="8,0,0,0"
                                        FontSize="12.5"
                                        Foreground="#666"/>
-                            <TextBlock Text="（留空＝不限制）"
+                            <TextBlock Text="{local:Tr '（留空＝不限制）'}"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        FontSize="11.5"
@@ -2057,7 +2088,7 @@ Margin="0,20,20,0"
                         </StackPanel>
 
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="0,8,0,0">
-                            <TextBlock Text="確認框自動同意"
+                            <TextBlock Text="{local:Tr '確認框自動同意'}"
                                        VerticalAlignment="Center"
                                        FontSize="12.5"
                                        Foreground="#333"
@@ -2078,12 +2109,12 @@ Margin="0,20,20,0"
                                          MaxLength="3"
                                          TextChanged="AutoConfirmSecondsInput_Changed"/>
                             </Border>
-                            <TextBlock Text="秒後自動執行"
+                            <TextBlock Text="{local:Tr '秒後自動執行'}"
                                        VerticalAlignment="Center"
                                        Margin="8,0,0,0"
                                        FontSize="12.5"
                                        Foreground="#666"/>
-                            <TextBlock Text="（0＝全手動）"
+                            <TextBlock Text="{local:Tr '（0＝全手動）'}"
                                        VerticalAlignment="Center"
                                        Margin="10,0,0,0"
                                        FontSize="11.5"
@@ -2099,9 +2130,9 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="產出檔案上傳 Google Drive"
+                                <TextBlock Text="{local:Tr '產出檔案上傳 Google Drive'}"
                                            FontSize="13" FontWeight="SemiBold" Foreground="#444"/>
-                                <TextBlock Text="需已連結帳戶（「API」分頁的「Google 整合」區）"
+                                <TextBlock Text="{local:Tr '需已連結帳戶（「API」分頁的「Google 整合」區）'}"
                                            FontSize="11" Foreground="#A8A8AC" Margin="0,2,0,0"/>
                             </StackPanel>
                             <CheckBox x:Name="GoogleAutoUploadSwitch"
@@ -2115,16 +2146,16 @@ Margin="0,20,20,0"
                         <!-- 檔案類型：膠囊 chip（點一下切換），包在淺灰卡片裡比裸 checkbox 清楚 -->
                         <Border Background="#FAFAFC" CornerRadius="10" Padding="12,10,12,4" Margin="0,10,0,0">
                             <StackPanel>
-                                <TextBlock Text="要上傳的檔案類型"
+                                <TextBlock Text="{local:Tr '要上傳的檔案類型'}"
                                            FontSize="12" FontWeight="SemiBold" Foreground="#555" Margin="0,0,0,8"/>
                                 <WrapPanel>
                                     <CheckBox x:Name="DriveTypePdf"   Content="PDF"   Tag="pdf"   Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
                                     <CheckBox x:Name="DriveTypeWord"  Content="Word"  Tag="word"  Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                                    <CheckBox x:Name="DriveTypePpt"   Content="簡報"  Tag="ppt"   Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypePpt"   Content="{local:Tr '簡報'}"  Tag="ppt"   Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
                                     <CheckBox x:Name="DriveTypeExcel" Content="Excel" Tag="excel" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                                    <CheckBox x:Name="DriveTypeImage" Content="圖片"  Tag="image" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                                    <CheckBox x:Name="DriveTypeVideo" Content="影片"  Tag="video" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
-                                    <CheckBox x:Name="DriveTypeText"  Content="文字/MD" Tag="text" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeImage" Content="{local:Tr '圖片'}"  Tag="image" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeVideo" Content="{local:Tr '影片'}"  Tag="video" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
+                                    <CheckBox x:Name="DriveTypeText"  Content="{local:Tr '文字/MD'}" Tag="text" Style="{StaticResource ChoiceChipStyle}" Checked="DriveTypeCheck_Changed" Unchecked="DriveTypeCheck_Changed"/>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -2135,9 +2166,9 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="Word／Excel 轉成 Google 文件／試算表"
+                                <TextBlock Text="{local:Tr 'Word／Excel 轉成 Google 文件／試算表'}"
                                            FontSize="12.5" Foreground="#333"/>
-                                <TextBlock Text="上傳時由 Drive 轉檔，變成可線上編輯的 Google 格式"
+                                <TextBlock Text="{local:Tr '上傳時由 Drive 轉檔，變成可線上編輯的 Google 格式'}"
                                            FontSize="11" Foreground="#A8A8AC"/>
                             </StackPanel>
                             <CheckBox x:Name="DriveConvertSwitch"
@@ -2151,12 +2182,12 @@ Margin="0,20,20,0"
                         <!-- 手機鏡像（§17 階段一）：開啟後手機同區網可唯讀看到畫布即時狀態 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
 
-                        <TextBlock Text="手機鏡像"
+                        <TextBlock Text="{local:Tr '手機鏡像'}"
                                    FontSize="13"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,14,0,2"/>
-                        <TextBlock Text="手機連接同一 Wi-Fi 時，可在手機上查看執行狀態"
+                        <TextBlock Text="{local:Tr '手機連接同一 Wi-Fi 時，可在手機上查看執行狀態'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
@@ -2168,7 +2199,7 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="鏡像模式"
+                                <TextBlock Text="{local:Tr '鏡像模式'}"
                                            FontSize="12.5" Foreground="#333"/>
                             </StackPanel>
                             <CheckBox x:Name="MobileMirrorSwitch"
@@ -2186,7 +2217,7 @@ Margin="0,20,20,0"
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" VerticalAlignment="Center">
-                                <TextBlock Text="唯讀模式"
+                                <TextBlock Text="{local:Tr '唯讀模式'}"
                                            FontSize="12.5" Foreground="#333"/>
                             </StackPanel>
                             <CheckBox x:Name="MobileMirrorReadOnlySwitch"
@@ -2205,7 +2236,7 @@ Margin="0,20,20,0"
                                 Padding="12,10"
                                 Margin="0,8,0,0">
                             <StackPanel>
-                                <TextBlock Text="手機端掃描QRcode或輸入網址"
+                                <TextBlock Text="{local:Tr '手機端掃描QRcode或輸入網址'}"
                                            FontSize="11.5" Foreground="#777" Margin="0,0,0,8"/>
                                 <Border HorizontalAlignment="Center"
                                         Background="White"
@@ -2245,20 +2276,20 @@ Margin="0,20,20,0"
                                    FontWeight="SemiBold"
                                    Foreground="#444"
                                    Margin="0,4,0,2"/>
-                        <TextBlock Text="把常用的指示、流程或格式模板存成「技能」，每次執行任務時自動注入給 AI。全域生效、跨專案、重啟保留；可個別開關。與本節點明確指示衝突時，以節點為準。"
+                        <TextBlock Text="{local:Tr '把常用的指示、流程或格式模板存成「技能」，每次執行任務時自動注入給 AI。全域生效、跨專案、重啟保留；可個別開關。與本節點明確指示衝突時，以節點為準。'}"
                                    FontSize="11.5"
                                    Foreground="#9A9A9E"
                                    TextWrapping="Wrap"
                                    Margin="0,0,0,10"/>
 
-                        <TextBlock Text="新增技能"
+                        <TextBlock Text="{local:Tr '新增技能'}"
                                    FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,0,0,4"/>
                         <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" CornerRadius="9" Margin="0,0,0,6">
                             <TextBox x:Name="SkillNameInput"
                                      BorderThickness="0" Background="Transparent"
                                      Padding="12,8" FontSize="12.5" Foreground="#333"
                                      VerticalContentAlignment="Center"
-                                     ToolTip="技能名稱（例：週報格式）"/>
+                                     ToolTip="{local:Tr '技能名稱（例：週報格式）'}"/>
                         </Border>
                         <Border Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" CornerRadius="9" Margin="0,0,0,8">
                             <TextBox x:Name="SkillContentInput"
@@ -2267,10 +2298,10 @@ Margin="0,20,20,0"
                                      AcceptsReturn="True" TextWrapping="Wrap"
                                      MinHeight="64" MaxHeight="160"
                                      VerticalScrollBarVisibility="Auto"
-                                     ToolTip="技能內容：要注入給 AI 的指示/流程/格式模板"/>
+                                     ToolTip="{local:Tr '技能內容：要注入給 AI 的指示/流程/格式模板'}"/>
                         </Border>
                         <Button x:Name="AddSkillButton"
-                                Content="＋ 新增技能"
+                                Content="{local:Tr '＋ 新增技能'}"
                                 Height="34" FontSize="13" FontWeight="SemiBold"
                                 Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
                                 Click="AddSkill_Click">
@@ -2291,9 +2322,9 @@ Margin="0,20,20,0"
 
                         <!-- 從 GitHub 匯入（支援 raw / blob 連結的 .md 或純文字技能檔；SKILL.md frontmatter 的 name 會自動帶入） -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
-                        <TextBlock Text="從 GitHub 匯入"
+                        <TextBlock Text="{local:Tr '從 GitHub 匯入'}"
                                    FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,14,0,2"/>
-                        <TextBlock Text="貼上 GitHub 上技能檔的連結（blob 或 raw 皆可，例如 SKILL.md），自動抓取並匯入成一條技能。frontmatter 的 name/description 會自動解析。"
+                        <TextBlock Text="{local:Tr '貼上 GitHub 上技能檔的連結（blob 或 raw 皆可，例如 SKILL.md），自動抓取並匯入成一條技能。frontmatter 的 name/description 會自動解析。'}"
                                    FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,0,0,6"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -2306,11 +2337,11 @@ Margin="0,20,20,0"
                                          BorderThickness="0" Background="Transparent"
                                          Padding="12,8" FontSize="12" Foreground="#333"
                                          VerticalContentAlignment="Center"
-                                         ToolTip="https://github.com/…/SKILL.md 或 raw.githubusercontent.com 連結"/>
+                                         ToolTip="{local:Tr 'https://github.com/…/SKILL.md 或 raw.githubusercontent.com 連結'}"/>
                             </Border>
                             <Button x:Name="ImportSkillButton"
                                     Grid.Column="2"
-                                    Content="匯入"
+                                    Content="{local:Tr '匯入'}"
                                     Height="34" Width="72" FontSize="13" FontWeight="SemiBold"
                                     Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
                                     Click="ImportSkillFromGitHub_Click">
@@ -2335,7 +2366,7 @@ Margin="0,20,20,0"
 
                         <!-- 已存在的技能清單 -->
                         <Border Height="1" Background="#ECECEC" Margin="0,16,0,0"/>
-                        <TextBlock Text="我的技能"
+                        <TextBlock Text="{local:Tr '我的技能'}"
                                    FontSize="12.5" FontWeight="SemiBold" Foreground="#555" Margin="0,14,0,6"/>
                         <StackPanel x:Name="SkillsListPanel"/>
                     </StackPanel>
@@ -2351,7 +2382,7 @@ Margin="0,20,20,0"
                         <StackPanel Margin="0,8,4,0">
                             <!-- 狀態本來就由 ProviderStatusMonitor 即時推上來，不需要手動檢查鈕；
                                  說明搬到右上角的「?」使用說明。 -->
-                            <TextBlock Text="API 餘額"
+                            <TextBlock Text="{local:Tr 'API 餘額'}"
                                        FontSize="14" FontWeight="SemiBold" Foreground="#2A2A28"
                                        Margin="0,0,0,14"/>
 
@@ -2372,7 +2403,7 @@ Margin="0,20,20,0"
                                                     <!-- 這顆點一直沒有任何說明，而且會變色；使用者看不出它在講什麼。 -->
                                                     <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center"
                                                              Margin="0,1,9,0" Fill="{Binding Dot}"
-                                                             ToolTip="這個服務現在的狀態&#10;綠＝可用　黃＝接近用完或被限流　紅＝餘額不足／金鑰無效／連不上　灰＝還沒檢查過&#10;每次真的呼叫成功或失敗都會即時更新，也可以按上面的「重新檢查」"/>
+                                                             ToolTip="{local:Tr '這個服務現在的狀態&#10;綠＝可用　黃＝接近用完或被限流　紅＝餘額不足／金鑰無效／連不上　灰＝還沒檢查過&#10;每次真的呼叫成功或失敗都會即時更新，也可以按上面的「重新檢查」'}"/>
 
                                                     <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
                                                                FontSize="13" FontWeight="SemiBold" Foreground="#2A2A28"
@@ -2407,7 +2438,7 @@ Margin="0,20,20,0"
                                                          是唯一一個長得像 Win32 控制項的東西，整列就被它拉低了。 -->
                                                     <ComboBox Grid.Column="0" Width="78"
                                                               Style="{StaticResource RoutingComboBoxStyle}"
-                                                              ToolTip="這個服務向你收費的幣別（照官網帳單填）。改了之後現有餘額會自動換算。"
+                                                              ToolTip="{local:Tr '這個服務向你收費的幣別（照官網帳單填）。改了之後現有餘額會自動換算。'}"
                                                               ItemsSource="{Binding CurrencyOptions}"
                                                               SelectedItem="{Binding Currency, Mode=OneWay}"
                                                               SelectionChanged="ProviderCurrency_Changed"/>
@@ -2418,14 +2449,14 @@ Margin="0,20,20,0"
                                                         <TextBox Text="{Binding TopUp, UpdateSourceTrigger=PropertyChanged}"
                                                                  FontSize="13" Padding="9,0" VerticalContentAlignment="Center"
                                                                  Background="Transparent" BorderThickness="0"
-                                                                 ToolTip="填官網現在顯示的餘額（例 20）。清空後送出＝不再追蹤這個服務。"
+                                                                 ToolTip="{local:Tr '填官網現在顯示的餘額（例 20）。清空後送出＝不再追蹤這個服務。'}"
                                                                  KeyDown="ProviderTopUp_KeyDown"/>
                                                     </Border>
 
-                                                    <Button Grid.Column="2" Content="送出" Height="32" Margin="8,0,0,0"
+                                                    <Button Grid.Column="2" Content="{local:Tr '送出'}" Height="32" Margin="8,0,0,0"
                                                             FontSize="12" Cursor="Hand" Foreground="White" BorderThickness="0"
                                                             Background="#1F1F1C"
-                                                            ToolTip="把餘額改成左邊填的數字，並以此刻為新的對帳起點"
+                                                            ToolTip="{local:Tr '把餘額改成左邊填的數字，並以此刻為新的對帳起點'}"
                                                             Click="ProviderTopUpSubmit_Click">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
@@ -2443,11 +2474,11 @@ Margin="0,20,20,0"
                                                         </Button.Template>
                                                     </Button>
 
-                                                    <Button Grid.Column="3" Content="帳單頁" Height="32" Margin="4,0,0,0"
+                                                    <Button Grid.Column="3" Content="{local:Tr '帳單頁'}" Height="32" Margin="4,0,0,0"
                                                             VerticalAlignment="Center"
                                                             FontSize="12" Cursor="Hand" Foreground="#8A8A82" BorderThickness="0"
                                                             Background="Transparent"
-                                                            ToolTip="開啟這個服務的官方帳單頁，查目前真正的餘額"
+                                                            ToolTip="{local:Tr '開啟這個服務的官方帳單頁，查目前真正的餘額'}"
                                                             Tag="{Binding BillingUrl}" Click="OpenBillingPage_Click">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
@@ -2470,7 +2501,7 @@ Margin="0,20,20,0"
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
 
-                            <TextBlock Text="API 金鑰"
+                            <TextBlock Text="{local:Tr 'API 金鑰'}"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="#444"
@@ -2479,7 +2510,7 @@ Margin="0,20,20,0"
                                        FontSize="11.5"
                                        Foreground="#9A9A9E"
                                        Margin="0,0,0,12">
-                                <Run Text="解析順序：系統環境變數 → 這裡輸入的金鑰 → 都沒有就自動切換到其他可用模型（顯示於決策窗），全部不可用才回報失敗。"/>
+                                <Run Text="{local:Tr '解析順序：系統環境變數 → 這裡輸入的金鑰 → 都沒有就自動切換到其他可用模型（顯示於決策窗），全部不可用才回報失敗。'}"/>
                             </TextBlock>
 
                             <!-- OpenAI -->
@@ -2490,9 +2521,9 @@ Margin="0,20,20,0"
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <TextBlock Text="OpenAI" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（GPT 文字、gpt-image 圖片）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Text="{local:Tr '（GPT 文字、gpt-image 圖片）'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                 </StackPanel>
-                                <TextBlock x:Name="ApiStatus_OpenAI" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_OpenAI" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,14">
                                 <Grid.ColumnDefinitions>
@@ -2502,7 +2533,7 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_OpenAI" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="OPENAI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="OPENAI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2515,9 +2546,9 @@ Margin="0,20,20,0"
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <TextBlock Text="Claude" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（Anthropic 文字 / 導演 / 程式碼）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Text="{local:Tr '（Anthropic 文字 / 導演 / 程式碼）'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                 </StackPanel>
-                                <TextBlock x:Name="ApiStatus_Anthropic" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_Anthropic" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,14">
                                 <Grid.ColumnDefinitions>
@@ -2527,7 +2558,7 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_Anthropic" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="ANTHROPIC_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="ANTHROPIC_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2540,9 +2571,9 @@ Margin="0,20,20,0"
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <TextBlock Text="Gemini" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（Google 文字、Veo 影片）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Text="{local:Tr '（Google 文字、Veo 影片）'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                 </StackPanel>
-                                <TextBlock x:Name="ApiStatus_Gemini" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_Gemini" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,14">
                                 <Grid.ColumnDefinitions>
@@ -2552,7 +2583,7 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_Gemini" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="GEMINI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="GEMINI_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2565,9 +2596,9 @@ Margin="0,20,20,0"
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <TextBlock Text="Perplexity" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（即時聯網研究 / 來源查證）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Text="{local:Tr '（即時聯網研究 / 來源查證）'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                 </StackPanel>
-                                <TextBlock x:Name="ApiStatus_Perplexity" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_Perplexity" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,16">
                                 <Grid.ColumnDefinitions>
@@ -2577,7 +2608,7 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_Perplexity" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="PERPLEXITY_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="PERPLEXITY_API_KEY" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2590,9 +2621,9 @@ Margin="0,20,20,0"
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Orientation="Horizontal">
                                     <TextBlock Text="Google Client ID" FontSize="12.5" FontWeight="SemiBold" Foreground="#333"/>
-                                    <TextBlock Text="（Drive 整合，見下方「Google 整合」區）" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                    <TextBlock Text="{local:Tr '（Drive 整合，見下方「Google 整合」區）'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center" Margin="6,0,0,0"/>
                                 </StackPanel>
-                                <TextBlock x:Name="ApiStatus_GoogleClientId" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_GoogleClientId" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,16">
                                 <Grid.ColumnDefinitions>
@@ -2602,7 +2633,7 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_GoogleClientId" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="GOOGLE_OAUTH_CLIENT_ID" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="GOOGLE_OAUTH_CLIENT_ID" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
@@ -2613,7 +2644,7 @@ Margin="0,20,20,0"
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <TextBlock Text="Google Client Secret" FontSize="12.5" FontWeight="SemiBold" Foreground="#333" Grid.Column="0"/>
-                                <TextBlock x:Name="ApiStatus_GoogleClientSecret" Grid.Column="1" Text="未設定" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
+                                <TextBlock x:Name="ApiStatus_GoogleClientSecret" Grid.Column="1" Text="{local:Tr '未設定'}" FontSize="11" Foreground="#A8A8AC" VerticalAlignment="Center"/>
                             </Grid>
                             <Grid Margin="0,-6,0,16">
                                 <Grid.ColumnDefinitions>
@@ -2623,13 +2654,13 @@ Margin="0,20,20,0"
                                 <Border Grid.Column="0" CornerRadius="9" Background="#F7F7F8" BorderBrush="#E4E4E7" BorderThickness="1" Padding="10,2">
                                     <PasswordBox x:Name="ApiKeyBox_GoogleClientSecret" Height="30" FontSize="12.5" Background="Transparent" BorderThickness="0" VerticalContentAlignment="Center"/>
                                 </Border>
-                                <Button Grid.Column="1" Content="清除" Tag="GOOGLE_OAUTH_CLIENT_SECRET" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
+                                <Button Grid.Column="1" Content="{local:Tr '清除'}" Tag="GOOGLE_OAUTH_CLIENT_SECRET" Height="30" Margin="8,0,0,0" Padding="12,0" FontSize="11.5" Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0" Click="ClearApiKey_Click">
                                     <Button.Template><ControlTemplate TargetType="Button"><Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="12,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border></ControlTemplate></Button.Template>
                                 </Button>
                             </Grid>
 
                             <Button x:Name="SaveApiKeysButton"
-                                    Content="儲存 API 金鑰"
+                                    Content="{local:Tr '儲存 API 金鑰'}"
                                     Height="36"
                                     FontSize="13"
                                     FontWeight="SemiBold"
@@ -2661,16 +2692,16 @@ Margin="0,20,20,0"
 
                             <!-- §18 Google 整合：連結帳戶 + 產出自動上傳 Drive -->
                             <Border Height="1" Background="#ECECEC" Margin="0,18,0,0"/>
-                            <TextBlock Text="Google 整合"
+                            <TextBlock Text="{local:Tr 'Google 整合'}"
                                        FontSize="13" FontWeight="SemiBold" Foreground="#444" Margin="0,14,0,2"/>
-                            <TextBlock Text="連結 Google 帳戶後，產出的檔案（PDF／PPTX／DOCX／圖片／影片）可自動存到你的 Drive。授權採最小權限（只碰本程式建立的檔案），憑證與 token 皆只存本機。"
+                            <TextBlock Text="{local:Tr '連結 Google 帳戶後，產出的檔案（PDF／PPTX／DOCX／圖片／影片）可自動存到你的 Drive。授權採最小權限（只碰本程式建立的檔案），憑證與 token 皆只存本機。'}"
                                        FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,0,0,8"/>
                             <TextBlock x:Name="GoogleStatusText"
-                                       Text="狀態：檢查中…"
+                                       Text="{local:Tr '狀態：檢查中…'}"
                                        FontSize="12" Foreground="#666" Margin="0,0,0,8"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                                 <Button x:Name="GoogleAuthBtn"
-                                        Content="連結 Google"
+                                        Content="{local:Tr '連結 Google'}"
                                         Height="32" FontSize="12.5" FontWeight="SemiBold"
                                         Cursor="Hand" Background="#111" Foreground="White" BorderThickness="0"
                                         Margin="0,0,8,0"
@@ -2685,7 +2716,7 @@ Margin="0,20,20,0"
                                     </Button.Template>
                                 </Button>
                                 <Button x:Name="GoogleUnlinkBtn"
-                                        Content="解除連結"
+                                        Content="{local:Tr '解除連結'}"
                                         Height="32" FontSize="12.5"
                                         Cursor="Hand" Background="#F1F1F3" Foreground="#666" BorderThickness="0"
                                         Click="GoogleUnlink_Click">
@@ -2698,7 +2729,7 @@ Margin="0,20,20,0"
                                     </Button.Template>
                                 </Button>
                             </StackPanel>
-                            <TextBlock Text="上傳偏好（開關／各檔案類型／轉 Google 格式）在「個人化」分頁的「雲端上傳」區設定。"
+                            <TextBlock Text="{local:Tr '上傳偏好（開關／各檔案類型／轉 Google 格式）在「個人化」分頁的「雲端上傳」區設定。'}"
                                        FontSize="11.5" Foreground="#9A9A9E" TextWrapping="Wrap" Margin="0,3,0,0"/>
                         </StackPanel>
                     </ScrollViewer>
@@ -2740,7 +2771,7 @@ Margin="0,20,20,0"
                         </Grid.ColumnDefinitions>
 
                         <TextBlock Grid.Column="0"
-                                   Text="預覽"
+                                   Text="{local:Tr '預覽'}"
                                    FontSize="16"
                                    FontWeight="SemiBold"
                                    Foreground="#303030"
@@ -2756,7 +2787,7 @@ Margin="0,20,20,0"
 
                         <Button Grid.Column="2"
                                 x:Name="PreviewOpenExternalButton"
-                                Content="用系統程式開啟"
+                                Content="{local:Tr '用系統程式開啟'}"
                                 Height="30"
                                 FontSize="12.5"
                                 Foreground="#444"
@@ -2784,7 +2815,7 @@ Margin="0,20,20,0"
                                 Background="Transparent"
                                 BorderThickness="0"
                                 Cursor="Hand"
-                                ToolTip="關閉"
+                                ToolTip="{local:Tr '關閉'}"
                                 Click="ClosePreview_Click">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
@@ -2833,7 +2864,7 @@ Margin="0,20,20,0"
                                     Padding="10,6">
                                 <Grid>
                                     <TextBlock x:Name="PreviewRegenHint"
-                                               Text="想改什麼？例如：第 3 頁改成比較表、整體更活潑、多加一頁結論（留空＝用原需求重做一次）"
+                                               Text="{local:Tr '想改什麼？例如：第 3 頁改成比較表、整體更活潑、多加一頁結論（留空＝用原需求重做一次）'}"
                                                FontSize="12"
                                                Foreground="#B0B0B6"
                                                IsHitTestVisible="False"
@@ -2860,9 +2891,9 @@ Margin="0,20,20,0"
                                     Padding="10,6"
                                     Margin="8,0,0,0"
                                     VerticalAlignment="Center"
-                                    ToolTip="只重做某一頁時填頁碼；留空＝整份重做">
+                                    ToolTip="{local:Tr '只重做某一頁時填頁碼；留空＝整份重做'}">
                                 <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="第" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{local:Tr '第'}" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
                                     <TextBox x:Name="PreviewRegenPage"
                                              Width="30"
                                              FontSize="12.5"
@@ -2872,13 +2903,13 @@ Margin="0,20,20,0"
                                              TextAlignment="Center"
                                              VerticalContentAlignment="Center"
                                              Margin="4,0,4,0"/>
-                                    <TextBlock Text="頁" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{local:Tr '頁'}" FontSize="11.5" Foreground="#9A9A9E" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
 
                             <Button x:Name="PreviewUndoButton"
                                     Grid.Column="2"
-                                    Content="上一版"
+                                    Content="{local:Tr '上一版'}"
                                     Height="34"
                                     Margin="8,0,0,0"
                                     Padding="14,0"
@@ -2888,7 +2919,7 @@ Margin="0,20,20,0"
                                     Foreground="#555"
                                     BorderThickness="0"
                                     IsEnabled="False"
-                                    ToolTip="新版不如舊版時，退回上一個版本"
+                                    ToolTip="{local:Tr '新版不如舊版時，退回上一個版本'}"
                                     Click="PreviewUndo_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
@@ -2910,7 +2941,7 @@ Margin="0,20,20,0"
 
                             <Button x:Name="PreviewRedoButton"
                                     Grid.Column="3"
-                                    Content="下一版"
+                                    Content="{local:Tr '下一版'}"
                                     Height="34"
                                     Margin="6,0,0,0"
                                     Padding="14,0"
@@ -2920,7 +2951,7 @@ Margin="0,20,20,0"
                                     Foreground="#555"
                                     BorderThickness="0"
                                     IsEnabled="False"
-                                    ToolTip="退回之後又想要新版時，前進回去（不用重新生成）"
+                                    ToolTip="{local:Tr '退回之後又想要新版時，前進回去（不用重新生成）'}"
                                     Click="PreviewRedo_Click">
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
@@ -2942,7 +2973,7 @@ Margin="0,20,20,0"
 
                             <Button x:Name="PreviewRegenButton"
                                     Grid.Column="4"
-                                    Content="重新生成"
+                                    Content="{local:Tr '重新生成'}"
                                     Height="34"
                                     Margin="10,0,0,0"
                                     Padding="18,0"
@@ -3026,14 +3057,14 @@ Margin="0,20,20,0"
                                         HorizontalAlignment="Center"
                                         VerticalAlignment="Center">
                                 <TextBlock x:Name="PreviewFallbackText"
-                                           Text="這個檔案無法在這裡預覽。"
+                                           Text="{local:Tr '這個檔案無法在這裡預覽。'}"
                                            FontSize="14"
                                            Foreground="#888"
                                            HorizontalAlignment="Center"/>
                             </StackPanel>
 
                             <TextBlock x:Name="PreviewLoading"
-                                       Text="載入中…"
+                                       Text="{local:Tr '載入中…'}"
                                        Visibility="Collapsed"
                                        FontSize="14"
                                        Foreground="#999"

@@ -156,21 +156,21 @@ namespace Cat5201
                         : $"（{ApiHealthChecker.CurrencySymbol(nativeCurrency)}{System.Math.Max(0, nativeLeft):0.00}）";
 
                     row.Amount = $"{symbol}{Math.Max(0, left):0.00}";
-                    row.Tip = $"{provider.DisplayName}：剩餘 {symbol}{Math.Max(0, left):0.00}{native}，累計儲值 {symbol}{total:0.00}。\n" +
+                    row.Tip = UiLanguage.P($"{provider.DisplayName}：剩餘 {symbol}{Math.Max(0, left):0.00}{native}，累計儲值 {symbol}{total:0.00}。\n", $"{provider.DisplayName}: {symbol}{Math.Max(0, left):0.00}{native} left, {symbol}{total:0.00} topped up in total.\n") +
                               (reconciled == null
-                                  ? "各家都沒有查餘額的 API，這是本機扣帳：每一筆花費即時扣、沖銷加回。\n"
-                                  : $"上次對帳 {reconciled.Value.ToLocalTime():M/d HH:mm}，之後本機扣了 " +
+                                  ? UiLanguage.P("各家都沒有查餘額的 API，這是本機扣帳：每一筆花費即時扣、沖銷加回。\n", "None of the providers offer a balance API, so this is tracked locally: each charge is deducted immediately and refunds are added back.\n")
+                                  : UiLanguage.P($"上次對帳 {reconciled.Value.ToLocalTime():M/d HH:mm}，之後本機扣了 ", $"Last reconciled {reconciled.Value.ToLocalTime():M/d HH:mm}; since then this PC has deducted") +
                                     $"{symbol}{ModelCostEstimator.ToUsd(ProviderBalance.DeductedSinceReconcile(provider.Id), nativeCurrency):0.00}。\n") +
                               (left < -0.005
-                                  ? $"已超出 {symbol}{-left:0.00}——本機估的花費比你填的餘額多，請到官網對一次帳。\n"
+                                  ? UiLanguage.P($"已超出 {symbol}{-left:0.00}——本機估的花費比你填的餘額多，請到官網對一次帳。\n", $"Over by {symbol}{-left:0.00}: the locally estimated spending is higher than the balance you entered. Please check against the provider's site.\n")
                                   : "") +
-                              "再次充值後到「個人化 → API」填入官網顯示的餘額按送出。";
+                              UiLanguage.P("再次充值後到「個人化 → API」填入官網顯示的餘額按送出。", "After topping up, enter the balance shown on the provider's site under Personal → API and press Submit.");
                     row.Dot = BalanceDot(left, total, states.GetValueOrDefault(provider.Id));
                 }
                 else
                 {
-                    row.Amount = $"本月 {symbol}{month:0.00}";
-                    row.Tip = $"{provider.DisplayName}：尚未設定餘額，先顯示本月花費。\n到「個人化 → API」填入儲值金額按送出，就會改顯示剩餘。";
+                    row.Amount = UiLanguage.P($"本月 {symbol}{month:0.00}", $"This month {symbol}{month:0.00}");
+                    row.Tip = UiLanguage.P($"{provider.DisplayName}：尚未設定餘額，先顯示本月花費。\n到「個人化 → API」填入儲值金額按送出，就會改顯示剩餘。", $"{provider.DisplayName}: no balance set yet, so this month's spending is shown.\nEnter your top-up amount under Personal → API and press Submit to see what's left.");
                     row.Dot = StateColor(states.TryGetValue(provider.Id, out var s) ? s.State : ApiHealthChecker.HealthState.Unknown);
                 }
 

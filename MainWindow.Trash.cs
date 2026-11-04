@@ -38,7 +38,7 @@ namespace Cat5201
             if (TrashButton == null) return;
 
             int count = Trash.List().Count;
-            TrashButton.Content = $"最近刪除（{count}）";
+            TrashButton.Content = UiLanguage.P($"最近刪除（{count}）", $"Recently deleted ({count})");
             TrashButton.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
         }
 
@@ -61,14 +61,14 @@ namespace Cat5201
             foreach (var entry in Trash.List())
             {
                 int daysLeft = entry.DaysLeft(now);
-                string memory = entry.MemoryCount > 0 ? $"、記憶 {entry.MemoryCount} 筆" : "";
+                string memory = entry.MemoryCount > 0 ? UiLanguage.P($"、記憶 {entry.MemoryCount} 筆", $", {entry.MemoryCount} memories") : "";
 
                 TrashItems.Add(new TrashItem
                 {
                     Id = entry.Id,
                     DisplayName = entry.DisplayName,
-                    Detail = $"{entry.DeletedAtUtc.ToLocalTime():MM/dd HH:mm} 刪除{memory}　·　" +
-                             (daysLeft <= 0 ? "今天內自動清除" : $"{daysLeft} 天後自動清除")
+                    Detail = UiLanguage.P($"{entry.DeletedAtUtc.ToLocalTime():MM/dd HH:mm} 刪除{memory}　·　", $"Deleted {entry.DeletedAtUtc.ToLocalTime():MM/dd HH:mm}{memory}　·") +
+                             (daysLeft <= 0 ? UiLanguage.P("今天內自動清除", "Removed automatically today") : UiLanguage.P($"{daysLeft} 天後自動清除", $"Removed automatically in {daysLeft} days"))
                 });
             }
 
@@ -84,7 +84,7 @@ namespace Cat5201
             var result = Trash.Restore(item.Id, SavesDir, Store.AttachmentsRootDir);
             if (!result.Ok)
             {
-                MenuConfirmDialog.ShowMessage(this, "復原失敗", result.Error, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("復原失敗", "Restore failed"), result.Error, this);
                 return;
             }
 
@@ -110,17 +110,17 @@ namespace Cat5201
             RefreshTrashList();
             RefreshTrashEntryPoint();
 
-            MenuConfirmDialog.ShowMessage(this, "已復原",
-                $"「{DisplayNameFromPath(result.RestoredPath)}」已復原" +
-                (result.Memories.Count > 0 ? $"，記憶 {result.Memories.Count} 筆也放回去了。" : "。"), this);
+            MenuConfirmDialog.ShowMessage(this, UiLanguage.P("已復原", "Restored"),
+                UiLanguage.P($"「{DisplayNameFromPath(result.RestoredPath)}」已復原", $"\"{DisplayNameFromPath(result.RestoredPath)}\" was restored") +
+                (result.Memories.Count > 0 ? UiLanguage.P($"，記憶 {result.Memories.Count} 筆也放回去了。", $", along with {result.Memories.Count} memories.") : "。"), this);
         }
 
         private void PurgeTrashItem_Click(object sender, RoutedEventArgs e)
         {
             if ((sender as FrameworkElement)?.DataContext is not TrashItem item) return;
 
-            bool ok = MenuConfirmDialog.ShowDeleteConfirm(this, "永久刪除",
-                $"「{item.DisplayName}」將被永久刪除，包含附件與該存檔的記憶。\n這個動作無法復原。", this);
+            bool ok = MenuConfirmDialog.ShowDeleteConfirm(this, UiLanguage.P("永久刪除", "Delete permanently"),
+                UiLanguage.P($"「{item.DisplayName}」將被永久刪除，包含附件與該存檔的記憶。\n這個動作無法復原。", $"\"{item.DisplayName}\" will be permanently deleted, including its attachments and project memories.\nThis can't be undone."), this);
             if (!ok) return;
 
             Trash.Purge(item.Id);

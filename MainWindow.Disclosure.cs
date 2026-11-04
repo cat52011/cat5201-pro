@@ -15,7 +15,7 @@ namespace Cat5201
             var log = node == null ? null : GetLatestExecutionLog(node);
             if (node == null || log == null)
             {
-                MessageBox.Show(this, "這個節點還沒有執行紀錄。先執行一次，再匯出。", "匯出 AI 使用紀錄",
+                MessageBox.Show(this, UiLanguage.P("這個節點還沒有執行紀錄。先執行一次，再匯出。", "This node hasn't run yet. Run it once, then export."), UiLanguage.P("匯出 AI 使用紀錄", "Export AI usage record"),
                     MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
@@ -27,11 +27,11 @@ namespace Cat5201
                 string title = ShortTitle.Normalize(string.IsNullOrEmpty(_currentFilePath) ? "" : DisplayNameFromPath(_currentFilePath));
                 if (title.Length == 0) title = TitleFor(node.GetTopText());
                 var file = GeneratedFileWriter.WriteMarkdown(
-                    GetGeneratedFilesDir(), title + "（AI使用紀錄）", markdown, "AI 使用紀錄");
+                    GetGeneratedFilesDir(), title + UiLanguage.P("（AI使用紀錄）", " (AI usage record)"), markdown, UiLanguage.P("AI 使用紀錄", "AI usage record"));
 
                 if (!file.Success)
                 {
-                    MessageBox.Show(this, "紀錄沒有存成功：" + file.ErrorMessage, "匯出 AI 使用紀錄",
+                    MessageBox.Show(this, UiLanguage.P("紀錄沒有存成功：", "The record wasn't saved:") + file.ErrorMessage, UiLanguage.P("匯出 AI 使用紀錄", "Export AI usage record"),
                         MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
@@ -42,7 +42,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 AppLog.Warn("Disclosure", "匯出 AI 使用紀錄失敗", ex);
-                MessageBox.Show(this, "匯出失敗：" + ex.Message, "匯出 AI 使用紀錄",
+                MessageBox.Show(this, UiLanguage.P("匯出失敗：", "Export failed:") + ex.Message, UiLanguage.P("匯出 AI 使用紀錄", "Export AI usage record"),
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
@@ -52,7 +52,7 @@ namespace Cat5201
         {
             string t = (request ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
             if (t.Length > 20) t = t[..20];
-            return t.Length == 0 ? "節點" : t;
+            return t.Length == 0 ? UiLanguage.P("節點", "Node") : t;
         }
     }
 }

@@ -49,7 +49,7 @@ namespace Cat5201
             var root = new StackPanel();
             root.Children.Add(new TextBlock
             {
-                Text = "☁️ 從 Google Drive 選擇附件",
+                Text = UiLanguage.P("☁️ 從 Google Drive 選擇附件", "☁️ Choose attachments from Google Drive"),
                 FontSize = 15,
                 FontWeight = FontWeights.Bold,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1E)),
@@ -57,7 +57,7 @@ namespace Cat5201
             });
             root.Children.Add(new TextBlock
             {
-                Text = "最近的檔案（此程式可見範圍）。Google 文件／試算表／簡報會自動轉成文字或 CSV 當輸入。",
+                Text = UiLanguage.P("最近的檔案（此程式可見範圍）。Google 文件／試算表／簡報會自動轉成文字或 CSV 當輸入。", "Recent files (those this app can see). Google Docs/Sheets/Slides are converted to text or CSV automatically."),
                 FontSize = 11.5,
                 Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                 TextWrapping = TextWrapping.Wrap,
@@ -71,7 +71,7 @@ namespace Cat5201
             {
                 list.Children.Add(new TextBlock
                 {
-                    Text = "（Drive 裡沒有此程式可見的檔案）",
+                    Text = UiLanguage.P("（Drive 裡沒有此程式可見的檔案）", "(No files in Drive that this app can see)"),
                     FontSize = 12.5,
                     Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
                     Margin = new Thickness(2, 8, 0, 8),
@@ -86,7 +86,7 @@ namespace Cat5201
 
                 string suffix = "";
                 if (googleNative)
-                    suffix = exportPlan != null ? $"（{exportPlan.Value.Label}）" : "（不支援的格式）";
+                    suffix = exportPlan != null ? $"（{exportPlan.Value.Label}）" : UiLanguage.P("（不支援的格式）", "(unsupported format)");
 
                 var cb = new CheckBox
                 {
@@ -113,13 +113,13 @@ namespace Cat5201
                 Margin = new Thickness(0, 14, 0, 0),
             };
 
-            var cancel = MakePill("取消", Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
+            var cancel = MakePill(UiLanguage.P("取消", "Cancel"), Color.FromRgb(0xF1, 0xF1, 0xF3), Color.FromRgb(0x44, 0x44, 0x44));
             cancel.IsCancel = true;
             cancel.Margin = new Thickness(0, 0, 8, 0);
             cancel.Click += (_, __) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancel);
 
-            var ok = MakePill("附加所選檔案", Color.FromRgb(0x11, 0x11, 0x11), Colors.White);
+            var ok = MakePill(UiLanguage.P("附加所選檔案", "Attach selected files"), Color.FromRgb(0x11, 0x11, 0x11), Colors.White);
             ok.IsDefault = true;
             ok.Click += (_, __) =>
             {

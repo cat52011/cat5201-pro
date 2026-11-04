@@ -86,7 +86,7 @@ namespace Cat5201
             // 標題：直接問要不要做，不講「偵測到」。
             root.Children.Add(new TextBlock
             {
-                Text = budget == null ? "要產生這些檔案嗎？" : "這次會超過今日花費上限",
+                Text = budget == null ? UiLanguage.P("要產生這些檔案嗎？", "Generate these files?") : UiLanguage.P("這次會超過今日花費上限", "This will go over today's spending limit"),
                 FontSize = 16,
                 FontWeight = FontWeights.Bold,
                 Foreground = ink,
@@ -142,7 +142,7 @@ namespace Cat5201
             if (choices.IncludesDocuments && choices.AuthorOptions.Count > 0)
             {
                 SelectedAuthorModelId = choices.DefaultAuthorModelId;
-                root.Children.Add(SectionLabel("撰寫者", ink));
+                root.Children.Add(SectionLabel(UiLanguage.P("撰寫者", "Written by"), ink));
 
                 var authorNote = new TextBlock
                 {
@@ -157,7 +157,7 @@ namespace Cat5201
                     string chosen = SelectedAuthorModelId ?? "";
                     bool isClaude = AiModelHelper.GetProviderKind(chosen) == AiProviderKind.Claude;
                     authorNote.Text = choices.BestQualityEnabled && !isClaude
-                        ? "非 Claude 撰寫時改用一般版面（最佳品質限 Claude）。"
+                        ? UiLanguage.P("非 Claude 撰寫時改用一般版面（最佳品質限 Claude）。", "Without Claude as the writer, a standard layout is used (best quality requires Claude).")
                         : "";
                     authorNote.Visibility = authorNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
                 }
@@ -175,15 +175,15 @@ namespace Cat5201
             if (choices.IncludesDocuments && choices.ShowIllustrationOption)
             {
                 IllustrationsChecked = choices.IllustrationsDefault;
-                root.Children.Add(SectionLabel("配圖", ink));
+                root.Children.Add(SectionLabel(UiLanguage.P("配圖", "Illustrations"), ink));
                 root.Children.Add(ChoicePills(
-                    new List<(string, string)> { ("no", "不配圖"), ("yes", "加入配圖") },
+                    new List<(string, string)> { ("no", UiLanguage.P("不配圖", "No illustrations")), ("yes", UiLanguage.P("加入配圖", "Add illustrations")) },
                     choices.IllustrationsDefault ? "yes" : "no",
                     ink,
                     v => IllustrationsChecked = v == "yes"));
                 root.Children.Add(new TextBlock
                 {
-                    Text = "配圖會另外用到圖片模型。",
+                    Text = UiLanguage.P("配圖會另外用到圖片模型。", "Illustrations also use an image model."),
                     FontSize = 11.5,
                     Foreground = muted,
                     Margin = new Thickness(0, 2, 0, 0),
@@ -202,9 +202,9 @@ namespace Cat5201
                     Child = new TextBlock
                     {
                         Text =
-                            $"今日已花 {budget.CommittedDisplay}，上限 NT${budget.BudgetTwd}；" +
-                            $"這次估計再花 {ModelCostEstimator.FormatTwd(budget.EstimatedUsd)}。\n" +
-                            "仍要產生的話，這一次會放行超過上限；之後的任務照常受限制。",
+                            UiLanguage.P($"今日已花 {budget.CommittedDisplay}，上限 NT${budget.BudgetTwd}；", $"Spent today: {budget.CommittedDisplay}, limit NT${budget.BudgetTwd};") +
+                            UiLanguage.P($"這次估計再花 {ModelCostEstimator.FormatTwd(budget.EstimatedUsd)}。\n", $"this run is estimated to cost another {ModelCostEstimator.FormatTwd(budget.EstimatedUsd)}.\n") +
+                            UiLanguage.P("仍要產生的話，這一次會放行超過上限；之後的任務照常受限制。", "If you still generate, this one run is allowed past the limit; later tasks are limited as usual."),
                         FontSize = 11.5,
                         LineHeight = 18,
                         Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x4B, 0x00)),
@@ -215,7 +215,7 @@ namespace Cat5201
 
             root.Children.Add(new TextBlock
             {
-                Text = "選「不產生」會改成純文字回答。",
+                Text = UiLanguage.P("選「不產生」會改成純文字回答。", "Choosing \"Don't generate\" gives a text-only answer instead."),
                 FontSize = 11.5,
                 Foreground = muted,
                 TextWrapping = TextWrapping.Wrap,
@@ -239,14 +239,14 @@ namespace Cat5201
                 Margin = new Thickness(0, 16, 0, 0),
             };
 
-            var noBtn = MakePillButton("不產生", bg: Color.FromRgb(0xF1, 0xF1, 0xF3), fg: Color.FromRgb(0x44, 0x44, 0x44));
+            var noBtn = MakePillButton(UiLanguage.P("不產生", "Don't generate"), bg: Color.FromRgb(0xF1, 0xF1, 0xF3), fg: Color.FromRgb(0x44, 0x44, 0x44));
             noBtn.IsCancel = true;
             noBtn.Margin = new Thickness(0, 0, 8, 0);
             noBtn.Click += (_, __) => { DialogResult = false; Close(); };
             btnRow.Children.Add(noBtn);
 
             var yesBtn = MakePillButton(
-                budget == null ? "產生" : "仍要產生",
+                budget == null ? UiLanguage.P("產生", "Generate") : UiLanguage.P("仍要產生", "Generate anyway"),
                 bg: Color.FromRgb(0x11, 0x11, 0x11),
                 fg: Colors.White);
             yesBtn.IsDefault = true;
@@ -268,7 +268,7 @@ namespace Cat5201
             if (autoConfirmSeconds > 0 && budget == null)
             {
                 int remaining = autoConfirmSeconds;
-                countdownText.Text = $"{remaining} 秒後自動產生";
+                countdownText.Text = UiLanguage.P($"{remaining} 秒後自動產生", $"Generating automatically in {remaining} s");
                 var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
                 timer.Tick += (_, __) =>
                 {
@@ -280,7 +280,7 @@ namespace Cat5201
                         Close();
                         return;
                     }
-                    countdownText.Text = $"{remaining} 秒後自動產生";
+                    countdownText.Text = UiLanguage.P($"{remaining} 秒後自動產生", $"Generating automatically in {remaining} s");
                 };
                 Closed += (_, __) => timer.Stop(); // 任一方式關閉（含手機遠端回答）都停表
                 timer.Start();

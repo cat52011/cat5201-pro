@@ -38,7 +38,7 @@ namespace Cat5201
         // 等待計時：讓使用者在長任務（特別是生成圖片）時看到已等待秒數，而不是空轉。
         private DispatcherTimer? _loadingTimer;
         private DateTime _loadingStartUtc;
-        private string _loadingBaseText = "AI 正在生成";
+        private string _loadingBaseText = UiLanguage.P("AI 正在生成", "AI is generating");
         private bool _loadingIsImageTask = false;
 
         // 長任務（影片生成等）的即時進度提示，附加在 loading 文字後面，由執行端動態更新。
@@ -91,11 +91,11 @@ namespace Cat5201
         /// <summary>中文狀態標籤。</summary>
         public string GetRunStatusLabel() => _runStatus switch
         {
-            NodeRunStatus.Running => "執行中",
-            NodeRunStatus.Success => "成功",
-            NodeRunStatus.Failed => "失敗",
-            NodeRunStatus.Waiting => "等待中",
-            _ => "閒置",
+            NodeRunStatus.Running => UiLanguage.P("執行中", "Running"),
+            NodeRunStatus.Success => UiLanguage.P("成功", "Done"),
+            NodeRunStatus.Failed => UiLanguage.P("失敗", "Failed"),
+            NodeRunStatus.Waiting => UiLanguage.P("等待中", "Waiting"),
+            _ => UiLanguage.P("閒置", "Idle"),
         };
 
         /// <summary>節點輸入的第一行（當標題），截斷到 maxLen 字。</summary>
@@ -635,9 +635,9 @@ namespace Cat5201
             bool collaborating = ModelCollaboration.IsActive(collaborators);
             string names = string.Join("、", collaborators.Select(id => AiModelRegistry.Find(id)?.DisplayName ?? id));
             if (ModelSelector != null)
-                ModelSelector.ToolTip = collaborating ? $"協作模式：{names} 一起回答（右鍵 → 協作模型 可修改）" : null;
+                ModelSelector.ToolTip = collaborating ? UiLanguage.P($"協作模式：{names} 一起回答（右鍵 → 協作模型 可修改）", $"Collaboration: {names} answer together (right-click → Collaborating models to change)") : null;
             if (CollaborationMenuItem != null)
-                CollaborationMenuItem.Header = collaborating ? $"協作模型…（{collaborators.Count} 個）" : "協作模型…";
+                CollaborationMenuItem.Header = collaborating ? UiLanguage.P($"協作模型…（{collaborators.Count} 個）", $"Collaborating models… ({collaborators.Count})") : UiLanguage.P("協作模型…", "Collaborating models…");
 
             UpdateEditButtons();
         }
@@ -670,8 +670,8 @@ namespace Cat5201
 
                 // §13 Manual/Auto 提示：清楚說明此節點的模型是「自己選的」還是「系統自動挑的」。
                 ModelSelector.ToolTip = canManualSelect
-                    ? "🛠 手動模式：可自行選擇此區塊使用的模型"
-                    : "🤖 自動模式：系統依內容自動挑模型（要手動選請到個人化關閉自動）";
+                    ? UiLanguage.P("🛠 手動模式：可自行選擇此區塊使用的模型", "🛠 Manual mode: choose the model for this block yourself")
+                    : UiLanguage.P("🤖 自動模式：系統依內容自動挑模型（要手動選請到個人化關閉自動）", "🤖 Auto mode: the model is picked from the content (turn off Auto on the Personal tab to choose manually)");
             }
 
             RefreshAttachmentsUI();
@@ -1240,8 +1240,8 @@ namespace Cat5201
             {
                 bool ok = MenuConfirmDialog.ShowDeleteConfirm(
                     owner: _parent,
-                    title: "刪除確認",
-                    message: $"確定要刪除附件？\n{vm.FileName}",
+                    title: UiLanguage.P("刪除確認", "Confirm delete"),
+                    message: UiLanguage.P($"確定要刪除附件？\n{vm.FileName}", $"Delete this attachment?\n{vm.FileName}"),
                     resourceHost: _parent);
 
                 if (!ok) return;
@@ -1399,7 +1399,7 @@ namespace Cat5201
         {
             var dlg = new FontSizeSliderDialog(
                 owner: Window.GetWindow(this),
-                title: "調整字體大小",
+                title: UiLanguage.P("調整字體大小", "Font size"),
                 initialValue: _fontSize,
                 min: 5,
                 max: 200,
@@ -1443,7 +1443,7 @@ namespace Cat5201
                 return;
 
             AppLog.Info("Node", "使用者強制停止生成");
-            SetLoadingHint("正在停止…");
+            SetLoadingHint(UiLanguage.P("正在停止…", "Stopping…"));
         }
 
         private void StopWorkflowMenuItem_Click(object sender, RoutedEventArgs e)
@@ -1471,7 +1471,7 @@ namespace Cat5201
                 NodeBorder.BorderBrush = amber;
             if (StatusText != null)
             {
-                StatusText.Text = "已略過此步（沿用上一步結果）";
+                StatusText.Text = UiLanguage.P("已略過此步（沿用上一步結果）", "Step skipped (the previous step's result is used)");
                 StatusText.Foreground = amber;
             }
             if (StatusFooter != null) StatusFooter.Visibility = Visibility.Visible;
@@ -1486,8 +1486,8 @@ namespace Cat5201
             {
                 var ok = MenuConfirmDialog.ShowDeleteConfirm(
                     owner: _parent,
-                    title: "確認刪除",
-                    message: "當前區塊不是末端區塊，是否確認刪除？",
+                    title: UiLanguage.P("確認刪除", "Confirm delete"),
+                    message: UiLanguage.P("當前區塊不是末端區塊，是否確認刪除？", "This block isn't the last one. Delete it anyway?"),
                     resourceHost: _parent);
 
                 if (!ok) return;
@@ -1541,7 +1541,7 @@ namespace Cat5201
 
             if (_parent == null)
             {
-                MenuConfirmDialog.ShowMessage(Application.Current.MainWindow, "錯誤", "（找不到 MainWindow，無法上傳）", Application.Current.MainWindow);
+                MenuConfirmDialog.ShowMessage(Application.Current.MainWindow, UiLanguage.P("錯誤", "Error"), UiLanguage.P("（找不到 MainWindow，無法上傳）", "(Main window not found, can't upload)"), Application.Current.MainWindow);
                 return;
             }
 
@@ -1561,7 +1561,7 @@ namespace Cat5201
 
                 var itemStyle = TryFindResource("NodeMenuItemStyle") as Style;
 
-                var local = new MenuItem { Header = "本機檔案…", Style = itemStyle };
+                var local = new MenuItem { Header = UiLanguage.P("本機檔案…", "Local file…"), Style = itemStyle };
                 local.Click += (_, __) => PickLocalAttachments();
                 menu.Items.Add(local);
 
@@ -1588,12 +1588,12 @@ namespace Cat5201
         {
             var dlg = new OpenFileDialog
             {
-                Title = "選擇要上傳給 AI 的檔案/照片",
+                Title = UiLanguage.P("選擇要上傳給 AI 的檔案/照片", "Choose files/photos to upload to the AI"),
                 Multiselect = true,
                 Filter =
-                    "所有檔案 (*.*)|*.*|" +
-                    "圖片 (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|" +
-                    "文件 (*.pdf;*.txt;*.md;*.csv;*.json)|*.pdf;*.txt;*.md;*.csv;*.json"
+                    UiLanguage.P("所有檔案 (*.*)|*.*|", "All files (*.*)|*.*|") +
+                    UiLanguage.P("圖片 (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|", "Images (*.png;*.jpg;*.jpeg;*.webp;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.bmp|") +
+                    UiLanguage.P("文件 (*.pdf;*.txt;*.md;*.csv;*.json)|*.pdf;*.txt;*.md;*.csv;*.json", "Documents (*.pdf;*.txt;*.md;*.csv;*.json)|*.pdf;*.txt;*.md;*.csv;*.json")
             };
 
             if (dlg.ShowDialog(Window.GetWindow(this)) == true && _parent != null)
@@ -1667,7 +1667,12 @@ namespace Cat5201
                 && !bottom.StartsWith("AI 這次沒有回傳內容", StringComparison.Ordinal)
                 && !bottom.StartsWith("AI 回應逾時", StringComparison.Ordinal)
                 && !bottom.StartsWith("找不到主視窗", StringComparison.Ordinal)
-                && !bottom.StartsWith("AI 服務尚未準備好", StringComparison.Ordinal);
+                && !bottom.StartsWith("AI 服務尚未準備好", StringComparison.Ordinal)
+                // 英文介面下同一批錯誤訊息的開頭（見下方 BottomDisplay.Text 的 UiLanguage.P）。
+                && !bottom.StartsWith("The AI returned nothing", StringComparison.Ordinal)
+                && !bottom.StartsWith("The AI timed out", StringComparison.Ordinal)
+                && !bottom.StartsWith("Main window not found", StringComparison.Ordinal)
+                && !bottom.StartsWith("The AI service isn't ready", StringComparison.Ordinal);
         }
 
         private async Task GenerateBottomReplyFromTopAsync(
@@ -1695,8 +1700,8 @@ namespace Cat5201
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
                     MarkBottomPlain();
-                    BottomDisplay.Text = "找不到主視窗，目前無法呼叫 AI。請重新開啟節點再試。";
-                    ApplyRunStatus(NodeRunStatus.Failed, "主視窗未連接");
+                    BottomDisplay.Text = UiLanguage.P("找不到主視窗，目前無法呼叫 AI。請重新開啟節點再試。", "Main window not found, so the AI can't be called right now. Please reopen the node and try again.");
+                    ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("主視窗未連接", "Main window not connected"));
                     return;
                 }
 
@@ -1704,8 +1709,8 @@ namespace Cat5201
                 {
                     StopBottomLoadingAnimation(clearIfLoading: true);
                     MarkBottomPlain();
-                    BottomDisplay.Text = "AI 服務尚未準備好，請稍候幾秒再試一次。";
-                    ApplyRunStatus(NodeRunStatus.Failed, "服務初始化中");
+                    BottomDisplay.Text = UiLanguage.P("AI 服務尚未準備好，請稍候幾秒再試一次。", "The AI service isn't ready yet. Please wait a few seconds and try again.");
+                    ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("服務初始化中", "Service starting up"));
                     return;
                 }
 
@@ -1715,7 +1720,7 @@ namespace Cat5201
                     StopBottomLoadingAnimation(clearIfLoading: true);
                     MarkBottomPlain();
                     BottomDisplay.Text = budgetMessage;
-                    ApplyRunStatus(NodeRunStatus.Failed, "已達每日花費上限");
+                    ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("已達每日花費上限", "Daily spending limit reached"));
                     return;
                 }
 
@@ -1754,8 +1759,8 @@ namespace Cat5201
                     else
                     {
                         MarkBottomPlain();
-                        BottomDisplay.Text = "AI 這次沒有回傳內容，可能是請求被中斷或模型無回應。請再試一次。";
-                        ApplyRunStatus(NodeRunStatus.Failed, "沒有回傳內容");
+                        BottomDisplay.Text = UiLanguage.P("AI 這次沒有回傳內容，可能是請求被中斷或模型無回應。請再試一次。", "The AI returned nothing this time. The request may have been interrupted or the model didn't respond. Please try again.");
+                        ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("沒有回傳內容", "Nothing returned"));
                     }
                 }
                 else
@@ -1784,17 +1789,17 @@ namespace Cat5201
                     // 使用者主動「停止」（工作流鏈，或手機遠端停止）：不是逾時，給對應訊息與狀態。
                     MarkBottomPlain();
                     BottomDisplay.Text =
-                        "已手動停止。這一步尚未完成。\n" +
-                        "可右鍵「執行此節點與下游」從這裡重跑，或「略過此步、從下一步續跑」。";
-                    ApplyRunStatus(NodeRunStatus.Failed, "已停止");
+                        UiLanguage.P("已手動停止。這一步尚未完成。\n", "Stopped manually. This step isn't finished.\n") +
+                        UiLanguage.P("可右鍵「執行此節點與下游」從這裡重跑，或「略過此步、從下一步續跑」。", "Right-click and choose \"Run this node and downstream\" to rerun from here, or \"Skip this step and continue\".");
+                    ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P("已停止", "Stopped"));
                 }
                 else
                 {
                     MarkBottomPlain();
                     BottomDisplay.Text =
-                        $"AI 回應逾時。這次任務超過 {FormatTimeout(executionTimeout)} 仍未完成，已自動取消。\n" +
-                        "可以試著縮短問題、減少附件，或換一個較快的模型再試。";
-                    ApplyRunStatus(NodeRunStatus.Failed, $"逾時（超過 {FormatTimeout(executionTimeout)}）");
+                        UiLanguage.P($"AI 回應逾時。這次任務超過 {FormatTimeout(executionTimeout)} 仍未完成，已自動取消。\n", $"The AI timed out. This task didn't finish within {FormatTimeout(executionTimeout)} and was cancelled automatically.\n") +
+                        UiLanguage.P("可以試著縮短問題、減少附件，或換一個較快的模型再試。", "Try a shorter question, fewer attachments, or a faster model.");
+                    ApplyRunStatus(NodeRunStatus.Failed, UiLanguage.P($"逾時（超過 {FormatTimeout(executionTimeout)}）", $"Timed out (over {FormatTimeout(executionTimeout)})"));
                 }
             }
             catch (Exception ex)
@@ -1884,7 +1889,7 @@ namespace Cat5201
                 case NodeRunStatus.Failed:
                     if (StatusText != null)
                     {
-                        StatusText.Text = string.IsNullOrWhiteSpace(detail) ? "執行失敗" : detail;
+                        StatusText.Text = string.IsNullOrWhiteSpace(detail) ? UiLanguage.P("執行失敗", "Run failed") : detail;
                         StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
                     }
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Visible;
@@ -1951,27 +1956,27 @@ namespace Cat5201
             string lower = raw.ToLowerInvariant();
 
             if (lower.Contains("401") || lower.Contains("unauthorized") || lower.Contains("api key") || lower.Contains("api 金鑰"))
-                return "API 金鑰無效或尚未設定，請檢查模型設定後再試。";
+                return UiLanguage.P("API 金鑰無效或尚未設定，請檢查模型設定後再試。", "The API key is invalid or not set. Check the model settings and try again.");
 
             if (lower.Contains("429") || lower.Contains("rate limit") || lower.Contains("quota") || lower.Contains("insufficient"))
-                return "請求太頻繁或額度不足，請稍候再試，或改用其他模型。";
+                return UiLanguage.P("請求太頻繁或額度不足，請稍候再試，或改用其他模型。", "Too many requests or not enough credit. Wait a moment and try again, or use another model.");
 
             if (ex is System.Net.Http.HttpRequestException ||
                 lower.Contains("network") || lower.Contains("connection") || lower.Contains("socket") ||
                 lower.Contains("name resolution") || lower.Contains("無法連線") || lower.Contains("timed out"))
-                return "無法連線到 AI 服務，請確認網路後再試一次。";
+                return UiLanguage.P("無法連線到 AI 服務，請確認網路後再試一次。", "Can't reach the AI service. Check your network and try again.");
 
             if (lower.Contains("500") || lower.Contains("502") || lower.Contains("503") || lower.Contains("server error") || lower.Contains("overloaded"))
-                return "AI 服務暫時無法使用，請稍後再試。";
+                return UiLanguage.P("AI 服務暫時無法使用，請稍後再試。", "The AI service is temporarily unavailable. Please try again later.");
 
             if ((lower.Contains("content") && (lower.Contains("policy") || lower.Contains("blocked"))) ||
                 lower.Contains("refus") || lower.Contains("safety"))
-                return "這個請求被模型拒絕，可能涉及受限制的內容。";
+                return UiLanguage.P("這個請求被模型拒絕，可能涉及受限制的內容。", "The model refused this request; it may involve restricted content.");
 
             string trimmed = raw.Length > 140 ? raw.Substring(0, 140).TrimEnd() + "…" : raw;
             return string.IsNullOrWhiteSpace(trimmed)
-                ? "發生未預期的錯誤，請重試一次。"
-                : $"執行時發生錯誤：{trimmed}";
+                ? UiLanguage.P("發生未預期的錯誤，請重試一次。", "An unexpected error occurred. Please try again.")
+                : UiLanguage.P($"執行時發生錯誤：{trimmed}", $"Error while running: {trimmed}");
         }
 
         // §3：只重新生成最終答案，沿用上一次的 research / capability 成果（較快、不重跑搜尋）。
@@ -2140,9 +2145,9 @@ namespace Cat5201
         private static string FormatTimeout(TimeSpan timeout)
         {
             if (timeout.TotalMinutes >= 1)
-                return $"{(int)Math.Round(timeout.TotalMinutes)} 分鐘";
+                return UiLanguage.P($"{(int)Math.Round(timeout.TotalMinutes)} 分鐘", $"{(int)Math.Round(timeout.TotalMinutes)} min");
 
-            return $"{(int)Math.Round(timeout.TotalSeconds)} 秒";
+            return UiLanguage.P($"{(int)Math.Round(timeout.TotalSeconds)} 秒", $"{(int)Math.Round(timeout.TotalSeconds)} sec");
         }
 
         private void StartBottomLoadingAnimation() => StartBottomLoadingAnimation(false);
@@ -2154,7 +2159,7 @@ namespace Cat5201
             BottomDisplay.Text = "";
 
             _loadingIsImageTask = imageTask;
-            _loadingBaseText = imageTask ? "正在生成圖片" : "AI 正在生成";
+            _loadingBaseText = imageTask ? UiLanguage.P("正在生成圖片", "Generating image") : UiLanguage.P("AI 正在生成", "AI is generating");
             _loadingExtraHint = "";
             _loadingStartUtc = DateTime.UtcNow;
 
@@ -2189,10 +2194,10 @@ namespace Cat5201
 
             string clock = elapsed.TotalMinutes >= 1
                 ? $"{(int)elapsed.TotalMinutes}:{elapsed.Seconds:D2}"
-                : $"{elapsed.Seconds} 秒";
+                : UiLanguage.P($"{elapsed.Seconds} 秒", $"{elapsed.Seconds} s");
 
             string hint = string.IsNullOrWhiteSpace(_loadingExtraHint)
-                ? (_loadingIsImageTask ? "（gpt-image 通常需 1～3 分鐘）" : "")
+                ? (_loadingIsImageTask ? UiLanguage.P("（gpt-image 通常需 1～3 分鐘）", " (gpt-image usually takes 1–3 minutes)") : "")
                 : $"（{_loadingExtraHint}）";
 
             BottomLoadingText.Text = $"{_loadingBaseText}… {clock}{hint}";
@@ -2452,7 +2457,7 @@ namespace Cat5201
                     Margin = new Thickness(0, 12, 0, 0)
                 };
 
-                var cancel = CreateDialogButton("取消", text);
+                var cancel = CreateDialogButton(UiLanguage.P("取消", "Cancel"), text);
                 cancel.IsCancel = true;
                 cancel.Margin = new Thickness(0, 0, 8, 0);
                 cancel.Click += (_, __) =>
@@ -2461,7 +2466,7 @@ namespace Cat5201
                     Close();
                 };
 
-                var ok = CreateDialogButton("確定", text);
+                var ok = CreateDialogButton(UiLanguage.P("確定", "OK"), text);
                 ok.IsDefault = true;
                 ok.Click += (_, __) =>
                 {

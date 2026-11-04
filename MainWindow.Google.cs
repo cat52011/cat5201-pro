@@ -96,9 +96,9 @@ namespace Cat5201
             {
                 if (!GoogleDrive.IsConfigured)
                 {
-                    MenuConfirmDialog.ShowMessage(this, "Google 整合",
-                        "尚未設定憑證。請先到 Google Cloud Console 建立「桌面應用程式」OAuth 用戶端，\n" +
-                        "然後設定環境變數 GOOGLE_OAUTH_CLIENT_ID 與 GOOGLE_OAUTH_CLIENT_SECRET，重啟本程式。", this);
+                    MenuConfirmDialog.ShowMessage(this, UiLanguage.P("Google 整合", "Google integration"),
+                        UiLanguage.P("尚未設定憑證。請先到 Google Cloud Console 建立「桌面應用程式」OAuth 用戶端，\n", "No credentials set. First create a \"Desktop app\" OAuth client in Google Cloud Console,\n") +
+                        UiLanguage.P("然後設定環境變數 GOOGLE_OAUTH_CLIENT_ID 與 GOOGLE_OAUTH_CLIENT_SECRET，重啟本程式。", "then set the environment variables GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET and restart the app."), this);
                     return;
                 }
                 await GoogleDrive.AuthorizeAsync(CancellationToken.None);
@@ -106,13 +106,13 @@ namespace Cat5201
                 try { linkedEmail = await GoogleDrive.GetUserEmailAsync(CancellationToken.None); } catch { }
                 RefreshGoogleStatus();
                 WireDrivePostWriteHook();
-                MenuConfirmDialog.ShowMessage(this, "Google 整合",
-                    string.IsNullOrWhiteSpace(linkedEmail) ? "✓ 已連結 Google 帳戶。" : $"✓ 已連結 {linkedEmail}。", this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("Google 整合", "Google integration"),
+                    string.IsNullOrWhiteSpace(linkedEmail) ? UiLanguage.P("✓ 已連結 Google 帳戶。", "✓ Google account linked.") : UiLanguage.P($"✓ 已連結 {linkedEmail}。", $"✓ Linked {linkedEmail}."), this);
             }
             catch (Exception ex)
             {
                 AppLog.Warn("GoogleDrive", "授權失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "Google 整合", "連結失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, UiLanguage.P("Google 整合", "Google integration"), UiLanguage.P("連結失敗：", "Link failed:") + ex.Message, this);
             }
         }
 
@@ -206,7 +206,7 @@ namespace Cat5201
             catch (Exception ex)
             {
                 AppLog.Warn("GoogleDrive", "從 Drive 附加檔案失敗", ex);
-                MenuConfirmDialog.ShowMessage(this, "Google Drive", "從 Drive 取檔失敗：" + ex.Message, this);
+                MenuConfirmDialog.ShowMessage(this, "Google Drive", UiLanguage.P("從 Drive 取檔失敗：", "Couldn't get the file from Drive:") + ex.Message, this);
                 return false;
             }
         }
@@ -217,20 +217,20 @@ namespace Cat5201
 
             if (!GoogleDrive.IsConfigured)
             {
-                GoogleStatusText.Text = "狀態：未設定憑證（App 內 API 分頁或環境變數 GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）";
+                GoogleStatusText.Text = UiLanguage.P("狀態：未設定憑證（App 內 API 分頁或環境變數 GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET）", "Status: no credentials (API tab in the app, or environment variables GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET)");
                 return;
             }
             if (!GoogleDrive.IsAuthorized)
             {
-                GoogleStatusText.Text = "狀態：已設定憑證，尚未連結（按「連結 Google」完成授權）";
+                GoogleStatusText.Text = UiLanguage.P("狀態：已設定憑證，尚未連結（按「連結 Google」完成授權）", "Status: credentials set, not linked yet (press \"Link Google\" to authorize)");
                 return;
             }
 
             // 已連結：顯示帳戶信箱。沒快取先顯示通用文字，背景抓一次再更新。
             string? email = GoogleDrive.CachedEmail;
             GoogleStatusText.Text = string.IsNullOrWhiteSpace(email)
-                ? "狀態：✓ 已連結 Google 帳戶"
-                : $"狀態：✓ 已連結 {email}";
+                ? UiLanguage.P("狀態：✓ 已連結 Google 帳戶", "Status: ✓ Google account linked")
+                : UiLanguage.P($"狀態：✓ 已連結 {email}", $"Status: ✓ Linked {email}");
 
             if (string.IsNullOrWhiteSpace(email) && !_fetchingGoogleEmail)
             {
@@ -245,7 +245,7 @@ namespace Cat5201
             {
                 string email = await GoogleDrive.GetUserEmailAsync(CancellationToken.None);
                 if (!string.IsNullOrWhiteSpace(email) && GoogleStatusText != null)
-                    GoogleStatusText.Text = $"狀態：✓ 已連結 {email}"; // await 後回到 UI 執行緒（無 ConfigureAwait(false)）
+                    GoogleStatusText.Text = UiLanguage.P($"狀態：✓ 已連結 {email}", $"Status: ✓ Linked {email}"); // await 後回到 UI 執行緒（無 ConfigureAwait(false)）
             }
             catch (Exception ex)
             {

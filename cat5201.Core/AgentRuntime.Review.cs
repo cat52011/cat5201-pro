@@ -13,9 +13,11 @@ namespace Cat5201
     public sealed partial class AgentRuntime
     {
         /// <summary>
-        /// 獨立審查（ReportReview）：這一趟產出了報告（.docx）就跑一次。
+        /// 獨立審查（ReportReview）：這一趟產出了報告（.docx）就跑一次；沒有 Word 報告但有簡報（.pptx）時審簡報。
         /// 只列問題，不改報告：清單另存成「審查清單」檔，答案最後加一句結果。
         /// 審查失敗不影響報告本身。
+        /// 同一趟產出的程式檔（任何語言，見 ReportReview.CodeExtensions）也一起給審查者，
+        /// 核對報告寫的做法和程式是否一致（2026-11-04）。
         /// </summary>
         private async Task<AiFallbackExecutionResult> TryReviewDeliverablesAsync(
             INodeContext node, AgentWorkspace workspace, AiFallbackExecutionResult execution, CancellationToken ct)
@@ -25,8 +27,12 @@ namespace Cat5201
                 .Where(x => x.File is { Success: true } && System.IO.File.Exists(x.File.FilePath))
                 .ToList();
 
-            var report = files.LastOrDefault(x =>
-                string.Equals(System.IO.Path.GetExtension(x.File!.FilePath), ".docx", StringComparison.OrdinalIgnoreCase));
+            bool HasExt(GeneratedFilePayload f, string ext) =>
+                string.Equals(System.IO.Path.GetExtension(f.FilePath), ext, StringComparison.OrdinalIgnoreCase);
+
+            var report = files.LastOrDefault(x => HasExt(x.File!, ".docx"));
+            if (report.File == null)
+                report = files.LastOrDefault(x => HasExt(x.File!, ".pptx"));
             if (report.File == null)
                 return execution;
 
@@ -35,16 +41,33 @@ namespace Cat5201
                 node.SetLoadingHint("獨立審查：對照報告的數字與文字…");
 
                 string reportName = report.File.FileName;
-                string markdown = ArtifactTextExtractor.ExtractDocx(report.File.FilePath);
+                string markdown = HasExt(report.File, ".pptx")
+                    ? ArtifactTextExtractor.ExtractPptx(report.File.FilePath)
+                    : ArtifactTextExtractor.ExtractDocx(report.File.FilePath);
 
                 var tables = new List<(string Name, IReadOnlyList<IReadOnlyList<string>> Rows)>();
-                var tableNames = new List<string>();
-                foreach (var x in files.Where(x =>
-                             string.Equals(System.IO.Path.GetExtension(x.File!.FilePath), ".xlsx", StringComparison.OrdinalIgnoreCase)))
+                var comparedNames = new List<string>();
+                foreach (var x in files.Where(x => HasExt(x.File!, ".xlsx")))
                 {
-                    tableNames.Add(x.File!.FileName);
+                    comparedNames.Add(x.File!.FileName);
                     foreach (var (sheet, rows) in ArtifactTextExtractor.ExtractXlsxSheets(x.File.FilePath))
                         tables.Add(($"{x.File.FileName}／{sheet}", rows));
+                }
+
+                // 程式碼只給審查模型核對做法描述，不做程式檢查（nan 等字樣在程式裡是正常的）。
+                var codeFiles = new List<(string Name, string Code)>();
+                foreach (var x in files.Where(x => ReportReview.IsCodeFile(x.File!.FilePath)))
+                {
+                    string code;
+                    try { code = ReportReview.ReadCode(x.File!.FilePath); }
+                    catch (Exception ex)
+                    {
+                        AppLog.Warn("Review", $"讀不到程式檔，審查不含這個檔：{x.File!.FileName}", ex);
+                        continue;
+                    }
+                    if (string.IsNullOrWhiteSpace(code)) continue;
+                    codeFiles.Add((x.File!.FileName, code));
+                    comparedNames.Add(x.File.FileName);
                 }
 
                 var programIssues = ReportReview.ProgramChecks(markdown, tables);
@@ -79,7 +102,7 @@ namespace Cat5201
 
                         using var purpose = UsageMeter.Purpose("獨立審查");
                         var r = await _executeWithFallbackAsync(
-                            node, ReportReview.BuildPrompt(reportName, markdown, tables, programIssues), decision, null, false, ct);
+                            node, ReportReview.BuildPrompt(reportName, markdown, tables, programIssues, codeFiles), decision, null, false, ct);
                         raw = r.IsSuccess ? (r.Text ?? "") : "";
                         var parsed = ReportReview.ParseReply(raw);
                         if (parsed != null)
@@ -99,7 +122,7 @@ namespace Cat5201
                 string title = System.IO.Path.GetFileNameWithoutExtension(reportName);
                 var list = GeneratedFileWriter.WriteMarkdown(
                     _main.GetGeneratedFilesDir(), title + "（審查清單）",
-                    ReportReview.ToMarkdown(reportName, tableNames, result),
+                    ReportReview.ToMarkdown(reportName, comparedNames, result),
                     $"獨立審查 / {reviewer ?? "程式檢查"}");
                 if (list.Success)
                     workspace.Add(AgentWorkspaceBuilder.FromCapabilityData(

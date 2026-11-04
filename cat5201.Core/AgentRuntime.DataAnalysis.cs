@@ -129,6 +129,16 @@ namespace Cat5201
             if (dataNames.Count == 0)
                 return null;
 
+            // 交付檔名在建提示之前就定下來，告訴沙箱照用：.py 產生的檔名、報告裡引用的檔名才會和交付的一樣。
+            // 2026-11-04：原本沙箱跑完才決定 title、再把 .docx／.xlsx 改名，.py 和報告裡寫的檔名都對不上。
+            string genDir = _main.GetGeneratedFilesDir();
+            string title = GeneratedFileWriter.UnusedTitle(genDir, DeriveCleanTitle(userInput, "分析報告"), t => new[]
+            {
+                GeneratedFileWriter.PlannedFileName(t, ".docx"),
+                GeneratedFileWriter.PlannedFileName(DataAnalysisJob.TableTitle(t, intent.WantsTable), ".xlsx"),
+            });
+            string tableTitle = DataAnalysisJob.TableTitle(title, intent.WantsTable);
+
             var job = new DataAnalysisJob.Request
             {
                 UserInput = userInput,
@@ -141,6 +151,8 @@ namespace Cat5201
                 WantsReport = intent.WantsReport,
                 WantsTable = intent.WantsTable,
                 Language = intent.RequestedLanguage ?? "",
+                ReportFileName = intent.WantsReport ? GeneratedFileWriter.PlannedFileName(title, ".docx") : "",
+                TableFileName = GeneratedFileWriter.PlannedFileName(tableTitle, ".xlsx"),
             };
 
             if (job.WantsReport) orchestration.MarkRunning("generate_file");
@@ -246,8 +258,7 @@ namespace Cat5201
             }
 
             // 3) 收檔：報告、表格照一般產出寫檔；程式放進程式碼資料夾（分類成「程式碼」、可預覽）。
-            string genDir = _main.GetGeneratedFilesDir();
-            string title = DeriveCleanTitle(userInput, "分析報告");
+            // title、genDir 在建提示之前就定好了（見上面），這裡照用，交付檔名才會和沙箱裡寫的一樣。
             string sourceSummary = $"{orchestrationPlan.PipelineId} / 沙箱執行 {model}";
             var produced = new List<string>();
             bool reportDone = false, tableDone = false, resultTableDone = false;
@@ -271,7 +282,7 @@ namespace Cat5201
                         break;
                     case ".xlsx" when !tableDone && !resultTableDone:
                         // 沒被要求表格時也收：報告常引用「完整結果見 xxx.xlsx」，丟掉會讓報告指向不存在的檔案。
-                        var xlsx = GeneratedFileWriter.WriteXlsx(genDir, title + (job.WantsTable ? "（表格）" : "（結果表）"), f.Bytes, sourceSummary);
+                        var xlsx = GeneratedFileWriter.WriteXlsx(genDir, tableTitle, f.Bytes, sourceSummary);
                         Emit(xlsx, "table-agent");
                         if (job.WantsTable) tableDone = xlsx.Success;
                         else resultTableDone = xlsx.Success;
