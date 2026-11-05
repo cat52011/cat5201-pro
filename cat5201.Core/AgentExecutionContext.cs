@@ -26,5 +26,13 @@ namespace Cat5201
         /// 預設 Auto，維持舊行為。
         /// </summary>
         public ModelScope Scope { get; init; } = ModelScope.Auto;
+
+        /// <summary>
+        /// 這次需要知道「現在」時才有值（從 UserClock 讀，跟給模型的目前日期同一刻）；null＝這次跟時間無關。
+        /// 搜尋用它把「這週末」「今天」換成實際日期再查——只送原句時搜尋引擎分不出是哪一週，
+        /// 2026-11-06 實測拿回 10 月的舊文章、沒有 11/8 的預報。
+        /// 能力規劃要等意圖判斷回來才知道需不需要，所以這個欄位在建立之後才設定。
+        /// </summary>
+        public DateTimeOffset? CurrentDate { get; set; }
     }
 }

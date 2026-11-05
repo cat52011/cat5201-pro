@@ -198,6 +198,10 @@ namespace Cat5201
             if (!string.IsNullOrWhiteSpace(log.OutputIntentSummary))
                 lines.Add(UiLanguage.P($"🎯 想要的輸出：{Safe(log.OutputIntentSummary)}", $"🎯 Wanted output: {Safe(log.OutputIntentSummary)}"));
 
+            // 能力判斷：要不要查即時資料／推理／寫程式，以及是語意判斷還是關鍵字後援。
+            if (!string.IsNullOrWhiteSpace(log.CapabilityPlanSummary))
+                lines.Add(UiLanguage.P($"🧭 能力判斷：{Safe(log.CapabilityPlanSummary)}", $"🧭 Capabilities: {Safe(log.CapabilityPlanSummary)}"));
+
             // 各步驟實際收到了什麼——「要求有沒有傳到」要能查，不能只靠設計上應該如此。
             foreach (string line in BuildStepInputLines(log))
                 lines.Add(line);

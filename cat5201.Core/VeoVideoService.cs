@@ -470,7 +470,8 @@ namespace Cat5201
                 if (job != null && job.CostRecorded && job.Status == "pending" && job.CostUsd > 0)
                 {
                     UsageMeter.RecordMetered(UsageKinds.Video, ModelFromOperation(op), job.Seconds, "秒", -job.CostUsd,
-                        note: "任務失敗沖銷（官方：沒成功生成不收費）", purpose: "影片失敗沖銷");
+                        note: "任務失敗沖銷（官方：沒成功生成不收費）", purpose: "影片失敗沖銷",
+                        refundsChargeAtUtc: job.CostRecordedAtUtc ?? job.CreatedAtUtc);   // 沖回扣款當天
                 }
                 VideoJobJournal.MarkFailed(op, error);
             }

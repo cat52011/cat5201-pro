@@ -12,7 +12,12 @@ namespace Cat5201
     /// </summary>
     public sealed class UsageRecord
     {
-        public DateTime AtUtc { get; init; } = DateTime.UtcNow;
+        public DateTime AtUtc { get; init; } = UserClock.Now.UtcDateTime;
+
+        /// <summary>
+        /// 沖銷帳目才有：被沖銷的那筆錢當初是什麼時候扣的。帳本據此沖回扣款當天，不是沖銷當天。
+        /// </summary>
+        public DateTime? RefundsChargeAtUtc { get; init; }
 
         /// <summary>llm / image / video / search。</summary>
         public string Kind { get; init; } = UsageKinds.Llm;
@@ -206,10 +211,12 @@ namespace Cat5201
             double usd,
             bool isActual = false,
             string note = "",
-            string? purpose = null)
+            string? purpose = null,
+            DateTime? refundsChargeAtUtc = null)
         {
             var record = new UsageRecord
             {
+                RefundsChargeAtUtc = usd < 0 ? refundsChargeAtUtc : null,
                 Kind = kind,
                 ModelId = modelId ?? "",
                 Purpose = string.IsNullOrWhiteSpace(purpose) ? CurrentPurpose : purpose!,
@@ -236,7 +243,7 @@ namespace Cat5201
             if (record.UsdCost > 0)
                 SpendLedger.Add(record.UsdCost, label, providerId);
             else if (record.UsdCost < 0)
-                SpendLedger.Subtract(-record.UsdCost, label, providerId);
+                SpendLedger.Subtract(-record.UsdCost, label, providerId, record.RefundsChargeAtUtc);
 
             // 餘額簿：使用者填過餘額的服務，每一筆花費就扣、沖銷就加回（與 90 天帳本無關）。
             ProviderBalance.Deduct(providerId, record.UsdCost);

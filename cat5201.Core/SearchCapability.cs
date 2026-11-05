@@ -50,6 +50,8 @@ namespace Cat5201
             CancellationToken ct)
         {
             string originalQuery = context.TopText ?? "";
+            // 實際送去搜尋的查詢：需要時帶上換算好的日期（「這週末」→ 哪兩天），見 BuildSearchQuery。
+            string searchQuery = BuildSearchQuery(originalQuery, context.CurrentDate);
 
             // 手動模式：搜尋研究先用使用者選的那個模型（2026-10-29 使用者指示）。
             // 以前這裡一律用建構時寫死的 openai/gpt-5.6-sol，選 Claude 的人背後其實是 GPT 在做研究，而且沒講。
@@ -68,7 +70,7 @@ namespace Cat5201
                     AgentCapabilityResult finance;
                     try
                     {
-                        finance = await ExecuteAuthoritativeFinanceResearchAsync(originalQuery, agentModel, ct);
+                        finance = await ExecuteAuthoritativeFinanceResearchAsync(searchQuery, agentModel, ct);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException &&
                                                !string.Equals(agentModel, _service.AgentModelId, StringComparison.OrdinalIgnoreCase))
@@ -78,7 +80,7 @@ namespace Cat5201
                         switchNotice = ModelSwitchNotice.ForSearch(
                             scope.SelectedModelId, _service.AgentModelId, "執行失敗（" + Shorten(ex.Message, 80) + "）");
                         agentModel = _service.AgentModelId;
-                        finance = await ExecuteAuthoritativeFinanceResearchAsync(originalQuery, agentModel, ct);
+                        finance = await ExecuteAuthoritativeFinanceResearchAsync(searchQuery, agentModel, ct);
                     }
 
                     finance.Notice = switchNotice ?? "";
@@ -87,7 +89,7 @@ namespace Cat5201
 
                 // 一般研究走 Perplexity Search API：回傳的是連結清單，沒有語言模型參與，
                 // 所以不受「手動只用所選模型」限制——讀這些結果、寫答案的仍是使用者選的模型。
-                return await ExecuteGeneralSearchAsync(originalQuery, ct);
+                return await ExecuteGeneralSearchAsync(originalQuery, searchQuery, ct);
             }
             catch (OperationCanceledException)
             {
@@ -252,9 +254,9 @@ Quote Source:
 
         private async Task<AgentCapabilityResult> ExecuteGeneralSearchAsync(
             string originalQuery,
+            string searchQuery,
             CancellationToken ct)
         {
-            string searchQuery = BuildSearchQuery(originalQuery);
 
             var results = await _service.SearchAsync(
                 searchQuery,
@@ -1382,12 +1384,23 @@ Quote Source:
             };
         }
 
-        private static string BuildSearchQuery(string query)
+        /// <summary>
+        /// 送去搜尋的查詢。這次需要知道現在的日期時（currentDate 有值），在原句後面附上今天與這個週末的實際日期，
+        /// 讓搜尋引擎知道「今天」「這週末」是哪幾天。2026-11-06 實測：只送「東京這週末會下雨嗎？」，
+        /// 拿回 3 篇 10 月的舊文章和只到週六的預報，週日沒有資料。
+        /// 日期用 ISO 格式＋英文說明，使用者用哪種語言發問都一樣；不看字面判斷要不要加（需不需要由語意判斷決定）。
+        /// </summary>
+        internal static string BuildSearchQuery(string query, DateTimeOffset? currentDate = null)
         {
             if (string.IsNullOrWhiteSpace(query))
                 return "";
 
-            return query;
+            if (!currentDate.HasValue)
+                return query;
+
+            DateTime today = currentDate.Value.Date;
+            var (saturday, sunday) = CurrentDateBlock.ThisWeekend(today);
+            return $"{query.Trim()} (as of {today:yyyy-MM-dd}; this weekend {saturday:yyyy-MM-dd} to {sunday:yyyy-MM-dd})";
         }
 
         private static bool IsStockFinanceQuery(string text)

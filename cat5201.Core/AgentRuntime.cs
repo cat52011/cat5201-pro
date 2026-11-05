@@ -35,6 +35,14 @@ namespace Cat5201
         /// <summary>這次執行（最外層）的第一層語意判斷結果；製作方式、明確不要圖、檔名主題都從這裡讀。</summary>
         private OutputIntent? _requestIntent;
 
+        // 這次執行可不可以退回關鍵字（只有規則式 Auto 可以，2026-11-05 使用者定的模式規則）。
+        // 產出階段（藝術方向等）沿用同一個結果，不再各自讀全域開關。
+        private bool _allowKeywordFallback;
+
+        // 這次要不要把「現在的日期」交給模型（需要時才有值，見 NeedsCurrentDate）。主回覆、搜尋、
+        // 以及之後的文件／資料分析／簡報撰寫都用同一刻，不各自讀時鐘。
+        private DateTimeOffset? _currentDate;
+
         /// <summary>
         /// 這一次實際用的文件引擎：使用者明講「快速版」或「最佳品質」就照講的做，沒講才用個人化的設定
         /// （2026-11-03：寫明「快速版」的簡報照樣走了最佳品質）。由語意判斷決定，不比對關鍵字。
@@ -60,6 +68,40 @@ namespace Cat5201
             => EffectiveDocumentEngine() == DocumentEngine.ClaudeSkills
                 ? DocumentEngineHelper.ResolveSkillsModel(AiAutoCostPolicy.BlockOpus)
                 : PresentationEngineHelper.ToAuthorModelId(_main.GetPresentationEngine());
+
+        /// <summary>
+        /// 這次要不要把現在的日期交給模型。語意判斷說需要、或這次有搜尋（要靠日期分辨結果新舊）就給；
+        /// 語意判斷拿不到時也給——不知道需不需要時，多給只多幾十個 token，少給可能答錯。不用關鍵字。
+        /// </summary>
+        /// <summary>
+        /// 產出物的藝術方向：語意判斷有結果就用它；沒有時只有規則式 Auto 退回主題文字的關鍵字規則，
+        /// 其他模式用現代簡約（不用關鍵字）。2026-11-06：「介紹京都」一個關鍵字都沒中，被套上商業科技藍。
+        /// </summary>
+        internal static string ResolveArtDirectionId(OutputIntent? intent, bool allowKeywordFallback, string? topicText)
+        {
+            if (DeckArtDirection.IsKnownId(intent?.ArtDirection))
+                return intent!.ArtDirection.Trim().ToLowerInvariant();
+            return allowKeywordFallback ? DeckArtDirection.ForTopic(topicText).Id : "modern";
+        }
+
+        /// <summary>這次請求的藝術方向（見 ResolveArtDirectionId）。</summary>
+        private string ArtIdFor(string? topicText)
+            => ResolveArtDirectionId(_requestIntent, _allowKeywordFallback, topicText);
+
+        /// <summary>
+        /// 文件、資料分析、簡報撰寫這些「另外組提示」的步驟前面要加的日期段落；不需要日期時是空字串。
+        /// 2026-11-06：主回覆已經有日期，但交給 Claude 做的簡報與報告沒有——「做一份本週市場簡報」會遇到跟天氣一樣的問題。
+        /// </summary>
+        internal static string DatePrefix(DateTimeOffset? currentDate)
+            => currentDate.HasValue ? CurrentDateBlock.Build(currentDate.Value) + "\n\n" : "";
+
+        internal static bool NeedsCurrentDate(OutputIntent? intent, AgentCapabilityExecutionPlan plan)
+        {
+            var needs = intent?.Capabilities;
+            if (needs == null)
+                return true;
+            return needs.NeedsCurrentDate || plan.RequiresFreshFacts;
+        }
 
         private GenerationChoices BuildGenerationChoices(OrchestrationTaskType taskType, OutputIntent? intent)
         {
@@ -359,12 +401,6 @@ namespace Cat5201
             // 要不要查即時資料：看使用者自己寫的要求，不看上游貼進來的內容（見 UpstreamMerge.OwnInstruction）。
             string intentText = string.IsNullOrWhiteSpace(request.OwnInstruction) ? topText : request.OwnInstruction!;
 
-            var capabilityPlan = AgentCapabilityPlanner.Build(
-    runtimeAgent,
-    intentText,
-    decision.TaskMode,
-    capabilityContext.Attachments != null && capabilityContext.Attachments.Count > 0);
-
             bool hasImageAttachment = capabilityContext.Attachments != null &&
                 capabilityContext.Attachments.Any(a => a != null &&
                     ((!string.IsNullOrEmpty(a.MimeType) && a.MimeType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
@@ -377,7 +413,7 @@ namespace Cat5201
             using var budgetScope = SpendReservations.BeginOverBudgetScope();
 
             // 輸出判斷（§6）到這一步才需要結果。NodeService 已經先把它發出去了，
-            // 這段期間「自動選模型」與能力規劃都跑完了，所以多半已經回來，await 不用再等一次來回。
+            // 這段期間「自動選模型」已經跑完了，所以多半已經回來，await 不用再等一次來回。
             var outputIntent = request.OutputIntent;
             if (outputIntent == null && request.OutputIntentTask != null)
             {
@@ -386,6 +422,67 @@ namespace Cat5201
             }
             if (request.DelegationDepth == 0)
                 _requestIntent = outputIntent;
+
+            // 能力規劃（要不要搜尋／推理／寫程式／拆步驟）用同一次語意判斷的結果，不另外呼叫模型。
+            // 放在收意圖之後：規劃本身是純計算，挪過來不會多等。
+            //
+            // 2026-11-05 使用者指示，三種模式各自的規則：
+            //  - 手動（含協作，模型都是使用者選的）：只在語意判斷說要即時資料時搜尋，其他能力一律不加；
+            //    搜尋結果由使用者選的模型讀、寫答案（跟 ChatGPT 網頁版一樣）。語意判斷拿不到就不搜尋。
+            //    （2026-11-05 使用者先選了「完全不搜尋」，實測手動問天氣只得到「無法取得即時天氣」，改成這樣。）
+            //  - 規則式 Auto（Auto＋關閉 API）：語意判斷優先，拿不到才退回關鍵字；只在需要即時資料時跑能力層。
+            //    關鍵字判斷只留在這個模式。
+            //  - API Auto：只看語意判斷；拿不到就不加額外能力（不退回關鍵字）。
+            //
+            // 模式看「這次決策本身是在哪個模式下做的」（跟執行紀錄的「模式」欄位同一個來源），不要在這裡再讀一次全域開關：
+            // 這段要等意圖判斷回來，中間隔了幾秒。2026-11-05 實測：使用者在這幾秒內切到手動去跑下一個節點，
+            // 規則式 Auto 的節點就被當成手動，沒有搜尋，回答「無法取得即時天氣」。
+            bool decidedAsManual = string.Equals(decision.StatusLabel, "Manual", StringComparison.OrdinalIgnoreCase);
+            bool decidedAsRuleAuto = string.Equals(decision.StatusLabel, "Rule Auto", StringComparison.OrdinalIgnoreCase);
+            bool decidedAsApiAuto = decision.UsedApiResolver;
+            bool knownMode = decidedAsManual || decidedAsRuleAuto || decidedAsApiAuto;
+
+            bool manualCapabilities = collaborating ||
+                (knownMode ? decidedAsManual : !_main.IsAutoModelSelectionEnabled());
+            bool ruleBasedAuto = !manualCapabilities &&
+                (knownMode ? decidedAsRuleAuto : !_main.IsAdvancedAutoResolverEnabled());
+            if (request.DelegationDepth == 0)
+                _allowKeywordFallback = ruleBasedAuto;
+
+            var capabilityPlan = AgentCapabilityPlanner.Build(
+                runtimeAgent,
+                intentText,
+                decision.TaskMode,
+                capabilityContext.Attachments != null && capabilityContext.Attachments.Count > 0,
+                outputIntent,
+                allowKeywordFallback: ruleBasedAuto,
+                searchOnly: manualCapabilities);
+
+            // 決策紀錄：這次能力怎麼判的、誰判的。子代理委派本來就沒有意圖結果、也不跑能力層，不記。
+            if (request.DelegationDepth == 0)
+            {
+                decision.CapabilityPlanSummary = !manualCapabilities
+                    ? capabilityPlan.ToSummary()
+                    : capabilityPlan.RequiresFreshFacts
+                        ? capabilityPlan.ToSummary() + AgentCapabilityExecutionPlan.ManualSearchNote
+                        : AgentCapabilityExecutionPlan.ManualModeSummary;
+            }
+
+            // 語意判斷拿不到要留日誌（跟輸出判斷失敗時一樣）。
+            if (request.DelegationDepth == 0 &&
+                capabilityPlan.Source != AgentCapabilityPlanner.SourceSemantic)
+            {
+                string from = string.IsNullOrEmpty(outputIntent?.Source) ? "無" : outputIntent!.Source.Split(':')[0];
+                AppLog.Warn("AgentRuntime", capabilityPlan.Source == AgentCapabilityPlanner.SourceKeywords
+                    ? $"能力規劃拿不到語意判斷（意圖來源：{from}），規則式 Auto 改用關鍵字後援"
+                    : $"能力規劃拿不到語意判斷（意圖來源：{from}），{(manualCapabilities ? "手動" : "API Auto")}不用關鍵字，這次不搜尋、不加額外能力");
+            }
+
+            // 現在的日期：需要時才從 UserClock 讀一次，給模型的提示和搜尋查詢用同一刻（2026-11-06 使用者指示：需要時才讀）。
+            DateTimeOffset? currentDate = NeedsCurrentDate(outputIntent, capabilityPlan) ? UserClock.Now : null;
+            capabilityContext.CurrentDate = currentDate;
+            if (request.DelegationDepth == 0)
+                _currentDate = currentDate;
 
             // 第一層意圖閘門（§first-layer-intent-routing）：
             // 在規劃之前先判斷這次是否會產生影片/圖片/檔案。
@@ -497,8 +594,14 @@ namespace Cat5201
                 .Where(c => c != null)
                 .Cast<IAgentCapability>()
                 .ToList();
+            // 模式決定能力層跑不跑：手動只在要即時資料時跑（計畫裡也只有搜尋）；
+            // 規則式 Auto 只在需要即時資料時跑（搜尋要花錢）；API Auto 照計畫跑。
+            bool layerAllowedByMode =
+                manualCapabilities ? capabilityPlan.RequiresFreshFacts
+                : !ruleBasedAuto || capabilityPlan.ShouldRunWhenSearchGated(topText);
             bool runCapabilityLayer =
                 !request.SkipCapabilities &&
+                layerAllowedByMode &&
                 !discardsContext;   // 圖片任務：產出會被丟掉，見上面 discardsContext
 
             if (discardsContext && !request.SkipCapabilities)
@@ -584,6 +687,11 @@ namespace Cat5201
                     }
 
 
+                    // 語意判斷選了這個能力（例如判斷要寫程式），就不讓 CanHandle 裡的關鍵字清單推翻它：
+                    // 「這段為什麼會掛掉」沒有「程式」「bug」這些字，但確實是程式問題。
+                    if (!canHandle && capabilityPlan.IsIntentSelected(capability.Id))
+                        canHandle = true;
+
                     if (!canHandle && !isRequired)
                     {
                         capabilityTrace.Add(new AgentCapabilityTraceItem
@@ -612,7 +720,10 @@ namespace Cat5201
                         using var capabilityPurpose = UsageMeter.Purpose(
                             capability.Id == "search-capability" ? "搜尋研究" : $"能力層：{capability.Id}");
                         // 能力層不經過執行器，收到的是 capabilityContext.TopText——同樣要記。
-                        RecordStepInput(UsageMeter.CurrentPurpose, "", capabilityContext.TopText);
+                        // 搜尋記實際送出去的查詢（需要時會帶上換算好的日期）。
+                        RecordStepInput(UsageMeter.CurrentPurpose, "", capability.Id == "search-capability"
+                            ? SearchCapability.BuildSearchQuery(capabilityContext.TopText, capabilityContext.CurrentDate)
+                            : capabilityContext.TopText);
                         capabilityResult = await capability.ExecuteAsync(
                             capabilityContext,
                             request.CancellationToken);
@@ -1213,7 +1324,17 @@ namespace Cat5201
                         : "你是圖片生成助理。使用者請你依描述生成圖片，圖片生成程式已準備好。請只用一句繁體中文確認你會根據描述生成圖片，不要展開描述圖片內容，不要給提示詞。") +
                     "\n\n【使用者描述】\n" + topText;
             }
-            else if (!string.IsNullOrWhiteSpace(request.PreferenceBlock))
+            else if (currentDate.HasValue)
+            {
+                // 現在的日期：需要時才從 UserClock 讀、交給模型，不需要就不給（2026-11-06 使用者指示）。
+                // API 呼叫的模型不知道今天是哪一天；不給的話「這週末」「今天」換算不出來，
+                // 搜尋結果裡的舊文章也分不出新舊（2026-11-06 實測）。
+                finalInput = CurrentDateBlock.Build(currentDate.Value) + "\n\n" + finalInput;
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.PreferenceBlock) &&
+                orchestrationPlan.TaskType != OrchestrationTaskType.ImageGeneration &&
+                orchestrationPlan.TaskType != OrchestrationTaskType.ImageEdit)
             {
                 // 非 parallel 路徑：把使用者偏好放在最前面當最高優先指令（圖片任務除外）。
                 finalInput =
@@ -1568,6 +1689,8 @@ namespace Cat5201
                         RequestedLanguage = intent.RequestedLanguage,
                         Quality = intent.Quality,
                         Topic = intent.Topic,
+                        Capabilities = intent.Capabilities,
+                        ArtDirection = intent.ArtDirection,
                         Source = intent.Source
                     },
                     request.CancellationToken);

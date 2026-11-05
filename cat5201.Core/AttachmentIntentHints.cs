@@ -16,7 +16,7 @@ namespace Cat5201
     /// 兩層：
     /// 1. 把附件的檔名與文件類附件的開頭一段交給輸出判斷（語意判斷）。
     /// 2. 固定規則：附件裡有「範本／模板」，而且使用者要你完成／照著做時，產出範本那一種檔案。
-    ///    這一條不靠模型——範本放在那裡，就是要交回一份填好的。
+    ///    只在語意判斷拿不到結果時（沒模型、API 失敗）才用；語意判斷有結果時以它為準（2026-11-04）。
     /// </summary>
     public static class AttachmentIntentHints
     {
@@ -142,6 +142,8 @@ namespace Cat5201
                 Topic = intent.Topic,
                 RequestedSlides = intent.RequestedSlides,
                 RequestedLanguage = intent.RequestedLanguage,
+                Capabilities = intent.Capabilities,
+                ArtDirection = intent.ArtDirection,
                 Source = intent.Source + " +template",
             };
         }

@@ -16,6 +16,12 @@ namespace Cat5201
         // 副標 / 主題說明
         public string Topic { get; init; } = "";
 
+        /// <summary>
+        /// 這份簡報的藝術方向 ID（DeckArtDirection.AllIds 之一），由第一層語意判斷決定；
+        /// 空字串＝舊專案或沒判斷，DeckArtDirection.ForOutline 會照舊看主題文字。
+        /// </summary>
+        public string ArtDirectionId { get; set; } = "";
+
         public IReadOnlyList<PresentationSlidePayload> Slides { get; init; }
             = Array.Empty<PresentationSlidePayload>();
 

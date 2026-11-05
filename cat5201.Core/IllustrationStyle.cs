@@ -103,6 +103,9 @@ namespace Cat5201
         /// <summary>各藝術方向的圖像語言（色盤與質感都對齊簡報本身）。</summary>
         public static string StyleFor(DeckArtDirection art) => art?.Id switch
         {
+            // 使用者偏好的藝術類美術風格（復古雜誌）：簡報照片保持乾淨寫實，雜誌感由版面負責（見 PoeticPrintStyle）。
+            "poetic" => PoeticPrintStyle.DeckPhotoStyle,
+
             "gallery" =>
                 "Exhibition-catalogue image: near-black ground (#0D0D0C), a single sculptural object lit by soft directional light, " +
                 "warm brass highlights (#C9A227), deep shadows, museum-quality restraint, vast negative space, muted desaturated palette, fine grain.",

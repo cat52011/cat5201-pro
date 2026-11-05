@@ -160,7 +160,7 @@ cat5201-pro 是一個 Windows 桌面版的 AI 整合工作台：以心智圖樣�
 # 執行
 dotnet run --project cat5201.csproj
 
-# 測試（xUnit，1015 項）
+# 測試（xUnit，1129 項）
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # 打包成單一 exe，輸出到 publish\win-x64\
@@ -335,7 +335,7 @@ Requires the .NET 8 SDK.
 # Run
 dotnet run --project cat5201.csproj
 
-# Test (xUnit, 1015 tests)
+# Test (xUnit, 1129 tests)
 dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 
 # Build a single-file exe into publish\win-x64\

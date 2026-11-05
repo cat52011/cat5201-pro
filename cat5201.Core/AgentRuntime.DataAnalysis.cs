@@ -194,7 +194,7 @@ namespace Cat5201
                     {
                         result = await service.GenerateAsync(
                             DataAnalysisJob.SystemPrompt,
-                            DataAnalysisJob.BuildUserPrompt(job),
+                            DatePrefix(_currentDate) + DataAnalysisJob.BuildUserPrompt(job),
                             Array.Empty<string>(),          // 不掛技能：python-docx 等都已預裝，Word 技能光注入就上百萬 token
                             DataAnalysisJob.WantedExtensions(job.WantsReport, job.WantsTable),
                             (round, s) => { steps = s; ShowProgress(); },

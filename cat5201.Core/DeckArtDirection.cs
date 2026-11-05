@@ -117,10 +117,23 @@ namespace Cat5201
         {
             if (outline == null) return ForTopic(null);
 
-            return ForTopic(
-                $"{outline.Title} {outline.Topic}",
-                VariantSeed($"{outline.Title}|{outline.Topic}|{outline.CreatedAtUtc.Ticks}"));
+            int seed = VariantSeed($"{outline.Title}|{outline.Topic}|{outline.CreatedAtUtc.Ticks}");
+
+            // 2026-11-06：風格改由第一層語意判斷決定，記在大綱上（OutputIntent.ArtDirection）。
+            // 舊專案的大綱沒有這一欄，才照舊看主題文字——重新渲染舊簡報時風格不會變。
+            if (IsKnownId(outline.ArtDirectionId))
+                return WithVariant(ById(outline.ArtDirectionId), seed);
+
+            return ForTopic($"{outline.Title} {outline.Topic}", seed);
         }
+
+        /// <summary>依已決定的風格 ID 取藝術方向（不看主題文字）。未知的 ID 用現代簡約。</summary>
+        public static DeckArtDirection ForId(string? id, int seed = 0)
+            => WithVariant(ById(IsKnownId(id) ? id!.Trim().ToLowerInvariant() : "modern"), seed);
+
+        public static bool IsKnownId(string? id)
+            => !string.IsNullOrWhiteSpace(id) &&
+               AllIds.Contains(id.Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase);
 
         /// <summary>穩定的非負雜湊（string.GetHashCode 每次啟動都不同，不能用）。</summary>
         private static int VariantSeed(string key)
@@ -134,7 +147,11 @@ namespace Cat5201
             }
         }
 
-        /// <summary>依主題文字挑選藝術方向；都沒命中時用現代簡約。</summary>
+        /// <summary>
+        /// 依主題文字挑選藝術方向；都沒命中時用現代簡約。
+        /// 這是關鍵字規則：主要路徑已改成語意判斷（ForId／大綱上的 ArtDirectionId），
+        /// 這裡只給規則式 Auto 的後援與舊專案用。
+        /// </summary>
         public static DeckArtDirection ForTopic(string? topic) => ForTopic(topic, 0);
 
         /// <summary>依主題文字挑選藝術方向，並套用第 <paramref name="seed"/> 號配色變體。</summary>
@@ -166,6 +183,8 @@ namespace Cat5201
         /// </summary>
         private static readonly Dictionary<string, (string Accent, string InverseBackground)[]> Palettes = new()
         {
+            // 復古雜誌的強調色本來應該從照片取（交給排版模型時會這樣講）；內建排版器沒辦法讀照片，給幾個大地色輪替。
+            ["poetic"]   = new[] { ("B5563C", "2A2420"), ("7D8F69", "2A2420"), ("C08A2D", "2A2420"), ("4F7C8A", "2A2420") },
             ["gallery"]  = new[] { ("C9A227", "EFEBE3"), ("B5563C", "1A1715"), ("8C9A7E", "EFEBE3") },
             ["editorial"]= new[] { ("C2432C", "141210"), ("1F4E5F", "141210"), ("A8761F", "2A2320") },
             ["nature"]   = new[] { ("2F6B4F", "1B2A22"), ("3E6B86", "16242C"), ("8A6B2F", "25231B") },
@@ -196,6 +215,24 @@ namespace Cat5201
         public static DeckArtDirection ById(string id) => id switch
         {
             // ── 藝術／時尚雜誌家族 ──
+            // 使用者偏好的藝術類美術風格（2026-11-06）：復古雜誌。只描述美感，不寫死版型，見 PoeticPrintStyle。
+            "poetic" => new DeckArtDirection
+            {
+                Id = "poetic",
+                DisplayName = "復古雜誌",
+                Family = "editorial",
+                Background = "F3EEE4",
+                Ink = "2A2420",
+                Muted = "7A6E62",
+                Accent = "B5563C",
+                InverseBackground = "2A2420",
+                InverseInk = "F3EEE4",
+                InverseMuted = "A89C8E",
+                DisplayLatinFont = "Georgia",
+                DisplayEaFont = "PMingLiU",
+                BodyLatinFont = "Georgia",
+                DirectionForModel = PoeticPrintStyle.DeckDirection
+            },
             "gallery" => new DeckArtDirection
             {
                 Id = "gallery",
@@ -353,6 +390,6 @@ namespace Cat5201
 
         /// <summary>已知的藝術方向 ID（測試／設定用）。</summary>
         public static IReadOnlyList<string> AllIds { get; } =
-            new[] { "modern", "editorial", "gallery", "nature", "finance", "tech", "academic" };
+            new[] { "modern", "poetic", "editorial", "gallery", "nature", "finance", "tech", "academic" };
     }
 }

@@ -81,6 +81,7 @@ namespace Cat5201
                 MemoryRecall = decision.MemoryRecall ?? MemoryRecallStats.Empty,
                 EffectivePreferences = decision.EffectivePreferences ?? "",
                 OutputIntentSummary = decision.OutputIntentSummary ?? "",
+                CapabilityPlanSummary = decision.CapabilityPlanSummary ?? "",
                 StepInputs = decision.StepInputs?.ToList() ?? new List<StepInputRecord>(),
                 StepInputLogPath = decision.StepInputLogPath ?? "",
             };

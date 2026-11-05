@@ -96,7 +96,10 @@ namespace Cat5201
 
         // 各步驟實際收到了什麼（2026-10-29）。舊專案檔沒有 → null。完整內容在 StepInputLogPath 指的檔案裡。
         List<StepInputRecord>? StepInputs = null,
-        string StepInputLogPath = ""
+        string StepInputLogPath = "",
+
+        // 能力判斷摘要（2026-11-05 起）。舊專案檔沒有 → 空字串。
+        string CapabilityPlanSummary = ""
     );
 
     public record AppState(

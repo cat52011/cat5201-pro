@@ -56,11 +56,19 @@ namespace Cat5201
 
             /// <summary>本次請求指定的輸出語言（空＝沒指定，照長期偏好或預設）。</summary>
             public string Language { get; init; } = "";
+
+            /// <summary>藝術方向 ID（語意判斷的結果，見 AgentRuntime.ArtIdFor）；空＝照舊看主題文字。</summary>
+            public string ArtDirectionId { get; init; } = "";
         }
 
-        /// <summary>依主題挑選的藝術方向（與內建排版共用同一套判斷，兩條路徑風格一致）。</summary>
+        /// <summary>
+        /// 這次的藝術方向。ArtDirectionId 由第一層語意判斷決定（呼叫端已依模式處理後援）；
+        /// 沒給時才照舊看主題文字（舊呼叫端）。
+        /// </summary>
         public static DeckArtDirection ArtFor(Request r)
-            => DeckArtDirection.ForTopic(r.UserInput);
+            => DeckArtDirection.IsKnownId(r.ArtDirectionId)
+                ? DeckArtDirection.ForId(r.ArtDirectionId)
+                : DeckArtDirection.ForTopic(r.UserInput);
 
         /// <summary>
         /// 把一次「要簡報＋報告＋表格」的請求，拆成每次只要一種的子請求。
@@ -195,7 +203,9 @@ namespace Cat5201
                     : "- 做完把 .pptx 複製到輸出資料夾並列出檔名（不需要 PDF）。");
                 sb.AppendLine();
                 sb.AppendLine(PresentationDesignBrief.Build(""));
-                sb.AppendLine("配圖必須解釋該頁內容，不可用上升箭頭、飛機房屋拼貼或泛用商業象徵圖代替數據。數據頁用可編輯圖表或數字與清楚的單位、時間。圖片和長文使用分離區域，不把主體裁掉。需要真實作品／景點圖片而缺素材時，使用有來源的內容與圖解，明示缺素材，不捏造照片。");
+                sb.AppendLine("配圖必須解釋該頁內容，不可用上升箭頭、飛機房屋拼貼或泛用商業象徵圖代替數據。數據頁用可編輯圖表或數字與清楚的單位、時間。圖片和長文使用分離區域，不把主體裁掉。需要真實作品／景點圖片而缺素材時，使用有來源的內容與圖解，不捏造照片。");
+                // 以前這裡寫「明示缺素材」，模型就在投影片上印「照片未取得」（2026-11-06 京都簡報）。
+                sb.AppendLine(AgentRuntime.NoEmptyPhotoFrames);
                 sb.AppendLine("嚴禁自己畫真實世界的具體形狀：地圖、國家或島嶼輪廓、國旗、地標、商標、真人。手繪或程式畫出來的輪廓一定不是真的那個地方，放進簡報就是錯誤資訊，也會顯得廉價。沒有正確素材時改用排版處理（大字、色塊、留白、有來源的數字），寧可不放圖。");
             }
 

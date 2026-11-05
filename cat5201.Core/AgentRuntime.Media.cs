@@ -57,6 +57,10 @@ namespace Cat5201
             catch { return ""; }
         }
 
+        /// <summary>這次要不要往使用者偏好的藝術類美感（復古雜誌）靠。只看語意判斷，不看字面。</summary>
+        internal static bool IsPoetic(OutputIntent? intent)
+            => string.Equals(intent?.ArtDirection, PoeticPrintStyle.Id, StringComparison.OrdinalIgnoreCase);
+
         private async Task<AiFallbackExecutionResult> GenerateImageFile(
             INodeContext node,
             AgentDefinition runtimeAgent,
@@ -82,19 +86,25 @@ namespace Cat5201
             if (string.IsNullOrWhiteSpace(prompt))
                 prompt = rawRequest; // 退回原始輸入，至少還能出圖
 
+            // 藝術類圖片偏向使用者喜歡的復古雜誌美感（語意判斷決定，見 PoeticPrintStyle）；寫實類照舊。
+            // 只加美術方向，不改構圖、不加規定的文字——使用者要的是風格，不是一份照做的規格。
+            if (IsPoetic(_requestIntent))
+                prompt = prompt.TrimEnd() + " " + PoeticPrintStyle.ImageStyle;
+            const string size = "1024x1024";
+
             OpenAIImageService.ImageResult image;
             try
             {
                 var imageService = new OpenAIImageService("gpt-image-2");
                 using var reservation = SpendReservations.TryReserveWithinBudget(
-                    "圖片生成", ModelCostEstimator.ImageCostUsd("1024x1024", "high"));
+                    "圖片生成", ModelCostEstimator.ImageCostUsd(size, "high"));
                 if (reservation == null)
                 {
                     throw new InvalidOperationException(
                         $"這張圖的估算費用會超過今日預算上限（{SpendLedger.CommittedDisplay()}）。"
                         + "請調高個人化裡的每日預算。");
                 }
-                image = await imageService.GenerateAsync(prompt, "1024x1024", ct);
+                image = await imageService.GenerateAsync(prompt, size, ct);
             }
             catch (OperationCanceledException)
             {
@@ -198,6 +208,9 @@ namespace Cat5201
             string prompt = await BuildImageEditPromptAsync(node, userInput, ct);
             if (string.IsNullOrWhiteSpace(prompt))
                 prompt = (userInput ?? "").Trim();
+            // 藝術類改圖：照使用者的要求改，再往復古雜誌的美感靠；寫實類（換背景、修圖…）不加。
+            if (IsPoetic(_requestIntent))
+                prompt = prompt.TrimEnd() + " " + PoeticPrintStyle.ImageStyle;
 
             OpenAIImageService.ImageResult image;
             try

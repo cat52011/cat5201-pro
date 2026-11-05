@@ -240,14 +240,6 @@ namespace Cat5201
             return FinanceTaskDetector.IsFinanceLike(text);
         }
 
-        private bool ShouldSkipCapabilities(string topText)
-        {
-            if (_main.IsAdvancedAutoResolverEnabled())
-                return false;
-
-            return !IsFinanceLikeTask(topText);
-        }
-
         // §7.2：把本次簡報的大綱 + .pptx 路徑交給節點，讓輸出區能逐張顯示「重生」鈕。
         private static void SurfacePresentationDeck(NodeControl node, AgentWorkspace workspace, string userInput)
         {
@@ -322,7 +314,9 @@ namespace Cat5201
 
         // §6 第一層輸出判斷：先跑一次（便宜的）API 決定要簡報/報告/表格之中哪幾個。
         // 只有「看起來要產出檔案」時才呼叫，純聊天不浪費一次 API。
-        private async Task<OutputIntent?> ResolveOutputIntentAsync(NodeControl node, string topText, ModelScope scope, CancellationToken ct)
+        // 同一次呼叫也判斷「要不要搜尋／推理／寫程式」（能力規劃用），所以把使用者自己寫的那句一起交過去。
+        private async Task<OutputIntent?> ResolveOutputIntentAsync(
+            NodeControl node, string topText, string? ownInstruction, ModelScope scope, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
@@ -347,7 +341,7 @@ namespace Cat5201
             // 做語意判斷；它輸出極小、只送使用者那句話，成本可忽略。LLM 失敗才退回關鍵字。
             try
             {
-                return await _outputIntentResolver.ResolveAsync(topText, ct, scope, attachments);
+                return await _outputIntentResolver.ResolveAsync(topText, ct, scope, attachments, ownInstruction);
             }
             catch
             {
@@ -372,18 +366,20 @@ namespace Cat5201
                 var workspace = new AgentWorkspace();
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ScopeFor(node), ct);
+                string? ownInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText);
+                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ownInstruction, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
                     Node = node,
                     Agent = agent,
                     TopText = topText,
-                    OwnInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText),
+                    OwnInstruction = ownInstruction,
                     UseStreaming = false,
                     OnDelta = null,
                     CancellationToken = ct,
-                    SkipCapabilities = ShouldSkipCapabilities(topText),
+                    // 能力層要不要跑由 AgentRuntime 依模式與語意判斷決定（見 AgentRuntime 的能力規劃段），
+                    // 這裡在意圖回來之前，不能先用關鍵字把能力層關掉。
                     Workspace = workspace,
                     PreferenceBlock = _memoryService.GetPreferenceBlock(),
                     OutputIntentTask = outputIntentTask,
@@ -613,7 +609,7 @@ namespace Cat5201
             var agent = AgentRegistry.Get(_main.GetNodeSelectedAgent(node));
             var runtime = _agentRuntimeFactory.Create();
             var workspace = reuseWorkspace ?? new AgentWorkspace();
-            bool skipCapabilities = skipCapabilitiesOverride ?? ShouldSkipCapabilities(topText);
+            bool skipCapabilities = skipCapabilitiesOverride ?? false;
 
             // 重新生成（沿用上次 workspace）時，先移除上一輪的「已生成檔案」artifact：
             // 本輪會重新產生簡報 / 報告檔，若不清掉舊的，SetOutputFiles 會把舊+新一起列成 chip，
@@ -625,14 +621,15 @@ namespace Cat5201
             {
                 // 不先 await：輸出判斷跟「自動選模型」互不相依，排隊等於每個任務都多付一次 API 來回。
                 // AgentRuntime 會在真正用得到意圖的那一步才收結果，那時這個通常已經回來了。
-                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ScopeFor(node), ct);
+                string? ownInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText);
+                var outputIntentTask = ResolveOutputIntentAsync(node, topText, ownInstruction, ScopeFor(node), ct);
 
                 var agentResult = await runtime.ExecuteAsync(new AgentExecutionRequest
                 {
                     Node = node,
                     Agent = agent,
                     TopText = topText,
-                    OwnInstruction = UpstreamMerge.OwnInstruction(_main.GetAutoFlowTemplate(node), topText),
+                    OwnInstruction = ownInstruction,
                     UseStreaming = true,
                     OnDelta = onDelta,
                     CancellationToken = ct,

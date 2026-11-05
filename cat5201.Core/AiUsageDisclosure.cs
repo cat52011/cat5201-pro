@@ -151,6 +151,20 @@ namespace Cat5201
                     "產出檔案前會先跳確認框，由你決定是否產生"));
             }
 
+            if (!string.IsNullOrWhiteSpace(log.CapabilityPlanSummary))
+            {
+                // 跟「要交出什麼」是同一次判斷：模型有回答就是那個模型判斷的。
+                // 手動模式不自動加能力（你決定）；關鍵字只在規則式 Auto 當後援。
+                string summary = log.CapabilityPlanSummary;
+                var intent = records.FirstOrDefault(r => r.Purpose.Contains("輸出意圖判斷", StringComparison.Ordinal));
+                string who =
+                    summary == AgentCapabilityExecutionPlan.ManualModeSummary ? "你（手動模式）" :
+                    summary.Contains(AgentCapabilityExecutionPlan.KeywordFallbackNote, StringComparison.Ordinal) ? "系統（關鍵字規則）" :
+                    summary.Contains(AgentCapabilityExecutionPlan.NoJudgementNote, StringComparison.Ordinal) ? "系統（沒有判斷結果）" :
+                    intent != null ? $"系統（{Name(intent.ModelId)} 判斷）" : "系統（語意判斷）";
+                rows.Add(new DecisionRow("要不要查資料／推理／寫程式", OneLine(summary), who, ""));
+            }
+
             if (log.CapabilityAdjusted)
                 rows.Add(new DecisionRow("模型能力調整",
                     $"{Name(log.CapabilityRequestedModelId)} → {Name(log.CapabilityResolvedModelId)}",

@@ -28,7 +28,8 @@ namespace Cat5201
         // 分服務累計：day -> provider -> USD。用來即時顯示「哪一家花了多少」（各家都沒有餘額 API）。
         private static Dictionary<string, Dictionary<string, double>> _usdByDayProvider = new();
 
-        private static string TodayKey => DateTime.Now.ToString("yyyy-MM-dd");
+        // 「今天」一律來自 UserClock（平台唯一的使用者時間），跟給模型的目前日期同一個來源。
+        private static string TodayKey => UserClock.TodayKey;
 
         /// <summary>啟動時呼叫一次（在任何執行之前）。載入既有帳本。</summary>
         public static void Initialize(string configDir)
@@ -62,13 +63,15 @@ namespace Cat5201
 
             lock (_lock)
             {
-                _usdByDay.TryGetValue(TodayKey, out double cur);
-                _usdByDay[TodayKey] = cur + usd;
+                // 日期只讀一次：同一筆錢的總額與分服務金額不能在午夜前後被拆到兩天。
+                string day = TodayKey;
+                _usdByDay.TryGetValue(day, out double cur);
+                _usdByDay[day] = cur + usd;
 
                 if (!string.IsNullOrWhiteSpace(providerId))
                 {
-                    if (!_usdByDayProvider.TryGetValue(TodayKey, out var byProvider))
-                        _usdByDayProvider[TodayKey] = byProvider = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+                    if (!_usdByDayProvider.TryGetValue(day, out var byProvider))
+                        _usdByDayProvider[day] = byProvider = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
                     byProvider.TryGetValue(providerId, out double p);
                     byProvider[providerId] = p + usd;
                 }
@@ -86,18 +89,28 @@ namespace Cat5201
         /// 沖銷並歸戶到某個服務。沒有歸戶的話，該服務的「估計剩餘」會一直少算那一筆——
         /// 使用者看到的餘額就會比真實的低，等於用假數字嚇自己。
         /// </summary>
-        public static void Subtract(double usd, string kind, string providerId)
+        /// <param name="chargedAtUtc">
+        /// 當初扣這筆錢的時刻。給了就沖回扣款的那一天，不是沖銷的這一天。
+        /// 2026-11-06：影片 23:58 送出（記在當天）、00:03 失敗沖銷，以前會從隔天扣——
+        /// 前一天多算一筆，隔天若還是 0（不得低於 0）這筆沖銷就整個不見。影片重啟後才取回失敗時，可能隔好幾天。
+        /// </param>
+        public static void Subtract(double usd, string kind, string providerId, DateTime? chargedAtUtc = null)
         {
             if (usd <= 0 || double.IsNaN(usd) || double.IsInfinity(usd))
                 return;
 
+            string day;
             lock (_lock)
             {
-                _usdByDay.TryGetValue(TodayKey, out double cur);
-                _usdByDay[TodayKey] = Math.Max(0, cur - usd);
+                day = chargedAtUtc.HasValue
+                    ? UserClock.DayKey(UserClock.ToUserTime(chargedAtUtc.Value))
+                    : TodayKey;
+
+                _usdByDay.TryGetValue(day, out double cur);
+                _usdByDay[day] = Math.Max(0, cur - usd);
 
                 if (!string.IsNullOrWhiteSpace(providerId) &&
-                    _usdByDayProvider.TryGetValue(TodayKey, out var byProvider) &&
+                    _usdByDayProvider.TryGetValue(day, out var byProvider) &&
                     byProvider.TryGetValue(providerId, out double p))
                 {
                     byProvider[providerId] = Math.Max(0, p - usd);
@@ -105,7 +118,8 @@ namespace Cat5201
 
                 Persist();
             }
-            AppLog.Info("Spend", $"-US${usd:0.####}（沖銷：{kind}）→ 今日累計 US${TodayUsd:0.####}");
+            string where = day == TodayKey ? "" : $"，記回扣款當天 {day}";
+            AppLog.Info("Spend", $"-US${usd:0.####}（沖銷：{kind}{where}）→ 今日累計 US${TodayUsd:0.####}");
             Changed?.Invoke();
         }
 
@@ -122,7 +136,7 @@ namespace Cat5201
         /// <summary>本月某個服務的累計花費（USD）。</summary>
         public static double MonthUsdFor(string providerId)
         {
-            string prefix = DateTime.Now.ToString("yyyy-MM");
+            string prefix = UserClock.Now.ToString("yyyy-MM");
             lock (_lock)
             {
                 return _usdByDayProvider
@@ -219,7 +233,7 @@ namespace Cat5201
             {
                 if (_path == null) return;
                 // 只留最近 90 天，帳本不無限長大。
-                var cutoff = DateTime.Now.AddDays(-90).ToString("yyyy-MM-dd");
+                var cutoff = UserClock.DayKey(UserClock.Now.AddDays(-90));
                 var trimmed = new Dictionary<string, double>();
                 foreach (var kv in _usdByDay)
                     if (string.CompareOrdinal(kv.Key, cutoff) >= 0)

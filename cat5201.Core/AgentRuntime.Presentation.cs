@@ -70,6 +70,9 @@ namespace Cat5201
                 outline = PresentationOutlineBuilder.EnforcePageCountPlusSources(outline, requestedSlides);
             int bulletsAfterTrim = PresentationOutlineBuilder.CountBullets(outline);
 
+            // 藝術方向由語意判斷決定，記在大綱上：封面、配圖、排版、預覽、PDF 都看同一個。
+            outline.ArtDirectionId = ArtIdFor($"{outline.Title} {outline.Topic}");
+
             node.SetLoadingHint(null);
 
             // 結構化大綱 artifact（slide plan）。
@@ -392,7 +395,8 @@ namespace Cat5201
             PresentationOutlinePayload outline,
             AgentWorkspace workspace,
             OrchestrationPlanPayload orchestrationPlan,
-            CancellationToken ct)
+            CancellationToken ct,
+            IReadOnlyCollection<string>? avoidSubjects = null)
         {
             using var usagePurpose = UsageMeter.Purpose("簡報封面圖");
             try
@@ -405,7 +409,7 @@ namespace Cat5201
                 // 萃取「一個能代表整份簡報的具體象徵畫面」，再套統一的簡約資訊示意風格。
                 var art = DeckArtDirection.ForOutline(outline);
                 string brief = await BuildIllustrationBriefAsync(
-                    node, BuildCoverBriefMaterial(outline), "簡報封面", ct, art);
+                    node, BuildCoverBriefMaterial(outline, avoidSubjects), "簡報封面", ct, art);
                 if (string.IsNullOrWhiteSpace(brief))
                 {
                     NoteImageSkipped("這份內容沒有適合入畫的具體主體（或主題屬於地圖、商標這類不該生成的東西），所以沒有硬湊一張圖。");
@@ -475,7 +479,7 @@ namespace Cat5201
 
                 // 2) 作者（選定生成器，必要時 fallback）：一次產出結構化 JSON deck。
                 node.SetLoadingHint($"{engineName} 正在撰寫簡報內容");
-                string authorPrompt = PresentationAuthor.BuildAuthorPrompt(
+                string authorPrompt = DatePrefix(_currentDate) + PresentationAuthor.BuildAuthorPrompt(
                     userInput, research, execution.Text, requestedSlides);
 
                 var authored = await RunAuthorStepAsync(

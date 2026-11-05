@@ -67,6 +67,9 @@ namespace Cat5201
         // §6 第一層輸出判斷的白話摘要（報告 / 表格 / 簡報 / 純文字）。
         public string OutputIntentSummary { get; init; } = "";
 
+        // 能力判斷的白話摘要（要不要查即時資料／推理／寫程式，以及是語意判斷還是關鍵字後援）。
+        public string CapabilityPlanSummary { get; init; } = "";
+
         // 各步驟實際收到了什麼（2026-10-29）：證明某項要求「真的傳到了」，而不只是設計上應該如此。
         public IReadOnlyList<StepInputRecord> StepInputs { get; init; } = Array.Empty<StepInputRecord>();
         public string StepInputLogPath { get; init; } = "";

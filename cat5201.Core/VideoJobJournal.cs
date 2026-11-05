@@ -25,7 +25,7 @@ namespace Cat5201
             public string OperationName { get; set; } = "";
             public string Prompt { get; set; } = "";
             public string Status { get; set; } = "pending"; // pending / done / failed
-            public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+            public DateTime CreatedAtUtc { get; set; } = UserClock.Now.UtcDateTime;
             public string Note { get; set; } = "";
 
             // 成本可稽查：送出時已入帳的秒數與金額。CostRecorded=false 的舊紀錄（本欄位出現前建立）
@@ -33,6 +33,9 @@ namespace Cat5201
             public double Seconds { get; set; }
             public double CostUsd { get; set; }
             public bool CostRecorded { get; set; }
+
+            /// <summary>成本入帳的時刻。失敗沖銷要沖回這一天（舊紀錄沒有這欄＝null，改用 CreatedAtUtc）。</summary>
+            public DateTime? CostRecordedAtUtc { get; set; }
         }
 
         // Veo operation 在 Google 端的保存期有限（延伸 API 文件明載來源影片兩天內）——
@@ -80,7 +83,8 @@ namespace Cat5201
                     Prompt = prompt ?? "",
                     Seconds = seconds,
                     CostUsd = costUsd,
-                    CostRecorded = costRecorded
+                    CostRecorded = costRecorded,
+                    CostRecordedAtUtc = costRecorded ? UserClock.Now.UtcDateTime : null
                 });
                 TrimAndSaveLocked();
             }
@@ -101,7 +105,8 @@ namespace Cat5201
                     Note = job.Note,
                     Seconds = job.Seconds,
                     CostUsd = job.CostUsd,
-                    CostRecorded = job.CostRecorded
+                    CostRecorded = job.CostRecorded,
+                    CostRecordedAtUtc = job.CostRecordedAtUtc
                 };
             }
         }
@@ -116,6 +121,7 @@ namespace Cat5201
                     return;
                 job.CostUsd = costUsd;
                 job.CostRecorded = true;
+                job.CostRecordedAtUtc = UserClock.Now.UtcDateTime;
                 TrimAndSaveLocked();
             }
         }

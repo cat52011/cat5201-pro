@@ -112,8 +112,24 @@ namespace Cat5201
 
         // 封面 brief 的素材：標題 + 主題 + 前幾個內容頁的重點，讓封面圖能代表整份簡報、與內容呼應。
         private static string BuildCoverBriefMaterial(PresentationOutlinePayload outline)
+            => BuildCoverBriefMaterial(outline, null);
+
+        /// <summary>
+        /// 封面要畫什麼的素材。avoidSubjects＝內容頁照片已經畫的主體：封面改畫能代表整體的另一個畫面，
+        /// 不要再畫一次（2026-11-06 京都簡報：封面和內容頁都是伏見稻荷的鳥居）。
+        /// </summary>
+        internal static string BuildCoverBriefMaterial(PresentationOutlinePayload outline, IReadOnlyCollection<string>? avoidSubjects)
         {
             if (outline == null) return "";
+            string avoid = avoidSubjects == null || avoidSubjects.Count == 0
+                ? ""
+                : "\n\n內容頁已經有下面這些主體的照片，封面不要再畫同一個主體，改畫能代表整份內容的另一個畫面：\n" +
+                  string.Join("\n", avoidSubjects.Where(x => !string.IsNullOrWhiteSpace(x)).Select(x => "- " + x.Trim()));
+            return BuildCoverBriefMaterialCore(outline) + avoid;
+        }
+
+        private static string BuildCoverBriefMaterialCore(PresentationOutlinePayload outline)
+        {
 
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrWhiteSpace(outline.Title)) sb.AppendLine($"簡報標題：{outline.Title}");
@@ -301,7 +317,8 @@ namespace Cat5201
         private async Task<Dictionary<int, string>> PlanIllustrationsAsync(
             INodeContext node,
             IReadOnlyList<(int id, string title, string body)> sections,
-            int maxCount, string contextLabel, CancellationToken ct, DeckArtDirection? art = null)
+            int maxCount, string contextLabel, CancellationToken ct, DeckArtDirection? art = null,
+            string? extraRule = null)
         {
             using var usagePurpose = UsageMeter.Purpose("配圖企劃");
             var result = new Dictionary<int, string>();
@@ -318,6 +335,7 @@ namespace Cat5201
             string planPrompt =
                 $"你是{contextLabel}配圖總監。下面是內容區塊清單（每行開頭 [編號]）。\n" +
                 $"最多挑 {maxCount} 個有具體景物、物件、作品或可見場景的區塊，沒有合適的就回空陣列，禁止為湊數配圖。\n" +
+                (string.IsNullOrWhiteSpace(extraRule) ? "" : extraRule!.Trim() + "\n") +
                 "數據、成長率、市場比較、因果或流程頁不要生成象徵圖，讓文字與原生圖表解釋資訊。禁止上升箭頭、燈泡、硬幣和無關拼貼。\n" +
                 "畫「類型」不要畫「特定個體」：溫帶雨林的晨霧可以，某座山的正確外形不行；法式擺盤特寫可以，某家餐廳的招牌菜不行。\n" +
                 "只有地圖、國旗、商標、統計圖表、特定真人長相這幾類才不要畫；主題是真實的地方或食物並不代表不能配圖。\n" +

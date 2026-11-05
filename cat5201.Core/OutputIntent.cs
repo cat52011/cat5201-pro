@@ -52,6 +52,20 @@ namespace Cat5201
         /// </summary>
         public string RequestedLanguage { get; init; } = "";
 
+        /// <summary>
+        /// 這次要動用哪些能力（要不要搜尋即時資料、要不要推理分析、要不要寫程式）。
+        /// 跟上面的輸出判斷是同一次模型呼叫，不另外花錢。null＝模型沒給（關鍵字後援、API 失敗、舊格式回覆），
+        /// AgentCapabilityPlanner 才退回關鍵字規則。
+        /// </summary>
+        public CapabilityNeeds? Capabilities { get; init; }
+
+        /// <summary>
+        /// 產出物（簡報／報告／表格／圖片）的藝術方向 ID（DeckArtDirection.AllIds 之一），由同一次語意判斷決定；
+        /// 空字串＝沒判斷出來或不需要。2026-11-06 以前用關鍵字比對使用者那句話，「介紹京都」一個字都沒中，
+        /// 京都簡報就被套上商業科技藍。藝術類一律往使用者偏好的復古雜誌美感靠（PoeticPrintStyle）。
+        /// </summary>
+        public string ArtDirection { get; init; } = "";
+
         // debug：API 原始回覆 / 判斷來源
         public string Source { get; init; } = "";
 

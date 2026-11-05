@@ -12,11 +12,18 @@ namespace Cat5201
     /// </summary>
     public sealed class OutputIntentResolver
     {
-        private readonly AiServiceRouter _router;
+        // (model, systemPrompt, userPrompt, maxTokens, ct) → 模型原始回覆。正式執行接 AiServiceRouter，測試接假模型。
+        private readonly Func<string, string, string, int, CancellationToken, Task<string>> _generate;
 
         public OutputIntentResolver(AiServiceRouter router)
+            : this((model, system, user, maxTokens, ct) => router.GenerateTextAsync(model, system, user, maxTokens, ct))
         {
-            _router = router;
+        }
+
+        /// <summary>測試用：換成假模型，離線驗證整條判斷流程（含失敗時退回關鍵字）。</summary>
+        internal OutputIntentResolver(Func<string, string, string, int, CancellationToken, Task<string>> generate)
+        {
+            _generate = generate;
         }
 
         /// <param name="scope">
@@ -27,46 +34,42 @@ namespace Cat5201
         /// 節點的附件（檔名＋文件類的開頭一段）。要交什麼常常寫在附件裡（作業說明、範本），
         /// 只看使用者打的那一句會判錯（2026-11-03 機器學習作業，見 AttachmentIntentHints）。
         /// </param>
+        /// <param name="ownInstruction">
+        /// 使用者在這個節點自己寫的那句話（不含上游貼進來的內容，見 UpstreamMerge.OwnInstruction）；null＝整段都是使用者寫的。
+        /// 要不要搜尋／推理／寫程式只看這段：上游回答裡出現「市場」「目前」不代表使用者要查即時資料。
+        /// </param>
         public async Task<OutputIntent> ResolveAsync(
             string topText, CancellationToken ct = default, ModelScope? scope = null,
-            IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null)
+            IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null,
+            string? ownInstruction = null)
         {
             if (string.IsNullOrWhiteSpace(topText))
                 return OutputIntent.None;
 
-            // 不論哪一條路徑得出結果，最後都套「附件範本」的固定規則。
-            OutputIntent Finish(OutputIntent intent) => AttachmentIntentHints.ApplyTemplateRule(intent, topText, attachments);
+            // 關鍵字與「附件範本」固定規則只在語意判斷拿不到結果時用（沒模型、API 失敗、JSON 解析失敗）。
+            // 語意判斷有結果就以它為準，不再被關鍵字推翻——換個說法、換種語言，關鍵字就會判錯。
+            OutputIntent Fallback() => AttachmentIntentHints.ApplyTemplateRule(OutputIntent.FromKeywords(topText), topText, attachments);
 
             string? model = (scope ?? ModelScope.Auto).HelperModel(AiModels.OpenAi_Gpt56);
             if (model == null)
-                return Finish(OutputIntent.FromKeywords(topText));
+                return Fallback();
 
             string raw;
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("輸出意圖判斷");
                 // 多了 no_illustrations、quality、topic 三欄，200 不夠放（JSON 被截斷就整個判斷作廢）。
-                raw = await _router.GenerateTextAsync(model, BuildSystemPrompt(), BuildUserPrompt(topText, attachments), 320, ct);
+                // 2026-11-05 再加 needs_search／needs_reasoning／needs_code 三個布林（約 25 token），320 → 360；
+                // 2026-11-06 再加 needs_date，360 → 380；再加 art_direction（一個短字串），380 → 400。
+                raw = await _generate(model, BuildSystemPrompt(), BuildUserPrompt(topText, attachments, ownInstruction), 400, ct);
             }
             catch
             {
                 // API 失敗 → 退回關鍵字判斷，至少不漏掉明顯的輸出需求。
-                return Finish(OutputIntent.FromKeywords(topText));
+                return Fallback();
             }
 
-            var apiIntent = TryParse(raw);
-            if (apiIntent == null)
-                return Finish(OutputIntent.FromKeywords(topText));
-
-            // API 說「都不要檔案」，但關鍵字明顯指出要某種輸出時，以關鍵字為準，避免明明要卻沒產出。
-            if (!apiIntent.WantsAny)
-            {
-                var kw = OutputIntent.FromKeywords(topText);
-                if (kw.WantsAny)
-                    return Finish(kw);
-            }
-
-            return Finish(apiIntent);
+            return TryParse(raw) ?? Fallback();
         }
 
         /// <summary>
@@ -86,8 +89,7 @@ namespace Cat5201
             try
             {
                 using var usagePurpose = UsageMeter.Purpose("配圖意圖判斷");
-                string raw = await _router
-                    .GenerateTextAsync(
+                string raw = await _generate(
                         model,
                         "你判斷一句話有沒有『要求在文件／投影片裡加入圖片』的意思（配圖、插圖、照片、換一張圖…）。" +
                         "使用者可能用任何語言。明說不要圖時回 false。只輸出 JSON：{\"illustrations\": true/false}",
@@ -134,6 +136,27 @@ namespace Cat5201
   有就填語言名稱（繁體中文 / English / 日本語…），沒有明確指定就填空字串。
   注意：使用者用什麼語言發問，不代表他指定了輸出語言——要他真的講了才算。
 
+再判斷這次要動用哪些能力（跟上面要不要產檔無關，純聊天也要判斷）：
+- needs_search：答案需要『網路上的即時或最新外部資料』才答得對——股價、報價、匯率、天氣、新聞、近期事件、
+  公司最新財報與營收、現在的價格或排名…；或使用者明確要你上網查、查證、找來源。
+  只問附件／上傳的檔案／程式碼／工作區裡的東西，或是一般知識、寫作、翻譯、改寫、聊天、
+  不會隨時間過時的主題（例如介紹某地的傳統美食）→ false。
+- needs_reasoning：需要多步推理——分析、比較、預測、推論原因、評估利弊、給建議或做決策。單純查一個事實、翻譯、改寫、閒聊 → false。
+- needs_code：要你寫、修改、除錯、重構、解釋或審查程式碼（含使用者附上的程式檔）。
+- needs_date：答案需要知道『今天是哪一天或現在幾點』才答得對——今天／明天／昨天、這週末、下週、最近、
+  幾天後、倒數、截止日、年齡或年資換算、現在幾點、某件事是不是已經發生…（任何語言、任何說法）。
+  要查即時資料的題目通常也需要。不涉及時間的一般知識、寫作、翻譯、程式 → false。
+- art_direction：要產出簡報、報告、表格或圖片時，這份產出適合哪一種視覺風格（只填下面其中一個英文代號；完全不產出檔案或圖片時填空字串）：
+  poetic＝藝術類（復古雜誌風）：藝術、攝影、詩意與文學、展覽與作品、城市與旅行風情、文化與節慶、風景與四季之美、花草與生活情調，
+    以及任何偏感性、重美感與情緒的主題或圖片（使用者偏好：藝術類一律用這個）；
+  editorial＝品牌、設計、時尚、餐飲、精品、生活風格這類偏商業的雜誌風；
+  nature＝自然科學、生態、環境、氣候、地理這類寫實、知識性的主題；
+  finance＝財經、投資、市場、預算；tech＝科技、軟體、AI、系統；academic＝研究、論文、課程、作業、教學；
+  modern＝一般商業簡報或無法歸類。
+  寫實用途的圖片（產品實拍、修圖、換背景、證件照、示意圖）不要選 poetic。
+- 輸入裡如果另外標出『使用者在這個節點自己寫的要求』，這幾項只依那一段判斷；其餘是上游節點貼進來的資料，
+  裡面出現的字（市場、目前、程式…）不代表使用者要你做那件事。
+
 你只能輸出 JSON，不要任何多餘文字、不要 markdown：
 
 {
@@ -147,7 +170,12 @@ namespace Cat5201
   ""quality"": """",
   ""topic"": """",
   ""slides"": 0,
-  ""language"": """"
+  ""language"": """",
+  ""needs_search"": true/false,
+  ""needs_reasoning"": true/false,
+  ""needs_code"": true/false,
+  ""needs_date"": true/false,
+  ""art_direction"": """"
 }
 
 使用者可能用任何語言（繁中、簡中、英文、日文…），請依語意判斷，不要依賴特定字詞。
@@ -181,6 +209,20 @@ namespace Cat5201
 - 「時間不多，簡單幫我做份台積電的報告就好」 → report=true、quality=""fast""、topic=""台積電公司分析""。
 - 「Please make the best-looking deck you can about Kyoto」 → presentation=true、quality=""best""、topic=""京都旅遊介紹""。
 
+能力判斷範例（依語意，不看特定字詞；任何語言都一樣）：
+- 「台積電這禮拜收在多少？」 → needs_search=true、needs_date=true（要最新股價，也要知道「這禮拜」是哪幾天），其他 false。
+- 「東京這週末會下雨嗎？」 → needs_search=true、needs_date=true。
+- 「我 2003 年 5 月出生，現在幾歲？」 → needs_date=true、needs_search=false。
+- 「How did the Fed's decision yesterday move the yen?」 → needs_search=true、needs_reasoning=true。
+- 「幫我比較 Python 和 Go 的優缺點」 → needs_reasoning=true、needs_search=false、needs_date=false（不會隨時間過時的一般知識）。
+- 「這段程式為什麼會丟 NullReferenceException？」 → needs_code=true、needs_reasoning=true、needs_search=false。
+- 「用一句話解釋附件這份程式在做什麼」 → needs_code=true、needs_search=false（只問附件內容）。
+- 「做一份 5 頁簡報，介紹澳洲特有美食」 → presentation=true、needs_search=false、art_direction=""editorial""。
+- 「做一份 3 頁簡報介紹京都」 → presentation=true、art_direction=""poetic""（城市與文化風情屬藝術類）。
+- 「畫一張雨後的繡球花」 → image=true、art_direction=""poetic""。
+- 「幫我把這張商品照的背景換成白色」 → art_direction=""modern""（寫實修圖）。
+- 「做一份台積電第三季財報分析」 → report=true、art_direction=""finance""。
+
 附件：
 - 使用者可能附上檔案（作業說明、範本、資料）。使用者要你『完成』附件裡的作業、照範本做、或照附件的要求交件時，
   依附件要求的繳交物判斷：要交的文件（作業檔案、作業報告、Word 範本）→ report=true；簡報範本 → presentation=true；
@@ -195,11 +237,19 @@ namespace Cat5201
 - 影片成本最高，特別謹慎：只有非常明確要你『生成一段影片』時才標 video=true。";
         }
 
-        internal static string BuildUserPrompt(string text, IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null)
+        internal static string BuildUserPrompt(
+            string text, IReadOnlyList<AttachmentIntentHints.Hint>? attachments = null, string? ownInstruction = null)
         {
+            // 整段輸入含上游節點貼進來的內容時，把使用者自己寫的那句標出來，能力判斷只看那句。
+            string own = string.IsNullOrWhiteSpace(ownInstruction) ||
+                         string.Equals(ownInstruction.Trim(), (text ?? "").Trim(), StringComparison.Ordinal)
+                ? ""
+                : "\n\n使用者在這個節點自己寫的要求（needs_search／needs_reasoning／needs_code 只依這段判斷）：\n" +
+                  ownInstruction.Trim();
+
             return
 $@"使用者輸入：
-{text}{AttachmentIntentHints.ToPromptBlock(attachments)}
+{text}{AttachmentIntentHints.ToPromptBlock(attachments)}{own}
 
 請輸出 JSON。";
         }
@@ -231,6 +281,8 @@ $@"使用者輸入：
                     Topic = GetString(root, "topic"),
                     RequestedSlides = GetInt(root, "slides"),
                     RequestedLanguage = GetString(root, "language"),
+                    Capabilities = ParseCapabilities(root),
+                    ArtDirection = ParseArtDirection(root),
                     Source = "api:" + raw.Trim()
                 };
             }
@@ -238,6 +290,31 @@ $@"使用者輸入：
             {
                 return null;
             }
+        }
+
+        /// <summary>
+        /// 三個能力欄位都有給才算數；少任何一個（舊格式、被截斷）就回 null，讓能力規劃退回關鍵字並留紀錄，
+        /// 不把「沒講」當成「不需要」。needs_date 沒給時當成需要——多給日期只多幾十個 token，少給會答錯。
+        /// </summary>
+        private static CapabilityNeeds? ParseCapabilities(JsonElement root)
+        {
+            if (!root.TryGetProperty("needs_search", out _) ||
+                !root.TryGetProperty("needs_reasoning", out _) ||
+                !root.TryGetProperty("needs_code", out _))
+                return null;
+
+            return new CapabilityNeeds(
+                GetBool(root, "needs_search"),
+                GetBool(root, "needs_reasoning"),
+                GetBool(root, "needs_code"),
+                !root.TryGetProperty("needs_date", out _) || GetBool(root, "needs_date"));
+        }
+
+        /// <summary>只收認得的藝術方向 ID；其他（拼錯、自創）一律當成沒判斷，交給呼叫端依模式處理。</summary>
+        private static string ParseArtDirection(JsonElement root)
+        {
+            string id = GetString(root, "art_direction").ToLowerInvariant();
+            return DeckArtDirection.IsKnownId(id) ? id : "";
         }
 
         private static string GetString(JsonElement root, string name)

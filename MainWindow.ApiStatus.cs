@@ -130,7 +130,7 @@ namespace Cat5201
             foreach (var kv in _providerTopUpUsd)
                 ProviderBalance.SeedFromLegacyTopUp(
                     kv.Key, kv.Value,
-                    _providerTopUpSince.TryGetValue(kv.Key, out var since) ? since : DateTime.Today);
+                    _providerTopUpSince.TryGetValue(kv.Key, out var since) ? since : UserClock.Today);
 
             RefreshSpendColumns();
         }
@@ -307,7 +307,7 @@ namespace Cat5201
             => _providerTopUpUsd.ToDictionary(
                 kv => kv.Key,
                 kv => $"{kv.Value.ToString("0.####", CultureInfo.InvariantCulture)}|" +
-                      (_providerTopUpSince.TryGetValue(kv.Key, out var d) ? d : DateTime.Today).ToString("yyyy-MM-dd"));
+                      (_providerTopUpSince.TryGetValue(kv.Key, out var d) ? d : UserClock.Today).ToString("yyyy-MM-dd"));
 
         internal void LoadProviderTopUpStorage(Dictionary<string, string>? stored)
         {
@@ -322,7 +322,7 @@ namespace Cat5201
                     amount > 0)
                 {
                     _providerTopUpUsd[kv.Key] = amount;
-                    _providerTopUpSince[kv.Key] = parts.Length >= 2 && DateTime.TryParse(parts[1], out var d) ? d : DateTime.Today;
+                    _providerTopUpSince[kv.Key] = parts.Length >= 2 && DateTime.TryParse(parts[1], out var d) ? d : UserClock.Today;
                 }
             }
         }

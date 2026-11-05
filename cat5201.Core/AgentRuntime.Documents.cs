@@ -45,10 +45,27 @@ namespace Cat5201
                     ModelId = execution.ActualModelId ?? orchestrationPlan.ModelId,
                     AgentId = runtimeAgent?.Id ?? "",
                 });
+                // 照片的風格跟簡報同一個藝術方向（語意判斷決定，見 ArtIdFor）。
+                outline.ArtDirectionId = ArtIdFor(userInput);
 
-                var coverTask = TryGenerateCoverImageAsync(node, runtimeAgent, outline, workspace, orchestrationPlan, ct);
-                var slidesTask = GenerateSlideIllustrationsAsync(node, outline, ct);
-                await Task.WhenAll(coverTask, slidesTask);
+                var art = DeckArtDirection.ForOutline(outline);
+
+                // 照片依「主體」挑，不是每頁一張：大綱的一頁可能列了四個景點，Claude 排版時也可能一頁放四張。
+                // 2026-11-06 京都簡報：上限 3 張、以頁為單位，四個景點只拿到三張，清水寺那格成了色塊。
+                var subjects = BuildPhotoSubjectSections(outline);
+                var plan = subjects.Count == 0
+                    ? new Dictionary<int, string>()
+                    : await PlanIllustrationsAsync(node,
+                        subjects.Select(s => (s.Id, s.Title, s.Body)).ToList(),
+                        MaxDeckPhotos, "簡報", ct, art, DeckPhotoPlanRule);
+                if (plan.Count == 0)
+                    NoteImageSkipped("內容裡沒有挑到適合配照片的主體（數據頁、流程頁本來就不配圖）。");
+
+                // 封面與內容照片同時產生；封面避開內容照片已經畫的主體，不會兩張都是同一個東西。
+                var coverTask = TryGenerateCoverImageAsync(node, runtimeAgent, outline, workspace, orchestrationPlan, ct,
+                    avoidSubjects: plan.Values.ToList());
+                var photosTask = GenerateDeckPhotosAsync(node, plan, art, ct);
+                await Task.WhenAll(coverTask, photosTask);
 
                 var (cover, _) = await coverTask;
                 if (cover is { Length: > 0 })
@@ -56,13 +73,14 @@ namespace Cat5201
 
                 // 檔名不用頁碼：2026-10-29 實測，照片叫 photo-3.png，Claude 就放到它自己簡報的第 3 頁——
                 // 但那是「我們從答案切出的大綱」的第 3 頁，跟 Claude 實際排的頁序不一樣，
-                // 結果海鮮那頁配了牛排。改用字母編號，並把每張照片畫什麼、原本為哪一頁生成寫進提示。
+                // 結果海鮮那頁配了牛排。改用字母編號，並把每張照片畫什麼、原本為哪一段內容生成寫進提示。
+                var titles = subjects.ToDictionary(s => s.Id, s => s.Label);
                 int index = 0;
-                foreach (var slide in outline.Slides.Where(x => x.ImageBytes is { Length: > 0 }).Take(6))
+                foreach (var photo in (await photosTask).OrderBy(p => p.Id))
                 {
                     char letter = (char)('a' + index++);
-                    await AddPhotoAsync(files, slide.ImageBytes!, $"photo-{letter}.png",
-                        DescribeSlidePhoto(slide.Heading, slide.ImageSubject), ct);
+                    await AddPhotoAsync(files, photo.Png, $"photo-{letter}.png",
+                        DescribeSlidePhoto(titles.TryGetValue(photo.Id, out var t) ? t : "", photo.Subject), ct);
                 }
 
                 if (files.Count > 0)
@@ -75,6 +93,92 @@ namespace Cat5201
             }
 
             return files;
+        }
+
+        /// <summary>交給 Claude 排版的簡報最多配幾張內容照片。每張約 US$0.04，同時產生、不會多等。</summary>
+        internal const int MaxDeckPhotos = 6;
+
+        /// <summary>挑照片主體時的額外規則：這是一份照片庫，具名的東西各給一張，不要重複。</summary>
+        internal const string DeckPhotoPlanRule =
+            "這是一份交給排版者使用的照片庫，不是一頁配一張：內容裡列出好幾個具名的地點、作品、物件或料理時，" +
+            "盡量讓每一個都有自己的一張照片（在上限之內）；不要兩張畫同一個主體。";
+
+        /// <summary>
+        /// 照片主體的候選清單：每一頁的每一條重點各自一個候選（同一頁的四個景點就是四個候選），
+        /// 數據頁（兩條以上有關鍵數字）不配。Id＝頁序×100＋條目序，Label 給 Claude 看「這張是為哪段內容生成」。
+        /// </summary>
+        internal static List<(int Id, string Title, string Body, string Label)> BuildPhotoSubjectSections(PresentationOutlinePayload? outline)
+        {
+            var list = new List<(int, string, string, string)>();
+            foreach (var slide in (outline?.Slides ?? Array.Empty<PresentationSlidePayload>())
+                         .Where(s => string.Equals(s.Kind, "content", StringComparison.OrdinalIgnoreCase)))
+            {
+                var bullets = (slide.Bullets ?? Array.Empty<string>()).Where(b => !string.IsNullOrWhiteSpace(b)).ToList();
+                if (bullets.Count(b => !string.IsNullOrEmpty(PptxBuilder.FindKeyFigure(b))) >= 2)
+                    continue;
+
+                string heading = (slide.Heading ?? "").Trim();
+                if (bullets.Count == 0)
+                {
+                    list.Add((slide.Order * 100, heading, heading, heading));
+                    continue;
+                }
+
+                for (int i = 0; i < bullets.Count && i < 12; i++)
+                {
+                    string b = bullets[i].Trim();
+                    string shortB = b.Length > 24 ? b.Substring(0, 24) + "…" : b;
+                    list.Add((slide.Order * 100 + i + 1, heading, b, heading.Length > 0 ? $"{heading}／{shortB}" : shortB));
+                }
+            }
+            return list;
+        }
+
+        /// <summary>依配圖企劃同時產生內容照片；單張失敗或超出預算就略過那一張。</summary>
+        private async Task<List<(int Id, byte[] Png, string Subject)>> GenerateDeckPhotosAsync(
+            INodeContext node, IReadOnlyDictionary<int, string> plan, DeckArtDirection art, CancellationToken ct)
+        {
+            using var usagePurpose = UsageMeter.Purpose("簡報配圖");
+            var result = new List<(int, byte[], string)>();
+            if (plan == null || plan.Count == 0)
+                return result;
+
+            OpenAIImageService imageService;
+            try { imageService = new OpenAIImageService("gpt-image-2"); }
+            catch (Exception ex)
+            {
+                NoteImageSkipped(FailureExplainer.Describe(ex.Message));
+                return result;  // 沒有 OPENAI_API_KEY → 不配圖
+            }
+
+            var jobs = plan.Where(kv => !string.IsNullOrWhiteSpace(kv.Value)).Select(async kv =>
+            {
+                try
+                {
+                    using var reservation = SpendReservations.TryReserveWithinBudget(
+                        "簡報配圖", ModelCostEstimator.ImageCostUsd(DeckImageSize, IllustrationQuality));
+                    if (reservation == null)
+                    {
+                        NoteImageSkipped($"會超過今日預算上限（{SpendLedger.CommittedDisplay()}）");
+                        return ((int, byte[], string)?)null;
+                    }
+                    var img = await imageService.GenerateAsync(
+                        IllustrationStyle.Compose(kv.Value, art), DeckImageSize, ct, IllustrationQuality);
+                    return img.Success && img.PngBytes is { Length: > 0 }
+                        ? (kv.Key, img.PngBytes, kv.Value)
+                        : ((int, byte[], string)?)null;
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    AppLog.Warn("AgentRuntime", "簡報照片生成失敗（已略過）", ex);
+                    return null;
+                }
+            }).ToList();
+
+            foreach (var r in await Task.WhenAll(jobs))
+                if (r.HasValue) result.Add(r.Value);
+            return result;
         }
 
         private static async Task AddPhotoAsync(
@@ -94,6 +198,13 @@ namespace Cat5201
             string forPage = h.Length > 0 ? $"為講「{h}」的內容生成" : "為內容頁生成";
             return s.Length > 0 ? $"{forPage}；畫面主體：{s}" : forPage;
         }
+
+        /// <summary>
+        /// 沒有照片的地方怎麼處理（有照片、沒照片的簡報規則共用）：不開空的照片框，也不在投影片上寫缺了什麼。
+        /// 不捏造照片的原則不變——缺什麼寫在講者備註。
+        /// </summary>
+        internal const string NoEmptyPhotoFrames =
+            "版面只能照手上真的有的照片設計：沒有照片的地方不要開照片框、不要留空白相框或占位方塊，那一頁改用大字、色塊、留白或有來源的內容做成完整的版面。投影片上不可出現「照片未取得」「素材不足」「此處以色塊代替」這類給製作者看的說明（任何說法都一樣）；缺了哪些素材只寫在講者備註，資料來源頁也不必列出缺了什麼。";
 
         /// <summary>告訴 Claude 容器裡有哪些照片、各畫什麼、怎麼放。沒有照片時回空字串。</summary>
         internal static string PhotoBlock(IReadOnlyList<ClaudeDocumentSkillsService.ContainerFile> photos)
@@ -116,7 +227,10 @@ namespace Cat5201
             sb.Append("擺放規則：每張照片只能放在「內容跟它的畫面主體相符」的那一頁。檔名的字母不代表頁碼，不要依檔名順序擺。")
               .Append("找不到相符的頁就不要放那張；寧可少一張，也不要圖文不符。\n");
             sb.Append("用 python-pptx 的 add_picture 放進去；滿版或大面積配置都可以，但不要把主體裁掉，也不要壓在文字上。\n");
-            sb.Append("用不到的就不要硬放。除了這些照片，其餘視覺元素仍然只能用色塊、線條與圖表。");
+            sb.Append("用不到的就不要硬放。除了這些照片，其餘視覺元素仍然只能用色塊、線條與圖表。\n");
+            // 2026-11-06 實測：京都簡報第 2 頁開了四個照片框，只有兩張照片，另外兩格印著「照片未取得」，
+            // 資料來源頁還多一段「未取得素材」。照片張數在排版之前就決定了，所以要講明：照手上有的照片排版。
+            sb.Append("照片一共只有上面這 ").Append(photos.Count).Append(" 張，不會再多。").Append(NoEmptyPhotoFrames);
             return sb.ToString();
         }
 
@@ -171,6 +285,7 @@ namespace Cat5201
             var prompt = new DocumentSkillsPrompt.Request
             {
                 UserInput = userInput,
+                ArtDirectionId = ArtIdFor(userInput),
                 MainContent = execution.Text ?? "",
                 WantsDeck = wantsDeck,
                 WantsReport = wantsReport,
@@ -333,7 +448,7 @@ namespace Cat5201
                     // 這幾句話而改變，前面幾千 token 的共同前綴就永遠命中不了快取。
                     result = await service.GenerateAsync(
                         DocumentSkillsPrompt.SystemPromptFor(sub.WantsPdf),
-                        DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos),
+                        DatePrefix(_currentDate) + DocumentSkillsPrompt.BuildUserPrompt(sub) + PhotoBlock(photos),
                         DocumentSkillsPrompt.SkillIds(sub),
                         DocumentSkillsPrompt.WantedExtensions(sub),
                         (round, steps) => { skillSteps = steps; ShowProgress(); },
@@ -617,7 +732,7 @@ namespace Cat5201
 
                 // 藝術方向跟表格同一套算法（標題 + 使用者輸入）：使用者講的風格線索常在輸入裡，
                 // 只看標題會讓同一次請求的報告與表格長得不像同一份東西。
-                var docArt = DeckArtDirection.ForTopic($"{title} {userInput}");
+                var docArt = DeckArtDirection.ForId(ArtIdFor($"{title} {userInput}"));
                 TryEmit(() => GeneratedFileWriter.WriteDocx(
                     genDir, title, DocxReportBuilder.Build(reportMarkdown, docArt, intent.RequestedLanguage), sourceSummary), "report-agent");
                 if (DeliveryOptions.CompanionPdf)
@@ -647,7 +762,7 @@ namespace Cat5201
             if (intent.WantsTable)
             {
                 string tablePdfMarkdown = $"# {title}\n\n{tableMarkdown}\n";
-                var tableArt = DeckArtDirection.ForTopic($"{title} {userInput}");
+                var tableArt = DeckArtDirection.ForId(ArtIdFor($"{title} {userInput}"));
                 // 表格也要說清楚「這是什麼、哪天做的、資料哪來的」——來源用這次實際查證的紀錄。
                 string tableSourceNote = MarkdownReportBuilder.SourceNote(workspace, intent.RequestedLanguage);
                 TryEmit(() => GeneratedFileWriter.WriteXlsx(
