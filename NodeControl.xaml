@@ -11,10 +11,10 @@
         <local:HeaderWidthConverter x:Key="HeaderWidthConverter"/>
         <local:AttachmentPanelMarginConverter x:Key="AttachmentPanelMarginConverter"/>
 
-        <SolidColorBrush x:Key="NodeMenuBg" Color="#FFFFFF"/>
-        <SolidColorBrush x:Key="NodeMenuBorder" Color="#D6D6D6"/>
-        <SolidColorBrush x:Key="NodeMenuText" Color="#222222"/>
-        <SolidColorBrush x:Key="NodeMenuDisabled" Color="#A0A0A0"/>
+        <SolidColorBrush x:Key="NodeMenuBg" Color="#FFFDF9"/>
+        <SolidColorBrush x:Key="NodeMenuBorder" Color="#D9CFBF"/>
+        <SolidColorBrush x:Key="NodeMenuText" Color="#26231E"/>
+        <SolidColorBrush x:Key="NodeMenuDisabled" Color="#AAA396"/>
 
         <Style x:Key="NodeContextMenuStyle" TargetType="{x:Type ContextMenu}">
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -30,7 +30,7 @@
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="10"
+                                CornerRadius="3"
                                 Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
                             <StackPanel IsItemsHost="True"
@@ -53,7 +53,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type MenuItem}">
                         <Border Background="Transparent"
-                                CornerRadius="8"
+                                CornerRadius="3"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter x:Name="HeaderPresenter"
                                               ContentSource="Header"
@@ -86,7 +86,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Separator}">
                         <Border Height="1"
-                                Background="#EAEAEA"
+                                Background="#EFEBE5"
                                 CornerRadius="0.5"/>
                     </ControlTemplate>
                 </Setter.Value>
@@ -140,7 +140,7 @@
                     <ControlTemplate TargetType="{x:Type Button}">
                         <Border x:Name="pb"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="999"
+                                CornerRadius="4"
                                 Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center"
@@ -192,7 +192,7 @@
         </Style>
 
         <Style x:Key="NodeModelComboBoxItemStyle" TargetType="{x:Type ComboBoxItem}">
-            <Setter Property="Foreground" Value="#222222"/>
+            <Setter Property="Foreground" Value="#26231E"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -205,7 +205,7 @@
                     <ControlTemplate TargetType="{x:Type ComboBoxItem}">
                         <Border x:Name="ItemBorder"
                                 Background="Transparent"
-                                CornerRadius="8"
+                                CornerRadius="3"
                                 Margin="1"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter Margin="{TemplateBinding Padding}"
@@ -214,10 +214,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#F4F4F4"/>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#F7F5F1"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#EFEFEF"/>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="#F3F0EB"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -231,9 +231,9 @@
         <Style x:Key="NodeModelComboBoxStyle" TargetType="{x:Type ComboBox}">
             <Setter Property="Height" Value="28"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="#222222"/>
-            <Setter Property="Background" Value="#FAFAFA"/>
-            <Setter Property="BorderBrush" Value="#E6E6E6"/>
+            <Setter Property="Foreground" Value="#26231E"/>
+            <Setter Property="Background" Value="#FCFAF8"/>
+            <Setter Property="BorderBrush" Value="#ECE8E0"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,2,8,2"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -248,7 +248,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="10"
+                                    CornerRadius="3"
                                     SnapsToDevicePixels="True">
                                 <ContentPresenter x:Name="ContentSite"
                                                   IsHitTestVisible="False"
@@ -282,9 +282,9 @@
                                       MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                     <Border Margin="0,2,0,0"
                                             Background="#FFFFFF"
-                                            BorderBrush="#E6E6E6"
+                                            BorderBrush="#ECE8E0"
                                             BorderThickness="1"
-                                            CornerRadius="10"
+                                            CornerRadius="3"
                                             Padding="4">
                                         <ScrollViewer CanContentScroll="True"
                                                       VerticalScrollBarVisibility="Auto">
@@ -298,11 +298,11 @@
 
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="MainBorder" Property="Background" Value="#F7F7F7"/>
+                                <Setter TargetName="MainBorder" Property="Background" Value="#F9F8F5"/>
                             </Trigger>
 
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="#D8D8D8"/>
+                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="#DCD9D4"/>
                             </Trigger>
 
                             <Trigger Property="IsDropDownOpen" Value="True">
@@ -352,12 +352,12 @@
                       Click="SkipStepMenuItem_Click"/>
             <MenuItem x:Name="StopGenerationMenuItem"
                       Header="{local:Tr '強制停止生成'}"
-                      Foreground="#D32F2F"
+                      Foreground="#C14141"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="StopGenerationMenuItem_Click"/>
             <MenuItem x:Name="StopWorkflowMenuItem"
                       Header="{local:Tr '停止工作流'}"
-                      Foreground="#D32F2F"
+                      Foreground="#C14141"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="StopWorkflowMenuItem_Click"/>
             <Separator Style="{StaticResource NodeMenuSeparatorStyle}"/>
@@ -380,7 +380,7 @@
             <Separator Style="{StaticResource NodeMenuSeparatorStyle}"/>
             <MenuItem x:Name="DeleteMenuItem"
                       Header="{local:Tr '刪除'}"
-                      Foreground="#D32F2F"
+                      Foreground="#C14141"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="DeleteMenuItem_Click"/>
         </ContextMenu>
@@ -390,10 +390,10 @@
         <Border x:Name="NodeBorder"
                 Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
                 Height="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                CornerRadius="8"
-                Background="#FFFFFF"
-                BorderBrush="#000000"
-                BorderThickness="3" />
+                CornerRadius="3"
+                Background="#FFFDF9"
+                BorderBrush="#C4B6A1"
+                BorderThickness="1.5" />
 
         <Border x:Name="DragHeader"
                 Height="24"
@@ -408,7 +408,7 @@
             <Border x:Name="DragIndicator"
                     Width="80"
                     Height="4"
-                    Background="LightGray"
+                    Background="#D8D0C2"
                     CornerRadius="2"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
@@ -433,6 +433,10 @@
                              AcceptsReturn="True"
                              Background="Transparent"
                              BorderThickness="0"
+                             FontFamily="Noto Serif TC, Cambria, Georgia, PMingLiU"
+                             Foreground="#2A2019"
+                             CaretBrush="#2A2019"
+                             SelectionBrush="#9C7A54"
                              FontSize="20"
                              IsReadOnly="True"
                              IsHitTestVisible="True"
@@ -457,13 +461,13 @@
                             IsEnabled="False">
                         <Grid Width="14" Height="14">
                             <Path Data="M7,1 L7,13"
-                                  Stroke="#444"
-                                  StrokeThickness="2"
+                                  Stroke="#6B5A4A"
+                                  StrokeThickness="1.4"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"/>
                             <Path Data="M1,7 L13,7"
-                                  Stroke="#444"
-                                  StrokeThickness="2"
+                                  Stroke="#6B5A4A"
+                                  StrokeThickness="1.4"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"/>
                         </Grid>
@@ -483,8 +487,8 @@
                             IsEnabled="False">
                         <Grid Width="14" Height="14">
                             <Path Data="M3,2 L11,7 L3,12"
-                                  Stroke="#444"
-                                  StrokeThickness="2"
+                                  Stroke="#6B5A4A"
+                                  StrokeThickness="1.4"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
                                   StrokeLineJoin="Round"
@@ -517,10 +521,10 @@
                             <Border x:Name="AttachmentListHost"
                                     Grid.Column="0"
                                     Padding="4,2"
-                                    CornerRadius="10"
-                                    BorderBrush="#E6E6E6"
+                                    CornerRadius="3"
+                                    BorderBrush="#ECE8E0"
                                     BorderThickness="1"
-                                    Background="#FAFAFA"
+                                    Background="#FCFAF8"
                                     Visibility="Collapsed">
                                 <ScrollViewer x:Name="AttachmentScroll"
                                               HorizontalScrollBarVisibility="Hidden"
@@ -539,8 +543,8 @@
 
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border CornerRadius="10"
-                                                        BorderBrush="#E6E6E6"
+                                                <Border CornerRadius="3"
+                                                        BorderBrush="#ECE8E0"
                                                         BorderThickness="1"
                                                         Background="#FFFFFF"
                                                         Padding="8,4"
@@ -556,14 +560,14 @@
 
                                                         <TextBlock Text="{Binding KindGlyph}"
                                                                    FontSize="10"
-                                                                   Foreground="#666"
+                                                                   Foreground="#70695C"
                                                                    Margin="0,0,6,0"
                                                                    VerticalAlignment="Center"/>
 
                                                         <TextBlock Grid.Column="1"
                                                                    Text="{Binding FileName}"
                                                                    FontSize="10"
-                                                                   Foreground="#333"
+                                                                   Foreground="#38342E"
                                                                    VerticalAlignment="Center"
                                                                    MaxWidth="240"
                                                                    TextTrimming="CharacterEllipsis"
@@ -578,7 +582,7 @@
                                                                 Margin="0,-1,0,0">
                                                             <TextBlock Text="×"
                                                                        FontSize="10"
-                                                                       Foreground="#D32F2F"
+                                                                       Foreground="#C14141"
                                                                        VerticalAlignment="Center"/>
                                                         </Button>
                                                     </Grid>
@@ -619,14 +623,14 @@
                                             <TextBlock Text="{Binding DisplayName}"
                                                        VerticalAlignment="Center"/>
                                             <!-- Multi-Model v1：成本層級徽章 -->
-                                            <Border Background="#F0F2F5"
-                                                    CornerRadius="6"
+                                            <Border Background="#F7F1E8"
+                                                    CornerRadius="3"
                                                     Padding="5,1,5,1"
                                                     Margin="6,0,0,0"
                                                     VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding CostTierLabel}"
                                                            FontSize="9.5"
-                                                           Foreground="#667085"
+                                                           Foreground="#81796A"
                                                            VerticalAlignment="Center"/>
                                             </Border>
                                         </StackPanel>
@@ -638,7 +642,7 @@
 
                     <Border VerticalAlignment="Bottom"
                             Height="1"
-                            Background="#ADADAD"
+                            Background="#E6DDCE"
                             Margin="20,0,20,0"/>
                 </Grid>
             </Border>
@@ -670,7 +674,7 @@
                                     <RotateTransform x:Name="BottomLoadingSpinnerRotate"
                                                      Angle="0"/>
                                 </Canvas.RenderTransform>
-                                <Path Stroke="#5F6368"
+                                <Path Stroke="#6D665A"
                                       StrokeThickness="5"
                                       StrokeStartLineCap="Round"
                                       StrokeEndLineCap="Round"
@@ -681,7 +685,7 @@
                         <TextBlock x:Name="BottomLoadingText"
                                    Text="{local:Tr 'AI 正在生成…'}"
                                    FontSize="15"
-                                   Foreground="#4A4A4A"
+                                   Foreground="#514C43"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
 
@@ -724,10 +728,10 @@
                     <Border x:Name="OutputImageHost"
                             Margin="20,4,20,10"
                             HorizontalAlignment="Left"
-                            CornerRadius="8"
+                            CornerRadius="3"
                             Cursor="Hand"
                             ClipToBounds="True"
-                            Background="#F2F2F2"
+                            Background="#F5F3EF"
                             ToolTip="{local:Tr '點擊預覽'}"
                             Visibility="Collapsed"
                             MouseLeftButtonDown="OutputImage_MouseLeftButtonDown">
@@ -761,11 +765,11 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding CategoryLabel}"
                                                        FontSize="14"
-                                                       Foreground="#9E9E9E"
+                                                       Foreground="#A9A193"
                                                        VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding FileName}"
                                                        FontSize="14"
-                                                       Foreground="#1565C0"
+                                                       Foreground="#99743C"
                                                        TextDecorations="Underline"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
@@ -796,7 +800,7 @@
                                    FontSize="12.5"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center"
-                                   Foreground="#9E9E9E"/>
+                                   Foreground="#A9A193"/>
 
                         <!-- 2026-07-04：失敗重跑鈕已移除——右鍵選單即可重跑（「重新生成答案」同樣在右鍵選單）。 -->
                     </Grid>
@@ -817,7 +821,18 @@
                DragCompleted="Corner_DragCompleted">
             <Thumb.Template>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse Fill="#ADADAD" Stroke="White" StrokeThickness="1"/>
+                    <!-- 透明底維持原本 20x20 的可點範圍，看得到的只是一個細環 -->
+                    <Grid Background="Transparent">
+                        <Ellipse x:Name="Ring" Width="9" Height="9"
+                                 Fill="#FFFDF9" Stroke="#9C7A54" StrokeThickness="1.25"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="Fill" Value="#9C7A54"/>
+                            <Setter TargetName="Ring" Property="Width" Value="11"/>
+                            <Setter TargetName="Ring" Property="Height" Value="11"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
@@ -834,7 +849,18 @@
                DragCompleted="Corner_DragCompleted">
             <Thumb.Template>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse Fill="#ADADAD" Stroke="White" StrokeThickness="1"/>
+                    <!-- 透明底維持原本 20x20 的可點範圍，看得到的只是一個細環 -->
+                    <Grid Background="Transparent">
+                        <Ellipse x:Name="Ring" Width="9" Height="9"
+                                 Fill="#FFFDF9" Stroke="#9C7A54" StrokeThickness="1.25"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Ring" Property="Fill" Value="#9C7A54"/>
+                            <Setter TargetName="Ring" Property="Width" Value="11"/>
+                            <Setter TargetName="Ring" Property="Height" Value="11"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
@@ -848,7 +874,17 @@
                Canvas.Top="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BottomOffsetConverter}, ConverterParameter=15}">
             <Thumb.Template>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse Fill="Black" Stroke="Transparent"/>
+                    <!-- 透明底維持原本 10x10 的可拖範圍 -->
+                    <Grid Background="Transparent">
+                        <Ellipse x:Name="Dot" Width="4" Height="4" Fill="#C4B6A1"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Dot" Property="Fill" Value="#2A2019"/>
+                            <Setter TargetName="Dot" Property="Width" Value="6"/>
+                            <Setter TargetName="Dot" Property="Height" Value="6"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>
@@ -862,7 +898,17 @@
                Canvas.Top="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BottomOffsetConverter}, ConverterParameter=15}">
             <Thumb.Template>
                 <ControlTemplate TargetType="Thumb">
-                    <Ellipse Fill="Black" Stroke="Transparent"/>
+                    <!-- 透明底維持原本 10x10 的可拖範圍 -->
+                    <Grid Background="Transparent">
+                        <Ellipse x:Name="Dot" Width="4" Height="4" Fill="#C4B6A1"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Dot" Property="Fill" Value="#2A2019"/>
+                            <Setter TargetName="Dot" Property="Width" Value="6"/>
+                            <Setter TargetName="Dot" Property="Height" Value="6"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Thumb.Template>
         </Thumb>

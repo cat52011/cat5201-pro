@@ -640,13 +640,56 @@ namespace Cat5201
             private SimpleInputDialog(string title, string prompt, string defaultValue)
             {
                 Title = title;
-                Width = 380;
-                Height = 170;
+                Width = 420;
+                SizeToContent = SizeToContent.Height;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
                 ResizeMode = ResizeMode.NoResize;
-                Background = Brushes.White;
+                WindowStyle = WindowStyle.None;
+                AllowsTransparency = true;
+                ShowInTaskbar = false;
+                Background = Brushes.Transparent;
 
-                var root = new Grid { Margin = new Thickness(14) };
+                // 原生標題列拿掉後，用卡片本身拖曳、Esc 取消（等同原本右上角的關閉）。
+                var card = new Border
+                {
+                    Background = new SolidColorBrush(DialogChrome.Cream),
+                    BorderBrush = new SolidColorBrush(DialogChrome.Hairline),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(26, 22, 22, 20),
+                    Margin = new Thickness(16),
+                    Effect = DialogChrome.CardShadow(),
+                    SnapsToDevicePixels = true
+                };
+                card.MouseLeftButtonDown += (_, e) =>
+                {
+                    if (e.ButtonState == System.Windows.Input.MouseButtonState.Pressed)
+                    {
+                        try { DragMove(); } catch { }
+                    }
+                };
+                PreviewKeyDown += (_, e) =>
+                {
+                    if (e.Key == Key.Escape)
+                    {
+                        DialogResult = false;
+                        Close();
+                        e.Handled = true;
+                    }
+                };
+
+                var root = new Grid();
+                root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                var heading = new TextBlock
+                {
+                    Text = title,
+                    FontSize = 18,
+                    FontFamily = new FontFamily(DialogChrome.SerifFamily),
+                    Foreground = new SolidColorBrush(DialogChrome.Ink),
+                    Margin = new Thickness(0, 0, 0, 10)
+                };
+                Grid.SetRow(heading, 0);
+                root.Children.Add(heading);
                 root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
                 root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -654,19 +697,22 @@ namespace Cat5201
                 var txt = new TextBlock
                 {
                     Text = prompt,
-                    Foreground = Brushes.Black,
+                    FontSize = 12.5,
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x8E, 0x81, 0x72)),
                     Margin = new Thickness(0, 0, 0, 10),
                     TextWrapping = TextWrapping.Wrap
                 };
-                Grid.SetRow(txt, 0);
+                Grid.SetRow(txt, 1);
                 root.Children.Add(txt);
 
                 _tb = new TextBox
                 {
                     Text = defaultValue,
-                    Margin = new Thickness(0, 0, 0, 12)
+                    FontSize = 14,
+                    Padding = new Thickness(10, 8, 10, 8),
+                    Margin = new Thickness(0, 0, 0, 20)
                 };
-                Grid.SetRow(_tb, 1);
+                Grid.SetRow(_tb, 2);
                 root.Children.Add(_tb);
 
                 var btnPanel = new StackPanel
@@ -675,7 +721,7 @@ namespace Cat5201
                     HorizontalAlignment = HorizontalAlignment.Right
                 };
 
-                var ok = new Button { Content = UiLanguage.P("確定", "OK"), Width = 72, Margin = new Thickness(0, 0, 8, 0) };
+                var ok = DialogChrome.Primary(UiLanguage.P("確定", "OK"));
                 ok.Click += (_, __) =>
                 {
                     _result = _tb.Text;
@@ -683,20 +729,22 @@ namespace Cat5201
                     Close();
                 };
 
-                var cancel = new Button { Content = UiLanguage.P("取消", "Cancel"), Width = 72 };
+                var cancel = DialogChrome.Secondary(UiLanguage.P("取消", "Cancel"));
+                cancel.Margin = new Thickness(0, 0, 8, 0);
                 cancel.Click += (_, __) =>
                 {
                     DialogResult = false;
                     Close();
                 };
 
-                btnPanel.Children.Add(ok);
                 btnPanel.Children.Add(cancel);
+                btnPanel.Children.Add(ok);
 
-                Grid.SetRow(btnPanel, 2);
+                Grid.SetRow(btnPanel, 3);
                 root.Children.Add(btnPanel);
 
-                Content = root;
+                card.Child = root;
+                Content = card;
 
                 Loaded += (_, __) =>
                 {

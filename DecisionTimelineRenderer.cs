@@ -185,16 +185,16 @@ namespace Cat5201
                 {
                     var emptyBorder = new Border
                     {
-                        Background = CreateBrush("#FAFAFA", "#FAFAFA"),
-                        BorderBrush = CreateBrush("#E9E9E9", "#E9E9E9"),
+                        Background = CreateBrush("#FCFAF8", "#FCFAF8"),
+                        BorderBrush = CreateBrush("#EEEAE4", "#EEEAE4"),
                         BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(12),
+                        CornerRadius = new CornerRadius(4),
                         Padding = new Thickness(12),
                         Child = new TextBlock
                         {
                             Text = UiLanguage.P("尚無 Decision Timeline", "No decision timeline yet"),
                             FontSize = 12,
-                            Foreground = CreateBrush("#7A7A7A", "#7A7A7A")
+                            Foreground = CreateBrush("#867D6E", "#867D6E")
                         }
                     };
 
@@ -234,10 +234,10 @@ namespace Cat5201
                 // 抽屜標題列
                 var drawerHeader = new Border
                 {
-                    Background = CreateBrush("#F6F7FA", "#F6F7FA"),
-                    BorderBrush = CreateBrush("#E5E8EF", "#E5E8EF"),
+                    Background = CreateBrush("#FAF6F0", "#FAF6F0"),
+                    BorderBrush = CreateBrush("#F2EADC", "#F2EADC"),
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(10),
+                    CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(12, 9, 12, 9),
                     Margin = new Thickness(0, 4, 0, 4),
                     Cursor = Cursors.Hand,
@@ -248,7 +248,7 @@ namespace Cat5201
                             : UiLanguage.P($"🔧 技術細節（{technical.Count} 步）　展開 ▼", $"🔧 Technical details ({technical.Count} steps)　Expand ▼"),
                         FontSize = 12,
                         FontWeight = FontWeights.Medium,
-                        Foreground = CreateBrush("#5A6478", "#5A6478")
+                        Foreground = CreateBrush("#746C5E", "#746C5E")
                     }
                 };
                 drawerHeader.MouseLeftButtonUp += (_, e) =>
@@ -315,7 +315,7 @@ namespace Cat5201
                 {
                     Width = 2,
                     Height = 10,
-                    Background = CreateBrush("#D9DDE4", "#D9DDE4"),
+                    Background = CreateBrush("#E6E1D7", "#E6E1D7"),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Top
                 };
@@ -327,7 +327,7 @@ namespace Cat5201
             {
                 Width = 14,
                 Height = 14,
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Background = CreateBrush("#FFFFFF", "#FFFFFF"),
                 BorderBrush = GetStepBrush(safeState),
                 BorderThickness = new Thickness(2),
@@ -340,7 +340,7 @@ namespace Cat5201
             {
                 Width = 6,
                 Height = 6,
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Background = GetStepBrush(safeState),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center
@@ -355,7 +355,7 @@ namespace Cat5201
                 var bottomLine = new Border
                 {
                     Width = 2,
-                    Background = CreateBrush("#D9DDE4", "#D9DDE4"),
+                    Background = CreateBrush("#E6E1D7", "#E6E1D7"),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     Margin = new Thickness(0, 8, 0, 0)
                 };
@@ -370,11 +370,11 @@ namespace Cat5201
             var cardBorder = new Border
             {
                 Background = safeHighlight
-                    ? CreateBrush("#F6FAFF", "#F6FAFF")
+                    ? CreateBrush("#FBF8F4", "#FBF8F4")
                     : CreateBrush("#FFFFFF", "#FFFFFF"),
                 BorderBrush = GetStepBorderBrush(safeState, safeHighlight || safeIsActive),
                 BorderThickness = new Thickness(safeIsActive ? 1.6 : 1),
-                CornerRadius = new CornerRadius(14),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(12, 10, 12, 10),
                 Cursor = safeIsExpandable ? Cursors.Hand : Cursors.Arrow
             };
@@ -403,7 +403,7 @@ namespace Cat5201
             var indexBadge = new Border
             {
                 Background = GetStepSoftBrush(safeState),
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(7, 2, 7, 2),
                 Margin = new Thickness(0, 0, 8, 0),
                 Child = new TextBlock
@@ -421,7 +421,7 @@ namespace Cat5201
                 Text = string.IsNullOrWhiteSpace(safeTitle) ? "-" : safeTitle,
                 FontSize = 12.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#232323", "#232323"),
+                Foreground = CreateBrush("#28241E", "#28241E"),
                 TextWrapping = TextWrapping.Wrap,
                 VerticalAlignment = VerticalAlignment.Center
             };
@@ -435,7 +435,7 @@ namespace Cat5201
             var stateBadge = new Border
             {
                 Background = GetStepSoftBrush(safeState),
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(8, 3, 8, 3),
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = new TextBlock
@@ -457,7 +457,7 @@ namespace Cat5201
                 Text = string.IsNullOrWhiteSpace(safeDetail) ? "-" : safeDetail,
                 FontSize = 12,
                 Margin = new Thickness(0, 8, 0, 0),
-                Foreground = CreateBrush("#5D5D5D", "#5D5D5D"),
+                Foreground = CreateBrush("#665F54", "#665F54"),
                 TextWrapping = TextWrapping.Wrap
             };
             contentPanel.Children.Add(detailText);
@@ -474,7 +474,7 @@ namespace Cat5201
                 {
                     Text = isExpanded ? UiLanguage.P("收合詳細資訊 ▲", "Hide details ▲") : UiLanguage.P("展開詳細資訊 ▼", "Show details ▼"),
                     FontSize = 11.5,
-                    Foreground = CreateBrush("#6F6F6F", "#6F6F6F"),
+                    Foreground = CreateBrush("#7A7264", "#7A7264"),
                     FontWeight = FontWeights.Medium
                 };
 
@@ -493,7 +493,7 @@ namespace Cat5201
                 var separator = new Border
                 {
                     Height = 1,
-                    Background = CreateBrush("#ECEFF4", "#ECEFF4"),
+                    Background = CreateBrush("#F5EFE5", "#F5EFE5"),
                     Margin = new Thickness(0, 0, 0, 10)
                 };
                 detailHost.Children.Add(separator);
@@ -512,17 +512,17 @@ namespace Cat5201
                     {
                         detailHost.Children.Add(new Border
                         {
-                            Background = CreateBrush("#FAFBFD", "#FAFBFD"),
-                            BorderBrush = CreateBrush("#EEF1F4", "#EEF1F4"),
+                            Background = CreateBrush("#FBF9F5", "#FBF9F5"),
+                            BorderBrush = CreateBrush("#F6F0E6", "#F6F0E6"),
                             BorderThickness = new Thickness(1),
-                            CornerRadius = new CornerRadius(8),
+                            CornerRadius = new CornerRadius(3),
                             Padding = new Thickness(8, 6, 8, 6),
                             Margin = new Thickness(0, 0, 0, 6),
                             Child = new TextBlock
                             {
                                 Text = string.IsNullOrWhiteSpace(line) ? "-" : line,
                                 FontSize = 11.5,
-                                Foreground = CreateBrush("#666666", "#666666"),
+                                Foreground = CreateBrush("#70695C", "#70695C"),
                                 TextWrapping = TextWrapping.Wrap
                             }
                         });
@@ -556,8 +556,8 @@ namespace Cat5201
                     if (!safeIsActive)
                     {
                         cardBorder.Background = safeHighlight
-                            ? CreateBrush("#F0F7FF", "#F0F7FF")
-                            : CreateBrush("#FAFAFA", "#FAFAFA");
+                            ? CreateBrush("#F9F6F0", "#F9F6F0")
+                            : CreateBrush("#FCFAF8", "#FCFAF8");
                     }
                 };
 
@@ -566,7 +566,7 @@ namespace Cat5201
                     if (!safeIsActive)
                     {
                         cardBorder.Background = safeHighlight
-                            ? CreateBrush("#F6FAFF", "#F6FAFF")
+                            ? CreateBrush("#FBF8F4", "#FBF8F4")
                             : CreateBrush("#FFFFFF", "#FFFFFF");
                     }
                 };
@@ -577,8 +577,8 @@ namespace Cat5201
                 ApplyActiveTimelineVisual(cardBorder, dotOuter, dotInner, safeState);
 
                 cardBorder.Background = safeHighlight
-                    ? CreateBrush("#EEF6FF", "#EEF6FF")
-                    : CreateBrush("#F8FBFF", "#F8FBFF");
+                    ? CreateBrush("#F9F5EE", "#F9F5EE")
+                    : CreateBrush("#FBF9F5", "#FBF9F5");
             }
             else
             {
@@ -645,7 +645,7 @@ namespace Cat5201
             {
                 Text = UiLanguage.P($"共 {safe.Count} 項產出物，{visible.Count} 項對使用者可見。", $"{safe.Count} output(s) in total, {visible.Count} visible to you."),
                 FontSize = 11.5,
-                Foreground = CreateBrush("#57606A", "#57606A"),
+                Foreground = CreateBrush("#6A6357", "#6A6357"),
                 Margin = new Thickness(0, 2, 0, 8),
                 TextWrapping = TextWrapping.Wrap
             });
@@ -685,7 +685,7 @@ namespace Cat5201
             {
                 Width = 34,
                 Height = 34,
-                CornerRadius = new CornerRadius(9),
+                CornerRadius = new CornerRadius(3),
                 Background = CreateBrush(accentSoftHex, accentSoftHex),
                 VerticalAlignment = VerticalAlignment.Top,
                 Margin = new Thickness(0, 0, 10, 0),
@@ -706,7 +706,7 @@ namespace Cat5201
                 Text = string.IsNullOrWhiteSpace(r.Title) ? r.KindLabel : r.Title,
                 FontSize = 13.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush(dimmed ? "#6B7280" : "#1A2333", "#1A2333"),
+                Foreground = CreateBrush(dimmed ? "#81796A" : "#2C2821", "#2C2821"),
                 TextWrapping = TextWrapping.Wrap
             });
 
@@ -721,7 +721,7 @@ namespace Cat5201
                 {
                     Text = string.Join("   ·   ", subParts),
                     FontSize = 11,
-                    Foreground = CreateBrush("#8A94A6", "#8A94A6"),
+                    Foreground = CreateBrush("#A39B8D", "#A39B8D"),
                     Margin = new Thickness(0, 2, 0, 0),
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -736,9 +736,9 @@ namespace Cat5201
                 if (r.FactCount > 0)
                     badges.Children.Add(CreateWorkspaceBadge(
                         string.IsNullOrWhiteSpace(r.VerificationLabel) ? UiLanguage.P($"{r.FactCount} 項事實", $"{r.FactCount} fact(s)") : r.VerificationLabel,
-                        "#FFF6E5", "#9A6700"));
+                        "#FDF6E7", "#916409"));
                 if (!r.IsUserVisible)
-                    badges.Children.Add(CreateWorkspaceBadge(UiLanguage.P("內部中繼", "Internal"), "#F2F4F7", "#888888"));
+                    badges.Children.Add(CreateWorkspaceBadge(UiLanguage.P("內部中繼", "Internal"), "#F8F3EB", "#958B7B"));
                 panel.Children.Add(badges);
             }
 
@@ -747,17 +747,17 @@ namespace Cat5201
             {
                 panel.Children.Add(new Border
                 {
-                    Background = CreateBrush("#F8FAFC", "#F8FAFC"),
-                    BorderBrush = CreateBrush("#EDF1F6", "#EDF1F6"),
+                    Background = CreateBrush("#FBF8F3", "#FBF8F3"),
+                    BorderBrush = CreateBrush("#F6F0E7", "#F6F0E7"),
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(8),
+                    CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(10, 8, 10, 8),
                     Margin = new Thickness(0, 9, 0, 0),
                     Child = new TextBlock
                     {
                         Text = r.Preview,
                         FontSize = 11.5,
-                        Foreground = CreateBrush(dimmed ? "#8A94A6" : "#43536C", "#43536C"),
+                        Foreground = CreateBrush(dimmed ? "#A39B8D" : "#605A4F", "#605A4F"),
                         TextWrapping = TextWrapping.Wrap
                     }
                 });
@@ -778,7 +778,7 @@ namespace Cat5201
                 {
                     Text = string.Join("   ·   ", metaParts),
                     FontSize = 10.5,
-                    Foreground = CreateBrush("#9AA4B2", "#9AA4B2"),
+                    Foreground = CreateBrush("#B0A99C", "#B0A99C"),
                     Margin = new Thickness(0, 8, 0, 0),
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -792,12 +792,12 @@ namespace Cat5201
                 {
                     Text = UiLanguage.P("依賴", "Depends on"),
                     FontSize = 10.5,
-                    Foreground = CreateBrush("#9AA4B2", "#9AA4B2"),
+                    Foreground = CreateBrush("#B0A99C", "#B0A99C"),
                     VerticalAlignment = VerticalAlignment.Center,
                     Margin = new Thickness(0, 0, 6, 5)
                 });
                 foreach (var d in r.DependsOn.Where(x => !string.IsNullOrWhiteSpace(x)))
-                    dep.Children.Add(CreateWorkspaceBadge(ArtifactDependencyLabel(d), "#F4F0FF", "#6B4FBB"));
+                    dep.Children.Add(CreateWorkspaceBadge(ArtifactDependencyLabel(d), "#F6F3FC", "#7767A3"));
                 panel.Children.Add(dep);
             }
 
@@ -811,10 +811,10 @@ namespace Cat5201
 
             var card = new Border
             {
-                Background = CreateBrush(dimmed ? "#FBFCFE" : "#FFFFFF", "#FFFFFF"),
-                BorderBrush = CreateBrush(dimmed ? "#EDF0F4" : "#E4EAF2", "#E4EAF2"),
+                Background = CreateBrush(dimmed ? "#FCFAF7" : "#FFFFFF", "#FFFFFF"),
+                BorderBrush = CreateBrush(dimmed ? "#F6F0E5" : "#F3EBDD", "#F3EBDD"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(12),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(13),
                 Margin = new Thickness(0, 0, 0, 10),
                 Child = panel
@@ -849,37 +849,37 @@ namespace Cat5201
                 needles.Any(n => k.Contains(n) || f.Contains(n));
 
             if (Has("present", "pptx", "slide", "deck") || fl.Contains("簡報"))
-                return ("📊", "#7C3AED", "#F1ECFE");
+                return ("📊", "#8762C5", "#F3F0FA");
             if (Has("image", "png", "jpg", "jpeg") || fl.Contains("圖"))
-                return ("🖼", "#DB2777", "#FCE7F3");
+                return ("🖼", "#B2507B", "#F7ECF2");
             if (Has("video", "media", "mp4") || fl.Contains("影片"))
-                return ("🎬", "#4F46E5", "#EAEBFE");
+                return ("🎬", "#9C7A54", "#F7F3EA");
             if (Has("doc", "pdf", "report", "word") || fl.Contains("文件") || fl.Contains("報告"))
-                return ("📄", "#2563EB", "#E6F0FE");
+                return ("📄", "#9C7A54", "#F6F1E8");
             if (Has("fact", "valid", "verify") || fl.Contains("事實") || fl.Contains("驗證"))
-                return ("✅", "#059669", "#E4F6EE");
+                return ("✅", "#217A5F", "#E7F3EE");
             if (Has("code") || fl.Contains("程式"))
-                return ("💻", "#475569", "#EEF1F5");
+                return ("💻", "#615A4F", "#F6F0E7");
             if (Has("search", "research") || fl.Contains("搜尋"))
-                return ("🔍", "#0891B2", "#E2F5F9");
+                return ("🔍", "#2A7C90", "#E7F2F4");
             if (Has("plan", "workflow") || fl.Contains("計畫") || fl.Contains("流程"))
-                return ("🗂", "#B45309", "#FCEFDD");
+                return ("🗂", "#AA5413", "#FAEFDF");
 
-            return ("📦", "#475467", "#F1F4F8");
+            return ("📦", "#60594E", "#F8F3EB");
         }
 
         // 動作 chip：用 Border 自繪（避免預設 Button 灰底 chrome），帶 hover。
         private FrameworkElement CreateWorkspaceActionButton(string label, string accentHex, Action onClick)
         {
-            var bg = CreateBrush("#F4F7FC", "#F4F7FC");
-            var bgHover = CreateBrush("#E7EEFA", "#E7EEFA");
+            var bg = CreateBrush("#FAF6F0", "#FAF6F0");
+            var bgHover = CreateBrush("#F6F0E5", "#F6F0E5");
 
             var chip = new Border
             {
                 Background = bg,
-                BorderBrush = CreateBrush("#DCE5F2", "#DCE5F2"),
+                BorderBrush = CreateBrush("#F0E7D7", "#F0E7D7"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(7),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(11, 5, 11, 5),
                 Margin = new Thickness(0, 0, 7, 0),
                 Cursor = System.Windows.Input.Cursors.Hand,
@@ -1124,7 +1124,7 @@ namespace Cat5201
                 Text = text,
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#57606A", "#57606A"),
+                Foreground = CreateBrush("#6A6357", "#6A6357"),
                 Margin = new Thickness(0, 2, 0, 8)
             };
         }
@@ -1149,9 +1149,9 @@ namespace Cat5201
             var panel = new StackPanel();
 
             var header = new WrapPanel();
-            header.Children.Add(CreateWorkspaceBadge(kind, "#EAF4FF", "#245A9B"));
-            header.Children.Add(CreateWorkspaceBadge(format, "#F2F4F7", "#475467"));
-            header.Children.Add(CreateWorkspaceBadge(visibility, "#F7F7F7", "#666666"));
+            header.Children.Add(CreateWorkspaceBadge(kind, "#F8F3EB", "#8A6835"));
+            header.Children.Add(CreateWorkspaceBadge(format, "#F8F3EB", "#60594E"));
+            header.Children.Add(CreateWorkspaceBadge(visibility, "#F9F8F5", "#70695C"));
             panel.Children.Add(header);
 
             if (!string.IsNullOrWhiteSpace(meta))
@@ -1160,7 +1160,7 @@ namespace Cat5201
                 {
                     Text = meta,
                     FontSize = 11.5,
-                    Foreground = CreateBrush("#4A4A4A", "#4A4A4A"),
+                    Foreground = CreateBrush("#514C43", "#514C43"),
                     Margin = new Thickness(0, 6, 0, 0),
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -1171,9 +1171,9 @@ namespace Cat5201
             var card = new Border
             {
                 Background = CreateBrush("#FFFFFF", "#FFFFFF"),
-                BorderBrush = CreateBrush("#DDE7F2", "#DDE7F2"),
+                BorderBrush = CreateBrush("#F1E8D8", "#F1E8D8"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(10),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(10),
                 Margin = new Thickness(0, 0, 0, 8),
                 Child = panel
@@ -1207,7 +1207,7 @@ namespace Cat5201
                 Text = label,
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#3B4A66", "#3B4A66"),
+                Foreground = CreateBrush("#595348", "#595348"),
                 TextWrapping = TextWrapping.Wrap
             });
 
@@ -1215,17 +1215,17 @@ namespace Cat5201
             {
                 Text = string.IsNullOrWhiteSpace(body) ? "-" : body,
                 FontSize = 11.5,
-                Foreground = CreateBrush("#43536C", "#43536C"),
+                Foreground = CreateBrush("#605A4F", "#605A4F"),
                 Margin = new Thickness(0, 3, 0, 0),
                 TextWrapping = TextWrapping.Wrap
             });
 
             return new Border
             {
-                Background = CreateBrush("#F4F7FC", "#F4F7FC"),
-                BorderBrush = CreateBrush("#D7E1F0", "#D7E1F0"),
+                Background = CreateBrush("#FAF6F0", "#FAF6F0"),
+                BorderBrush = CreateBrush("#EEE4D2", "#EEE4D2"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(8, 7, 8, 7),
                 Margin = new Thickness(0, 0, 0, 6),
                 Child = panel
@@ -1251,7 +1251,7 @@ namespace Cat5201
                 Text = label,
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#2F5F52", "#2F5F52"),
+                Foreground = CreateBrush("#38564E", "#38564E"),
                 TextWrapping = TextWrapping.Wrap
             });
 
@@ -1259,17 +1259,17 @@ namespace Cat5201
             {
                 Text = string.IsNullOrWhiteSpace(body) ? "-" : body,
                 FontSize = 11.5,
-                Foreground = CreateBrush("#365950", "#365950"),
+                Foreground = CreateBrush("#3D524D", "#3D524D"),
                 Margin = new Thickness(0, 3, 0, 0),
                 TextWrapping = TextWrapping.Wrap
             });
 
             return new Border
             {
-                Background = CreateBrush("#F0FAF6", "#F0FAF6"),
-                BorderBrush = CreateBrush("#BFE5D7", "#BFE5D7"),
+                Background = CreateBrush("#F2F8F6", "#F2F8F6"),
+                BorderBrush = CreateBrush("#C6DED5", "#C6DED5"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(8, 7, 8, 7),
                 Margin = new Thickness(0, 0, 0, 6),
                 Child = panel
@@ -1296,7 +1296,7 @@ namespace Cat5201
                 Text = subject,
                 FontSize = 11.5,
                 FontWeight = FontWeights.SemiBold,
-                Foreground = CreateBrush("#252525", "#252525"),
+                Foreground = CreateBrush("#2A2620", "#2A2620"),
                 TextWrapping = TextWrapping.Wrap
             });
 
@@ -1315,7 +1315,7 @@ namespace Cat5201
                 {
                     Text = valueParts[0],
                     FontSize = 12,
-                    Foreground = CreateBrush("#245A9B", "#245A9B"),
+                    Foreground = CreateBrush("#8A6835", "#8A6835"),
                     Margin = new Thickness(0, 4, 0, 0),
                     TextWrapping = TextWrapping.Wrap
                 });
@@ -1326,7 +1326,7 @@ namespace Cat5201
                     {
                         Text = meta,
                         FontSize = 11,
-                        Foreground = CreateBrush("#51606F", "#51606F"),
+                        Foreground = CreateBrush("#6A6356", "#6A6356"),
                         Margin = new Thickness(0, 2, 0, 0),
                         TextWrapping = TextWrapping.Wrap
                     });
@@ -1335,10 +1335,10 @@ namespace Cat5201
 
             return new Border
             {
-                Background = CreateBrush("#F8FBFF", "#F8FBFF"),
-                BorderBrush = CreateBrush("#D8E8F8", "#D8E8F8"),
+                Background = CreateBrush("#FBF9F5", "#FBF9F5"),
+                BorderBrush = CreateBrush("#F1E8D9", "#F1E8D9"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(8, 7, 8, 7),
                 Margin = new Thickness(0, 0, 0, 6),
                 Child = panel
@@ -1364,8 +1364,8 @@ namespace Cat5201
                 bool official = part.Contains("official", StringComparison.OrdinalIgnoreCase);
                 bool background = part.Contains("background_context", StringComparison.OrdinalIgnoreCase);
 
-                string bg = numeric ? "#EAF7EF" : official ? "#EEF4FF" : background ? "#FFF7E8" : "#F2F4F7";
-                string fg = numeric ? "#1F7A3A" : official ? "#245A9B" : background ? "#9A5A00" : "#475467";
+                string bg = numeric ? "#ECF5F0" : official ? "#F9F5EE" : background ? "#FEF7E9" : "#F8F3EB";
+                string fg = numeric ? "#306941" : official ? "#8A6835" : background ? "#915809" : "#60594E";
 
                 wrap.Children.Add(CreateWorkspaceBadge(part, bg, fg));
             }
@@ -1378,7 +1378,7 @@ namespace Cat5201
             return new Border
             {
                 Background = CreateBrush(bgHex, bgHex),
-                CornerRadius = new CornerRadius(999),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(7, 3, 7, 3),
                 Margin = new Thickness(0, 0, 5, 5),
                 Child = new TextBlock
@@ -1396,17 +1396,17 @@ namespace Cat5201
         {
             return new Border
             {
-                Background = CreateBrush(muted ? "#FAFBFD" : "#FFFFFF", "#FAFBFD"),
-                BorderBrush = CreateBrush("#EEF1F4", "#EEF1F4"),
+                Background = CreateBrush(muted ? "#FBF9F5" : "#FFFFFF", "#FBF9F5"),
+                BorderBrush = CreateBrush("#F6F0E6", "#F6F0E6"),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8),
+                CornerRadius = new CornerRadius(3),
                 Padding = new Thickness(8, 6, 8, 6),
                 Margin = new Thickness(0, 0, 0, 6),
                 Child = new TextBlock
                 {
                     Text = string.IsNullOrWhiteSpace(text) ? "-" : text,
                     FontSize = 11.5,
-                    Foreground = CreateBrush(muted ? "#666666" : "#333333", "#666666"),
+                    Foreground = CreateBrush(muted ? "#70695C" : "#38342E", "#70695C"),
                     TextWrapping = TextWrapping.Wrap
                 }
             };
@@ -1472,10 +1472,10 @@ namespace Cat5201
         {
             return state switch
             {
-                NodeDecisionStepState.Success => CreateBrush("#2E9B52", "#2E9B52"),
-                NodeDecisionStepState.Warning => CreateBrush("#D48A00", "#D48A00"),
-                NodeDecisionStepState.Error => CreateBrush("#C93C3C", "#C93C3C"),
-                _ => CreateBrush("#4F7EF7", "#4F7EF7")
+                NodeDecisionStepState.Success => CreateBrush("#438659", "#438659"),
+                NodeDecisionStepState.Warning => CreateBrush("#C7860D", "#C7860D"),
+                NodeDecisionStepState.Error => CreateBrush("#B94C4C", "#B94C4C"),
+                _ => CreateBrush("#9C7A54", "#9C7A54")
             };
         }
 
@@ -1483,10 +1483,10 @@ namespace Cat5201
         {
             return state switch
             {
-                NodeDecisionStepState.Success => CreateBrush("#EAF7EF", "#EAF7EF"),
-                NodeDecisionStepState.Warning => CreateBrush("#FFF5E7", "#FFF5E7"),
-                NodeDecisionStepState.Error => CreateBrush("#FDECEC", "#FDECEC"),
-                _ => CreateBrush("#EDF3FF", "#EDF3FF")
+                NodeDecisionStepState.Success => CreateBrush("#ECF5F0", "#ECF5F0"),
+                NodeDecisionStepState.Warning => CreateBrush("#FEF5E8", "#FEF5E8"),
+                NodeDecisionStepState.Error => CreateBrush("#FBEEEE", "#FBEEEE"),
+                _ => CreateBrush("#F8F4ED", "#F8F4ED")
             };
         }
 
@@ -1496,19 +1496,19 @@ namespace Cat5201
             {
                 return state switch
                 {
-                    NodeDecisionStepState.Success => CreateBrush("#BFE3CB", "#BFE3CB"),
-                    NodeDecisionStepState.Warning => CreateBrush("#F1D39B", "#F1D39B"),
-                    NodeDecisionStepState.Error => CreateBrush("#E9B0B0", "#E9B0B0"),
-                    _ => CreateBrush("#C9D9FF", "#C9D9FF")
+                    NodeDecisionStepState.Success => CreateBrush("#C6DCCD", "#C6DCCD"),
+                    NodeDecisionStepState.Warning => CreateBrush("#ECD1A0", "#ECD1A0"),
+                    NodeDecisionStepState.Error => CreateBrush("#E3B6B6", "#E3B6B6"),
+                    _ => CreateBrush("#EFE5D3", "#EFE5D3")
                 };
             }
 
             return state switch
             {
-                NodeDecisionStepState.Success => CreateBrush("#D7EBDD", "#D7EBDD"),
-                NodeDecisionStepState.Warning => CreateBrush("#F3E2BA", "#F3E2BA"),
-                NodeDecisionStepState.Error => CreateBrush("#F0CCCC", "#F0CCCC"),
-                _ => CreateBrush("#E8ECF3", "#E8ECF3")
+                NodeDecisionStepState.Success => CreateBrush("#DBE7DF", "#DBE7DF"),
+                NodeDecisionStepState.Warning => CreateBrush("#F0E1BD", "#F0E1BD"),
+                NodeDecisionStepState.Error => CreateBrush("#ECD0D0", "#ECD0D0"),
+                _ => CreateBrush("#F4EDE1", "#F4EDE1")
             };
         }
 

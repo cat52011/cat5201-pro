@@ -48,8 +48,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel + " + Runtime Fallback",
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#FFE9E9",
-                    statusTextBrushHex: "#9B2C2C");
+                    statusBrushHex: "#FDEBEB",
+                    statusTextBrushHex: "#8F3838");
                 return;
             }
 
@@ -61,8 +61,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#FFF4E8",
-                    statusTextBrushHex: "#9A5A00");
+                    statusBrushHex: "#FEF4E9",
+                    statusTextBrushHex: "#915809");
                 return;
             }
 
@@ -76,8 +76,8 @@ namespace Cat5201
                         resolver: decision.ResolverLabel,
                         model: modelLabel,
                         taskSummary: taskSummary,
-                        statusBrushHex: "#FFF4E8",
-                        statusTextBrushHex: "#9A5A00");
+                        statusBrushHex: "#FEF4E9",
+                        statusTextBrushHex: "#915809");
                     return;
                 }
 
@@ -87,8 +87,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#EAF4FF",
-                    statusTextBrushHex: "#245A9B");
+                    statusBrushHex: "#F8F3EB",
+                    statusTextBrushHex: "#8A6835");
                 return;
             }
 
@@ -100,8 +100,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#EEF7EA",
-                    statusTextBrushHex: "#2E6A2E");
+                    statusBrushHex: "#EFF5EC",
+                    statusTextBrushHex: "#395F39");
                 return;
             }
 
@@ -111,8 +111,8 @@ namespace Cat5201
                 resolver: decision.ResolverLabel,
                 model: modelLabel,
                 taskSummary: taskSummary,
-                statusBrushHex: "#EDEDED",
-                statusTextBrushHex: "#404040");
+                statusBrushHex: "#F1EEE9",
+                statusTextBrushHex: "#46423A");
         }
 
         private static string GetRuntimeModelLabel(string model)

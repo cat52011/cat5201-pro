@@ -63,7 +63,7 @@ namespace Cat5201
             {
                 string skillName = string.IsNullOrWhiteSpace(skill.Name) ? UiLanguage.P("(未命名)", "(untitled)") : skill.Name;
                 SkillImportHint.Text = UiLanguage.P($"編輯中：「{skillName}」——改完按「儲存修改」。", $"Editing \"{skillName}\". Press \"Save changes\" when done.");
-                SkillImportHint.Foreground = new SolidColorBrush(Color.FromRgb(0x3B, 0x54, 0xFF));
+                SkillImportHint.Foreground = new SolidColorBrush(Color.FromRgb(0x9C, 0x7A, 0x54));
             }
         }
 
@@ -90,7 +90,7 @@ namespace Cat5201
                 if (SkillImportHint == null) return;
                 SkillImportHint.Text = msg;
                 SkillImportHint.Foreground = new SolidColorBrush(
-                    error ? Color.FromRgb(0xC0, 0x3A, 0x4B) : Color.FromRgb(0x2E, 0x7D, 0x4F));
+                    error ? Color.FromRgb(0xB1, 0x49, 0x56) : Color.FromRgb(0x3D, 0x6E, 0x51));
             }
 
             try
@@ -161,8 +161,8 @@ namespace Cat5201
             {
                 var row = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0xF4, 0xF5, 0xFB)),
-                    CornerRadius = new CornerRadius(10),
+                    Background = new SolidColorBrush(Color.FromRgb(0xF9, 0xF6, 0xF0)),
+                    CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(12, 8, 12, 8),
                     Margin = new Thickness(0, 0, 0, 6),
                 };
@@ -188,7 +188,7 @@ namespace Cat5201
                 {
                     Text = string.IsNullOrWhiteSpace(s.Name) ? UiLanguage.P("(未命名技能)", "(Untitled skill)") : s.Name,
                     FontSize = 12.5,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33)),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x38, 0x34, 0x2E)),
                     VerticalAlignment = VerticalAlignment.Center,
                     TextTrimming = TextTrimming.CharacterEllipsis,
                     ToolTip = s.Content + UiLanguage.P("\n（點一下編輯）", "\n(click to edit)"),
@@ -205,7 +205,7 @@ namespace Cat5201
                     Height = 24,
                     Cursor = Cursors.Hand,
                     Background = Brushes.Transparent,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x9A, 0x9E)),
+                    Foreground = new SolidColorBrush(Color.FromRgb(0xA7, 0x9F, 0x91)),
                     BorderThickness = new Thickness(0),
                     ToolTip = UiLanguage.P("刪除此技能", "Delete this skill"),
                 };

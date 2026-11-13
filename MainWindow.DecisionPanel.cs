@@ -245,8 +245,8 @@ namespace Cat5201
     reason: "-",
     keywords: "-",
     extra: "-",
-    statusBrushHex: "#EDEDED",
-    statusTextBrushHex: "#404040");
+    statusBrushHex: "#F1EEE9",
+    statusTextBrushHex: "#46423A");
                 return;
             }
 
@@ -261,8 +261,8 @@ namespace Cat5201
      reason: "-",
      keywords: "-",
      extra: "-",
-     statusBrushHex: "#EAF4FF",
-     statusTextBrushHex: "#245A9B");
+     statusBrushHex: "#F8F3EB",
+     statusTextBrushHex: "#8A6835");
                 return;
             }
 
@@ -275,8 +275,8 @@ namespace Cat5201
      reason: "-",
      keywords: "-",
      extra: "-",
-     statusBrushHex: "#EEF7EA",
-     statusTextBrushHex: "#2E6A2E");
+     statusBrushHex: "#EFF5EC",
+     statusTextBrushHex: "#395F39");
         }
 
         public void SetDecisionVisualization(
@@ -289,8 +289,8 @@ namespace Cat5201
     string keywords = "-",
     string extra = "-",
     string agent = "-",
-    string statusBrushHex = "#EDEDED",
-    string statusTextBrushHex = "#404040")
+    string statusBrushHex = "#F1EEE9",
+    string statusTextBrushHex = "#46423A")
         {
             Dispatcher.Invoke(() =>
             {
@@ -322,10 +322,10 @@ namespace Cat5201
                     DecisionExtraText.Text = string.IsNullOrWhiteSpace(extra) ? "-" : extra;
 
                 if (DecisionStatusBadge != null)
-                    DecisionStatusBadge.Background = CreateBrush(statusBrushHex, "#EDEDED");
+                    DecisionStatusBadge.Background = CreateBrush(statusBrushHex, "#F1EEE9");
 
                 if (DecisionStatusText != null)
-                    DecisionStatusText.Foreground = CreateBrush(statusTextBrushHex, "#404040");
+                    DecisionStatusText.Foreground = CreateBrush(statusTextBrushHex, "#46423A");
             });
         }
         private static SolidColorBrush CreateBrush(string? hex, string fallbackHex)
@@ -419,8 +419,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#FFE9E9",
-                    statusTextBrushHex: "#9B2C2C");
+                    statusBrushHex: "#FDEBEB",
+                    statusTextBrushHex: "#8F3838");
                 return;
             }
 
@@ -436,8 +436,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#FFF4E8",
-                    statusTextBrushHex: "#9A5A00");
+                    statusBrushHex: "#FEF4E9",
+                    statusTextBrushHex: "#915809");
                 return;
             }
 
@@ -454,8 +454,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#EAF4FF",
-                    statusTextBrushHex: "#245A9B");
+                    statusBrushHex: "#F8F3EB",
+                    statusTextBrushHex: "#8A6835");
                 return;
             }
 
@@ -471,8 +471,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#EEF7EA",
-                    statusTextBrushHex: "#2E6A2E");
+                    statusBrushHex: "#EFF5EC",
+                    statusTextBrushHex: "#395F39");
                 return;
             }
 
@@ -486,8 +486,8 @@ namespace Cat5201
                 keywords: keywords,
                 extra: extra,
                 agent: agent,
-                statusBrushHex: "#EDEDED",
-                statusTextBrushHex: "#404040");
+                statusBrushHex: "#F1EEE9",
+                statusTextBrushHex: "#46423A");
         }
     }
 }

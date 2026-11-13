@@ -81,7 +81,7 @@ namespace Cat5201
             miRename.Click += (_, __) => BeginInlineRename(item);
 
             var miDelete = new MenuItem { Header = UiLanguage.P("刪除", "Delete"), Style = miStyle };
-            miDelete.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F")!);
+            miDelete.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C14141")!);
             miDelete.Click += (_, __) => DeleteFile(item.FullPath);
 
             var sep = new Separator { Style = sepStyle };

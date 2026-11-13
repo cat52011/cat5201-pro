@@ -42,20 +42,22 @@ namespace Cat5201
                 Topmost = true;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-                Width = 520;
-                Height = 220;
+                Width = 552;    // 含四周 16px 的陰影留白
+                Height = 252;
 
                 var bg = TryGetBrush("NodeMenuBg", Colors.White);
-                var border = TryGetBrush("NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#D6D6D6")!);
-                var text = TryGetBrush("NodeMenuText", (Color)ColorConverter.ConvertFromString("#222222")!);
+                var border = TryGetBrush("NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#DBD7D1")!);
+                var text = TryGetBrush("NodeMenuText", (Color)ColorConverter.ConvertFromString("#26231E")!);
 
                 var outer = new Border
                 {
                     Background = bg,
                     BorderBrush = border,
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(16),
-                    Padding = new Thickness(18),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(26, 22, 22, 20),
+                    Margin = new Thickness(16),
+                    Effect = DialogChrome.CardShadow(),
                     SnapsToDevicePixels = true
                 };
 
@@ -78,8 +80,8 @@ namespace Cat5201
                 {
                     Text = title,
                     Foreground = text,
-                    FontSize = 13,
-                    FontWeight = FontWeights.SemiBold,
+                    FontSize = 18,
+                    FontFamily = new FontFamily(DialogChrome.SerifFamily),
                     Margin = new Thickness(0, 0, 0, 10)
                 };
                 Grid.SetRow(titleText, 0);
@@ -96,7 +98,8 @@ namespace Cat5201
                 _valueText = new TextBlock
                 {
                     Foreground = text,
-                    FontSize = 14,
+                    FontSize = 26,
+                    FontFamily = new FontFamily(DialogChrome.SerifFamily),
                     Text = ((int)Math.Round(initialValue)).ToString(CultureInfo.InvariantCulture),
                     Margin = new Thickness(0, 0, 0, 10),
                     HorizontalAlignment = HorizontalAlignment.Left
@@ -133,7 +136,7 @@ namespace Cat5201
                     Margin = new Thickness(0, 12, 0, 0)
                 };
 
-                var cancel = CreateDialogButton(UiLanguage.P("取消", "Cancel"), text);
+                var cancel = DialogChrome.Secondary(UiLanguage.P("取消", "Cancel"));
                 cancel.IsCancel = true;
                 cancel.Margin = new Thickness(0, 0, 8, 0);
                 cancel.Click += (_, __) =>
@@ -142,7 +145,7 @@ namespace Cat5201
                     Close();
                 };
 
-                var ok = CreateDialogButton(UiLanguage.P("確定", "OK"), text);
+                var ok = DialogChrome.Primary(UiLanguage.P("確定", "OK"));
                 ok.IsDefault = true;
                 ok.Click += (_, __) =>
                 {
@@ -269,9 +272,9 @@ namespace Cat5201
 
             _tempPath = new Path
             {
-                Stroke = Brushes.DimGray,
-                StrokeThickness = 3,
-                StrokeDashArray = new DoubleCollection { 4, 4 },
+                Stroke = new SolidColorBrush(Color.FromRgb(0xA8, 0x9A, 0x86)),
+                StrokeThickness = 1.6,
+                StrokeDashArray = new DoubleCollection { 5, 4 },
                 IsHitTestVisible = false
             };
 
@@ -306,8 +309,8 @@ namespace Cat5201
             bool overTarget = _parent != null &&
                               _parent.CanConnectNodes(this, _parent.FindNodeAtCanvasPoint(current, this));
             _tempPath.Stroke = overTarget
-                ? (Brush)new BrushConverter().ConvertFromString("#5B6CFF")!
-                : Brushes.DimGray;
+                ? (Brush)new BrushConverter().ConvertFromString("#9C7A54")!
+                : new SolidColorBrush(Color.FromRgb(0xA8, 0x9A, 0x86));
         }
 
         private void Corner_DragCompleted(object sender, DragCompletedEventArgs e)

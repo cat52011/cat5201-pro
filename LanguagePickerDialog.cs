@@ -32,11 +32,13 @@ namespace Cat5201
 
             var card = new Border
             {
-                Background = Brushes.White,
-                CornerRadius = new CornerRadius(16),
+                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(4),
                 Padding = new Thickness(26, 22, 26, 22),
                 Margin = new Thickness(14),
-                Effect = new DropShadowEffect { Color = Colors.Black, Opacity = 0.20, BlurRadius = 26, ShadowDepth = 4 },
+                Effect = new DropShadowEffect { Color = Color.FromRgb(0x2A, 0x20, 0x19), Opacity = 0.15, BlurRadius = 26, ShadowDepth = 4 },
             };
             card.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
 
@@ -44,15 +46,15 @@ namespace Cat5201
             root.Children.Add(new TextBlock
             {
                 Text = "選擇語言 · Choose your language",
-                FontSize = 18, FontWeight = FontWeights.Bold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x1A, 0x1A, 0x1E)),
+                FontSize = 21, FontWeight = FontWeights.Normal, FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18)),
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock
             {
                 Text = "之後可以在 設定 → 個人化 → 語言 更改。\nYou can change this later in Settings → Personal → Language.",
                 FontSize = 12, LineHeight = 18,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x8A, 0x8A, 0x90)),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x90, 0x80)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 18),
             });
@@ -77,9 +79,9 @@ namespace Cat5201
         private Button MakeChoice(string title, string subtitle, string code)
         {
             bool suggested = code == SelectedCode;
-            var bg = suggested ? Color.FromRgb(0x11, 0x11, 0x11) : Color.FromRgb(0xF1, 0xF1, 0xF3);
-            var fg = suggested ? Colors.White : Color.FromRgb(0x22, 0x22, 0x22);
-            var sub = suggested ? Color.FromRgb(0xB8, 0xB8, 0xBE) : Color.FromRgb(0x8A, 0x8A, 0x90);
+            var bg = suggested ? Color.FromRgb(0x2A, 0x20, 0x19) : Color.FromRgb(0xF5, 0xF3, 0xEF);
+            var fg = suggested ? Colors.White : Color.FromRgb(0x26, 0x23, 0x1E);
+            var sub = suggested ? Color.FromRgb(0xC2, 0xBD, 0xB4) : Color.FromRgb(0x9A, 0x90, 0x80);
 
             var content = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             content.Children.Add(new TextBlock
@@ -106,7 +108,7 @@ namespace Cat5201
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
             { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(12));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
             presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);

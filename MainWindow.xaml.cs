@@ -1273,8 +1273,10 @@ namespace Cat5201
         {
             var path = new PathShape
             {
-                Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#ADADAD")!,
-                StrokeThickness = 18,
+                Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#BDAF9A")!,
+                StrokeThickness = 1.6,
+                StrokeStartLineCap = PenLineCap.Round,
+                StrokeEndLineCap = PenLineCap.Round,
                 // 看得到的那條線不收滑鼠事件：流動時它是虛線，空隙點不到。
                 IsHitTestVisible = false
             };
@@ -1332,8 +1334,8 @@ namespace Cat5201
             if (conn?.HitPath == null) return;
 
             conn.HitPath.ToolTip = conn.FlowMode
-                ? UiLanguage.P("流動連線（藍色虛線）\n上游跑完會自動帶著結果往下游跑；匯流節點會等所有上游都完成。\n右鍵：改回一般連線", "Flow link (blue dashed)\nWhen the upstream finishes, its result flows downstream automatically; merge nodes wait for every upstream.\nRight-click: switch back to a normal link")
-                : UiLanguage.P("一般連線（灰線）\n只把上游內容當背景，不會自動往下跑。\n右鍵：改成流動連線", "Normal link (gray)\nUpstream content is only used as background and doesn't run downstream automatically.\nRight-click: switch to a flow link");
+                ? UiLanguage.P("流動連線（駝色虛線）\n上游跑完會自動帶著結果往下游跑；匯流節點會等所有上游都完成。\n右鍵：改回一般連線", "Flow link (tan dashed)\nWhen the upstream finishes, its result flows downstream automatically; merge nodes wait for every upstream.\nRight-click: switch back to a normal link")
+                : UiLanguage.P("一般連線（細實線）\n只把上游內容當背景，不會自動往下跑。\n右鍵：改成流動連線", "Normal link (solid)\nUpstream content is only used as background and doesn't run downstream automatically.\nRight-click: switch to a flow link");
         }
 
         // #4：依流動模式套用連接線外觀——流動時藍色虛線 + 上游→下游的行進動畫；否則回灰色實線。
@@ -1344,12 +1346,12 @@ namespace Cat5201
 
             if (conn.FlowMode)
             {
-                conn.Path.Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#2E6FE0")!;
-                conn.Path.StrokeDashArray = new DoubleCollection { 1.1, 1.1 };
+                conn.Path.Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#9C7A54")!;
+                conn.Path.StrokeDashArray = new DoubleCollection { 5, 4 };
 
                 var anim = new System.Windows.Media.Animation.DoubleAnimation
                 {
-                    From = 2.2,
+                    From = 9,
                     To = 0,
                     Duration = new Duration(TimeSpan.FromSeconds(0.7)),
                     RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
@@ -1361,7 +1363,7 @@ namespace Cat5201
                 conn.Path.BeginAnimation(PathShape.StrokeDashOffsetProperty, null);
                 conn.Path.StrokeDashOffset = 0;
                 conn.Path.StrokeDashArray = null;
-                conn.Path.Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#ADADAD")!;
+                conn.Path.Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#BDAF9A")!;
             }
         }
 

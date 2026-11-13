@@ -60,21 +60,23 @@ namespace Cat5201
                 Topmost = true;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-                Width = 360;
+                Width = 400;   // 含四周 16px 的陰影留白
                 SizeToContent = SizeToContent.Height;   // 依內容自動長高，避免長訊息被截斷
                 MaxHeight = 600;
 
                 var bg = TryGetBrush(resourceHost, "FileMenuBg", "NodeMenuBg", Colors.White);
-                var border = TryGetBrush(resourceHost, "FileMenuBorder", "NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#D6D6D6")!);
-                var text = TryGetBrush(resourceHost, "FileMenuText", "NodeMenuText", (Color)ColorConverter.ConvertFromString("#222222")!);
+                var border = TryGetBrush(resourceHost, "FileMenuBorder", "NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#DBD7D1")!);
+                var text = TryGetBrush(resourceHost, "FileMenuText", "NodeMenuText", (Color)ColorConverter.ConvertFromString("#26231E")!);
 
                 var outer = new Border
                 {
                     Background = bg,
                     BorderBrush = border,
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(12),
-                    Padding = new Thickness(12),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(26, 22, 22, 20),
+                    Margin = new Thickness(16),
+                    Effect = DialogChrome.CardShadow(),
                     SnapsToDevicePixels = true
                 };
 
@@ -95,9 +97,10 @@ namespace Cat5201
                 {
                     Text = title,
                     Foreground = text,
-                    FontSize = 13,
-                    FontWeight = FontWeights.SemiBold,
-                    Margin = new Thickness(0, 0, 0, 8)
+                    FontSize = 18,
+                    FontWeight = FontWeights.Normal,
+                    FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
+                    Margin = new Thickness(0, 2, 0, 10)
                 };
                 Grid.SetRow(titleText, 0);
                 root.Children.Add(titleText);
@@ -107,9 +110,11 @@ namespace Cat5201
                     Text = message,
                     Foreground = text,
                     FontSize = 13,
+                    LineHeight = 21,
+                    Opacity = 0.82,
                     TextWrapping = TextWrapping.Wrap,
-                    TextAlignment = TextAlignment.Center,
-                    HorizontalAlignment = HorizontalAlignment.Center,
+                    TextAlignment = TextAlignment.Left,
+                    HorizontalAlignment = HorizontalAlignment.Left,
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetRow(msgText, 1);
@@ -119,12 +124,12 @@ namespace Cat5201
                 {
                     Orientation = Orientation.Horizontal,
                     HorizontalAlignment = HorizontalAlignment.Right,
-                    Margin = new Thickness(0, 12, 0, 0)
+                    Margin = new Thickness(0, 22, 0, 0)
                 };
 
                 if (!string.IsNullOrEmpty(cancelText))
                 {
-                    var cancel = CreateMenuButton(cancelText, text);
+                    var cancel = DialogChrome.Secondary(cancelText);
                     cancel.IsCancel = true;
                     cancel.Margin = new Thickness(0, 0, 8, 0);
                     cancel.Click += (_, __) => { DialogResult = false; Close(); };
@@ -132,9 +137,9 @@ namespace Cat5201
                 }
 
                 var confirmBrush = danger
-                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D32F2F")!)
+                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C14141")!)
                     : text;
-                var confirm = CreateMenuButton(confirmText, confirmBrush);
+                var confirm = danger ? DialogChrome.Danger(confirmText) : DialogChrome.Primary(confirmText);
                 confirm.IsDefault = true;
                 confirm.Click += (_, __) => { DialogResult = true; Close(); };
                 btnPanel.Children.Add(confirm);

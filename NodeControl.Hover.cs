@@ -44,7 +44,7 @@ namespace Cat5201
                     BlurRadius = 0,
                     ShadowDepth = 0,
                     Opacity = 0,
-                    Color = Color.FromRgb(80, 120, 255)
+                    Color = Color.FromRgb(0xA8, 0x89, 0x62)
                 };
             }
 

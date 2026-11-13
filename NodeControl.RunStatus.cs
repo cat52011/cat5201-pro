@@ -34,11 +34,11 @@ namespace Cat5201
             {
                 NodeBorder.BorderBrush = status switch
                 {
-                    NodeRunStatus.Running => new SolidColorBrush(Color.FromRgb(0x1E, 0x73, 0xE6)), // 藍：執行中
-                    NodeRunStatus.Success => new SolidColorBrush(Color.FromRgb(0x2E, 0x9E, 0x5B)), // 綠：成功
-                    NodeRunStatus.Failed => new SolidColorBrush(Color.FromRgb(0xD1, 0x43, 0x43)),  // 紅：失敗
-                    NodeRunStatus.Waiting => new SolidColorBrush(Color.FromRgb(0xE0, 0x92, 0x2B)), // 琥珀：等待上游
-                    _ => new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00)),                      // 黑：閒置
+                    NodeRunStatus.Running => new SolidColorBrush(Color.FromRgb(0x9C, 0x7A, 0x54)), // 藍：執行中
+                    NodeRunStatus.Success => new SolidColorBrush(Color.FromRgb(0x43, 0x89, 0x5F)), // 綠：成功
+                    NodeRunStatus.Failed => new SolidColorBrush(Color.FromRgb(0xC1, 0x53, 0x53)),  // 紅：失敗
+                    NodeRunStatus.Waiting => new SolidColorBrush(Color.FromRgb(0xD5, 0x90, 0x36)), // 琥珀：等待上游
+                    _ => new SolidColorBrush(Color.FromRgb(0xC4, 0xB6, 0xA1)),                      // 黑：閒置
                 };
             }
 
@@ -54,7 +54,7 @@ namespace Cat5201
                     if (StatusText != null)
                     {
                         StatusText.Text = "";
-                        StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0x9E, 0x9E, 0x9E));
+                        StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0xA9, 0xA1, 0x93));
                     }
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Collapsed;
                     // 成功的綠框只短暫提示，之後回到黑框，避免畫布上一片綠。
@@ -65,7 +65,7 @@ namespace Cat5201
                     if (StatusText != null)
                     {
                         StatusText.Text = string.IsNullOrWhiteSpace(detail) ? UiLanguage.P("執行失敗", "Run failed") : detail;
-                        StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0xC0, 0x39, 0x2B));
+                        StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0xB0, 0x46, 0x3B));
                     }
                     if (StatusFooter != null) StatusFooter.Visibility = Visibility.Visible;
                     break;
@@ -110,7 +110,7 @@ namespace Cat5201
                 StopStatusRevertTimer();
                 // 仍維持在成功狀態才回復黑框（避免覆蓋後續的新執行 / 失敗）。
                 if (_runStatus == NodeRunStatus.Success && NodeBorder != null)
-                    NodeBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0x00, 0x00, 0x00));
+                    NodeBorder.BorderBrush = new SolidColorBrush(Color.FromRgb(0xC4, 0xB6, 0xA1));
             };
             _statusRevertTimer.Start();
         }
