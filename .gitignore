@@ -28,3 +28,6 @@ publish/
 
 # Graduation project report (docx + generator script), local only
 /project-report/
+
+# Local-only instructions for the coding assistant
+/CLAUDE.md

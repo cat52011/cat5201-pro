@@ -3,7 +3,7 @@
 # 產出：publish\win-x64\cat5201.exe —— 自含式單一執行檔，目標機器**不需安裝 .NET**，複製即用。
 #
 # 參數說明：
-#   --self-contained true      內含 .NET 8 + WPF + ASP.NET Core 執行階段（手機鏡像需要），體積較大但零依賴
+#   --self-contained true      內含 .NET 10 + WPF + ASP.NET Core 執行階段（手機鏡像需要），體積較大但零依賴
 #   -p:PublishSingleFile=true  打成單一 exe（原生 DLL 首次啟動自解壓）
 #   -p:IncludeNativeLibrariesForSelfExtract=true  WebView2 / QuestPDF 等原生庫一併內嵌
 

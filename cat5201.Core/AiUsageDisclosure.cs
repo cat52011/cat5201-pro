@@ -33,8 +33,9 @@ namespace Cat5201
                 sb.AppendLine($"- 參與的模型：{string.Join("、", models)}");
             double total = records.Sum(r => r.UsdCost);
             if (records.Count > 0)
-                sb.AppendLine($"- 總花費：US${total:0.000}（約 NT${total * TwdPerUsd:0}），共 {records.Count} 次呼叫" +
-                              (records.Any(r => !r.IsActual) ? "；標示「估算」的是依字數估的，其餘是服務商回報的實際用量" : ""));
+                sb.AppendLine($"- 總花費：US${total:0.000}（約 NT${total * TwdPerUsd:0}），共 {records.Count} 次呼叫。" +
+                              "金額是用量乘上程式內建的價目表算出來的，不是服務商的帳單金額，請以帳單為準" +
+                              (records.Any(r => !r.IsActual) ? "；用量標示「估算」的是依字數估的，其餘是服務商回報的用量" : ""));
             sb.AppendLine();
 
             string request = (userRequest ?? "").Trim();
@@ -58,9 +59,10 @@ namespace Cat5201
                 sb.AppendLine("（這次沒有記到逐筆帳目。）");
             else
             {
-                sb.AppendLine("| 時間 | 步驟 | 模型或服務 | 用量 | 費用（US$） |").AppendLine("|---|---|---|---|---|");
+                // 「估算」只描述用量從哪來，所以標在用量欄；金額一律是依價目表換算（見表頭）。
+                sb.AppendLine("| 時間 | 步驟 | 模型或服務 | 用量 | 費用（US$，依價目表換算） |").AppendLine("|---|---|---|---|---|");
                 foreach (var r in records)
-                    sb.AppendLine($"| {r.AtUtc.ToLocalTime():HH:mm:ss} | {Cell(r.Purpose)} | {Cell(Name(r.ModelId))} | {Cell(Usage(r))} | {r.UsdCost:0.0000}{(r.IsActual ? "" : "（估算）")} |");
+                    sb.AppendLine($"| {r.AtUtc.ToLocalTime():HH:mm:ss} | {Cell(r.Purpose)} | {Cell(Name(r.ModelId))} | {Cell(Usage(r))}{(r.IsActual ? "" : "（估算）")} | {r.UsdCost:0.0000} |");
                 sb.AppendLine($"| | **合計** | | | **{total:0.0000}** |");
                 sb.AppendLine();
 

@@ -88,7 +88,8 @@ namespace Cat5201
 判斷規則：
 
 【Research】
-- 查資料 / 最新資訊 / 比較 / 分析
+- 需要查外部或最新的資料才能回答：時事、價格、天氣、最新數據、需要來源佐證的比較
+- 只是要求「做一份簡報／報告／表格」或用一般知識就能回答的介紹與分析，不算 Research，歸 Chat
 → pplx-sonar
 
 【Deep Research】
@@ -101,11 +102,11 @@ namespace Cat5201
 
 【Code】
 - 程式 / 架構 / debug
-→ claude-opus-5
+→ claude-opus-5-5
 
 【Rewrite / Summarize】
 - 改寫 / 潤稿 / 精簡
-→ claude-sonnet-5
+→ claude-sonnet-5-5
 
 【Chat】
 - 一般對話

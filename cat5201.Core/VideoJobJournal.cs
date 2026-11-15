@@ -53,11 +53,11 @@ namespace Cat5201
                 _filePath = Path.Combine(dir, "_video_jobs.json");
                 try
                 {
-                    string? json = AtomicFile.ReadAllTextWithFallback(_filePath);
                     // 信封讀得懂舊的裸陣列（schema 0），升級不會讓既有任務紀錄消失。
-                    _jobs = string.IsNullOrWhiteSpace(json)
-                        ? new List<VideoJob>()
-                        : (SchemaEnvelope.Read<List<VideoJob>>(json).Data ?? new List<VideoJob>());
+                    // 主檔毀損時改讀 .bak：紀錄消失＝已付費的影片撈不回來。
+                    _jobs = AtomicFile.LoadWithFallback(_filePath,
+                                json => SchemaEnvelope.Read<List<VideoJob>>(json).Data, "VideoJobs")
+                            ?? new List<VideoJob>();
                 }
                 catch (Exception ex)
                 {

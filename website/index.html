@@ -1,0 +1,336 @@
+<!doctype html>
+<html lang="zh-Hant" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cat5201-pro｜看得見的 AI</title>
+<meta name="description" content="cat5201-pro 是 Windows 上的 AI 工作台。每一次執行都留下紀錄：誰寫的、查過什麼、花了多少。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Gloock&family=Noto+Serif+TC:wght@400;600;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<header class="mast">
+  <a class="wordmark" href="#top">cat5201<span>-pro</span></a>
+  <nav class="mast-nav" aria-label="主要章節">
+    <a href="#record"><span class="zh">來歷</span><span class="en">The record</span></a>
+    <a href="#flow"><span class="zh">流程</span><span class="en">Flows</span></a>
+    <a href="#output"><span class="zh">成品</span><span class="en">Deliverables</span></a>
+    <a href="#ledger"><span class="zh">帳</span><span class="en">The ledger</span></a>
+    <a href="#get"><span class="zh">下載</span><span class="en">Download</span></a>
+  </nav>
+  <div class="mast-side">
+    <button class="lang" type="button" id="langBtn" aria-label="Switch language">
+      <span class="zh">EN</span><span class="en">中文</span>
+    </button>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- 封面 -->
+<section class="cover">
+  <img class="cover-plate" src="assets/img/hero.jpg" width="1536" height="1024" alt=""
+       fetchpriority="high">
+  <div class="cover-copy">
+    <h1>
+      <span class="zh">看得見<br>的 AI</span>
+      <span class="en">AI you<br>can see.</span>
+    </h1>
+    <p class="cover-sub">
+      <span class="zh">每一個答案，都有來歷。</span>
+      <span class="en">Every answer comes with its record.</span>
+    </p>
+    <p class="cover-lede">
+      <span class="zh">cat5201-pro 是 Windows 上的 AI 工作台。它回答問題、做簡報、寫報告，然後把這一趟是誰寫的、查過什麼、花了多少，一筆一筆留在畫布上。</span>
+      <span class="en">cat5201-pro is an AI workbench for Windows. It answers questions, builds decks and writes reports, then leaves on the canvas who wrote it, what was looked up and what it cost.</span>
+    </p>
+    <div class="actions">
+      <a class="btn" href="https://github.com/cat52011/cat5201-pro/releases">
+        <span class="zh">下載 Windows 版</span><span class="en">Download for Windows</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4 7.5 8 11.5 12 7.5M3 14h10"/></svg>
+      </a>
+      <a class="textlink" href="#record">
+        <span class="zh">看一個答案的來歷</span><span class="en">See one answer’s record</span>
+      </a>
+    </div>
+    <p class="cover-note">
+      <span class="zh">v1.9.4　Windows 10／11　畢業專題</span>
+      <span class="en">v1.9.4 &nbsp; Windows 10 / 11 &nbsp; Graduation project</span>
+    </p>
+  </div>
+</section>
+
+<!-- 三個問題 -->
+<section class="night" aria-labelledby="q-title">
+  <img class="night-plate" src="assets/img/night.jpg" width="1536" height="1024" alt="" loading="lazy">
+  <div class="night-copy">
+    <h2 id="q-title" class="questions">
+      <span class="q"><span class="zh">這個答案，是誰寫的？</span><span class="en">Who wrote this answer?</span></span>
+      <span class="q"><span class="zh">它查過什麼？</span><span class="en">What did it look up?</span></span>
+      <span class="q"><span class="zh">花了多少？</span><span class="en">What did it cost?</span></span>
+    </h2>
+    <p>
+      <span class="zh">你每天都在問 AI 問題。但這三件事，它從來沒有告訴過你。蓋子關著，你只拿得到最後那張紙條。</span>
+      <span class="en">You ask AI questions every day. It has never told you these three things. The lid stays shut, and all you get is the slip that comes out.</span>
+    </p>
+  </div>
+</section>
+
+<!-- 一個答案的來歷 -->
+<section class="record" id="record">
+  <div class="record-head">
+    <h2>
+      <span class="zh">一個答案<br>的來歷</span>
+      <span class="en">The record<br>behind one answer</span>
+    </h2>
+    <div class="prose">
+      <p>
+        <span class="zh">在畫布上點兩下，長出一張節點卡，問它一個問題。它先判斷這是什麼任務，再決定交給哪個模型。理由、來源、token 數與費用，都寫在右上角的決策窗裡。</span>
+        <span class="en">Double-click the canvas, a node appears, and you ask. It first decides what kind of task this is, then which model should take it. The reason, the sources, the token count and the cost are all written in the decision panel.</span>
+      </p>
+      <p class="pull">
+        <span class="zh">你不必相信它。你可以檢查它。</span>
+        <span class="en">You don’t have to trust it. You can check it.</span>
+      </p>
+    </div>
+  </div>
+
+  <div class="demo" id="demo" data-state="done">
+    <article class="node" aria-live="polite">
+      <i class="pin pin-l"></i><i class="pin pin-r"></i>
+      <p class="node-q">
+        <span class="zh">東京這週末會下雨嗎？</span>
+        <span class="en">Will it rain in Tokyo this weekend?</span>
+      </p>
+      <p class="chip">Perplexity Sonar <span>+</span> GPT-5.6 Sol</p>
+      <div class="node-a">
+        <p class="ln"><b><span class="zh">下雨機率偏低，整體不太像會有明顯降雨。</span><span class="en">Rain is unlikely; no significant rainfall expected.</span></b></p>
+        <p class="ln"><span class="zh">11 月 7 日（六）：晴到多雲，降雨機率約 1%～22%。</span><span class="en">Sat 7 Nov: clear to partly cloudy, 1–22% chance of rain.</span></p>
+        <p class="ln"><span class="zh">11 月 8 日（日）：資料未涵蓋當日，無法可靠判斷。</span><span class="en">Sun 8 Nov: the data doesn’t cover the day; no reliable call.</span></p>
+      </div>
+      <button class="btn btn-small" type="button" id="replay">
+        <span class="zh">重新送出</span><span class="en">Send again</span>
+      </button>
+    </article>
+
+    <div class="tape-wrap">
+      <div class="tape" role="group" aria-label="決策紀錄">
+        <p class="tape-title"><span class="zh">決策紀錄</span><span class="en">DECISION RECORD</span></p>
+        <dl>
+          <div class="row"><dt><span class="zh">模式</span><span class="en">Mode</span></dt><dd>Auto</dd></div>
+          <div class="row"><dt><span class="zh">任務</span><span class="en">Task</span></dt><dd>Research<small><span class="zh">判斷分數 0.92</span><span class="en">score 0.92</span></small></dd></div>
+          <div class="row"><dt><span class="zh">模型</span><span class="en">Models</span></dt><dd>Perplexity Sonar<br>GPT-5.6 Sol</dd></div>
+          <div class="row"><dt><span class="zh">原因</span><span class="en">Why</span></dt><dd class="why"><span class="zh">偵測到查證與搜尋需求，交給研究代理。由 Perplexity Sonar 與 GPT-5.6 Sol 回覆。</span><span class="en">Needs lookup and verification, so it goes to the research agent. Perplexity Sonar and GPT-5.6 Sol answer.</span></dd></div>
+          <div class="row"><dt><span class="zh">查證</span><span class="en">Checked</span></dt><dd><span class="zh">已核對事實 12 項</span><span class="en">12 facts verified</span></dd></div>
+          <div class="row"><dt><span class="zh">耗時</span><span class="en">Time</span></dt><dd><span class="zh">1 分 36 秒</span><span class="en">1 min 36 s</span></dd></div>
+          <div class="row total"><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd>NT$ 2.84<sup>＊</sup></dd></div>
+        </dl>
+        <p class="tape-foot">
+          <span class="zh">＊金額為示意。其餘欄位取自程式的實際畫面。</span>
+          <span class="en">＊Cost is illustrative. Other fields are taken from the real app.</span>
+        </p>
+      </div>
+    </div>
+
+    <img class="spot spot-check" src="assets/img/check.jpg" width="1024" height="1024" alt="" loading="lazy">
+  </div>
+
+  <figure class="shot">
+    <img src="assets/app/canvas.png" width="1564" height="820" loading="lazy"
+         alt="cat5201-pro 的畫布：兩張節點卡回答同一個問題，右上角是決策窗">
+    <figcaption>
+      <span class="zh">程式實際畫面。同一個問題交給兩個模型，右上角是決策窗。</span>
+      <span class="en">The real app. One question, two models, and the decision panel at top right.</span>
+    </figcaption>
+  </figure>
+</section>
+
+<!-- 流程與協作 -->
+<section class="flow" id="flow">
+  <div class="flow-top">
+    <h2>
+      <span class="zh">不只一個</span>
+      <span class="en">More than one</span>
+    </h2>
+    <img class="spot spot-duo" src="assets/img/duo.jpg" width="1536" height="1024" alt="" loading="lazy">
+  </div>
+
+  <div class="columns">
+    <article>
+      <h3><span class="zh">把提問連起來</span><span class="en">Chain your questions</span></h3>
+      <p>
+        <span class="zh">從節點角落的小圓點拉出一條線，就多一張下游的卡。在線上按右鍵，實線變成駝色虛線：上一步做完，下一步自己接著跑。</span>
+        <span class="en">Drag from the small ring on a node and a downstream card appears. Right-click the line and it turns into a dashed camel one: when the step above finishes, the next one runs by itself.</span>
+      </p>
+      <div class="chain" aria-hidden="true">
+        <div class="mini"><span class="zh">查資料</span><span class="en">Research</span></div>
+        <svg class="wire" viewBox="0 0 80 24" preserveAspectRatio="none"><path d="M0 12H80"/></svg>
+        <div class="mini"><span class="zh">找出矛盾</span><span class="en">Find conflicts</span><code>{{input}}</code></div>
+        <svg class="wire" viewBox="0 0 80 24" preserveAspectRatio="none"><path d="M0 12H80"/></svg>
+        <div class="mini"><span class="zh">寫成報告</span><span class="en">Write it up</span><code>{{input}}</code></div>
+      </div>
+      <p class="aside">
+        <span class="zh">下游輸入框裡的 <code>{{input}}</code> 會換成上游的回答。兩條以上的虛線接到同一張卡時，等所有上游都完成才開始。</span>
+        <span class="en"><code>{{input}}</code> in a downstream prompt is replaced by the upstream answer. When several dashed lines meet at one card, it waits for all of them.</span>
+      </p>
+    </article>
+
+    <article>
+      <h3><span class="zh">讓模型互相檢查</span><span class="en">Let models check each other</span></h3>
+      <p>
+        <span class="zh">重要的問題，勾選 2 到 4 個模型。它們先各自回答，再讀彼此的答案。哪裡不一致，分開列給你看。</span>
+        <span class="en">For questions that matter, tick two to four models. Each answers alone, then reads the others. Where they disagree, you get it listed separately.</span>
+      </p>
+      <ol class="stages">
+        <li><span class="zh">各自的回答</span><span class="en">Each model’s answer</span></li>
+        <li><span class="zh">交叉檢視</span><span class="en">Cross-review</span></li>
+        <li><span class="zh">共識與分歧</span><span class="en">Agreement and dispute</span></li>
+      </ol>
+      <p class="aside">
+        <span class="zh">呼叫次數是模型數的兩倍：兩個模型就是四次呼叫，約 NT$3～5。</span>
+        <span class="en">Calls are twice the number of models: two models means four calls, about NT$3–5.</span>
+      </p>
+    </article>
+  </div>
+</section>
+
+<!-- 成品 -->
+<section class="output" id="output">
+  <img class="spot spot-press" src="assets/img/press.jpg" width="1024" height="1024" alt="" loading="lazy">
+  <div class="output-copy">
+    <h2>
+      <span class="zh">交得出東西</span>
+      <span class="en">It hands in real work</span>
+    </h2>
+    <p class="prose-lede">
+      <span class="zh">你要的如果是成品，直接說。做完的檔案放在節點底下，點一下就能預覽。</span>
+      <span class="en">If what you want is a finished file, just say so. It lands under the node, one click to preview.</span>
+    </p>
+    <ul class="kinds">
+      <li><b>PowerPoint</b><span class="zh">簡報</span><span class="en">Decks</span></li>
+      <li><b>Word</b><span class="zh">書面報告</span><span class="en">Reports</span></li>
+      <li><b>Excel</b><span class="zh">表格</span><span class="en">Spreadsheets</span></li>
+      <li><b>PDF</b><span class="zh">文件</span><span class="en">Documents</span></li>
+      <li><b>Code</b><span class="zh">程式碼</span><span class="en">Source files</span></li>
+      <li><b>Image</b><span class="zh">圖片</span><span class="en">Images</span></li>
+      <li><b>Video</b><span class="zh">影片</span><span class="en">Video</span></li>
+    </ul>
+  </div>
+
+  <div class="trio">
+    <article>
+      <h3><span class="zh">哪一頁不滿意，只改那一頁</span><span class="en">Redo only the page you dislike</span></h3>
+      <p><span class="zh">在預覽下方寫「第 3 頁改成比較表」，只有第 3 頁換掉。上一版、下一版隨時切換，不用重新生成。</span><span class="en">Type “make page 3 a comparison table” under the preview and only page 3 changes. Step between versions without regenerating.</span></p>
+    </article>
+    <article>
+      <h3><span class="zh">給它資料，它真的去算</span><span class="en">Give it data and it really computes</span></h3>
+      <p><span class="zh">附上 CSV 或 Excel，它在沙箱裡實際執行程式：讀完整資料、分析、繪圖。報告裡的數字來自執行結果，另附可以重跑的 <code>.py</code>。</span><span class="en">Attach a CSV or Excel file and it runs real code in a sandbox: reads all the data, analyses, plots. The numbers in the report come from that run, with a <code>.py</code> you can rerun.</span></p>
+    </article>
+    <article>
+      <h3><span class="zh">寫完，再請別人挑錯</span><span class="en">Then someone else checks it</span></h3>
+      <p><span class="zh">報告完成後，另開一次獨立呼叫來審查，Auto 模式由不同廠商的模型負責。它對照數字、表格與程式結果，另存一份審查清單，只列問題，不改你的報告。</span><span class="en">Once a report is done, a separate, independent call reviews it; in Auto mode that reviewer is a model from a different vendor. It compares the figures, tables and code output and saves a review list. It reports problems; it doesn’t touch your report.</span></p>
+    </article>
+    <figure class="dialog">
+      <img src="assets/app/confirm.png" width="472" height="299" loading="lazy" alt="確認框：簡報 12 頁約 NT$8.40，配圖 6 張約 NT$7.86">
+      <figcaption><span class="zh">動手之前，先給你看要花多少。</span><span class="en">Before it starts, it shows what it will cost.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 帳 -->
+<section class="ledger" id="ledger">
+  <img class="ledger-plate" src="assets/img/ledger.jpg" width="1536" height="1024" alt="" loading="lazy">
+  <div class="ledger-copy">
+    <h2><span class="zh">帳</span><span class="en">The ledger</span></h2>
+    <p class="prose-lede">
+      <span class="zh">每一筆，當下入帳。快超過上限，它先停下來問你。金鑰只留在你的電腦裡。</span>
+      <span class="en">Every call is booked the moment it happens. Near your limit, it stops and asks. Your keys never leave your computer.</span>
+    </p>
+
+    <table class="prices">
+      <caption><span class="zh">實測約略花費</span><span class="en">Measured, approximate cost</span></caption>
+      <tbody>
+        <tr><th scope="row"><span class="zh">一般問答</span><span class="en">A normal question</span></th><td><span class="zh">NT$1 以下</span><span class="en">under NT$1</span></td></tr>
+        <tr><th scope="row"><span class="zh">協作模式，兩個模型</span><span class="en">Two models cross-checking</span></th><td>NT$3–5</td></tr>
+        <tr><th scope="row"><span class="zh">3～5 頁簡報，快速版</span><span class="en">3–5 slide deck, quick mode</span></th><td><span class="zh">約 NT$2</span><span class="en">about NT$2</span></td></tr>
+        <tr><th scope="row"><span class="zh">5 頁簡報，最佳品質加配圖</span><span class="en">5 slides, best quality with images</span></th><td>NT$40–50</td></tr>
+        <tr><th scope="row"><span class="zh">附資料檔的分析報告</span><span class="en">Data analysis report</span></th><td>NT$20–25</td></tr>
+        <tr><th scope="row"><span class="zh">報告完成後的獨立審查</span><span class="en">Independent review of a report</span></th><td>NT$1–12</td></tr>
+      </tbody>
+    </table>
+
+    <ul class="guards">
+      <li><b><span class="zh">每日上限</span><span class="en">Daily limit</span></b><span class="zh">預設 NT$100。會超過時先問。</span><span class="en">NT$100 by default. It asks before going over.</span></li>
+      <li><b><span class="zh">確認框</span><span class="en">Confirm first</span></b><span class="zh">產檔之前列出檔案與費用。</span><span class="en">Files and cost are listed before anything is made.</span></li>
+      <li><b><span class="zh">金鑰</span><span class="en">Keys</span></b><span class="zh">以 Windows DPAPI 加密存在本機，不上傳。</span><span class="en">Encrypted with Windows DPAPI on your machine. Never uploaded.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 故事 -->
+<section class="story">
+  <blockquote>
+    <p class="story-big">
+      <span class="zh">看不見的東西，<br>沒有辦法改進。</span>
+      <span class="en">What you can’t see,<br>you can’t improve.</span>
+    </p>
+    <p class="story-body">
+      <span class="zh">為了知道錢花去哪裡，我把每一次呼叫都記了下來，累計 988 筆。也是靠這些紀錄，才發現有一次產一份文件花了 US$9.32，回頭把它壓到平均 US$1.03。</span>
+      <span class="en">To find out where the money went, I logged every single call: 988 of them. Those logs showed one document had cost US$9.32. I went back and brought the average down to US$1.03.</span>
+    </p>
+  </blockquote>
+</section>
+
+<!-- 下載 -->
+<section class="get" id="get">
+  <img class="get-plate" src="assets/img/close.jpg" width="1536" height="1024" alt="" loading="lazy">
+  <div class="get-copy">
+    <h2><span class="zh">打開來看</span><span class="en">Open it up</span></h2>
+    <ol class="steps">
+      <li><span class="zh">到 GitHub Releases 下載最新的 zip，完整解壓縮。</span><span class="en">Download the latest zip from GitHub Releases and extract all of it.</span></li>
+      <li><span class="zh">執行 <code>cat5201.exe</code>。不用另外安裝 .NET。</span><span class="en">Run <code>cat5201.exe</code>. No .NET install needed.</span></li>
+      <li><span class="zh">填一把自己的 API 金鑰。OpenAI、Anthropic、Google Gemini、Perplexity，有一把就能用。</span><span class="en">Enter one API key of your own. OpenAI, Anthropic, Google Gemini or Perplexity; one is enough.</span></li>
+    </ol>
+    <div class="actions">
+      <a class="btn" href="https://github.com/cat52011/cat5201-pro/releases">
+        <span class="zh">下載 Windows 版</span><span class="en">Download for Windows</span>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4 7.5 8 11.5 12 7.5M3 14h10"/></svg>
+      </a>
+      <a class="textlink" href="deck.html"><span class="zh">看專題簡報</span><span class="en">View the project deck</span></a>
+    </div>
+
+    <details class="limits">
+      <summary><span class="zh">下載前先知道的限制</span><span class="en">Limits to know before you download</span></summary>
+      <ul>
+        <li><span class="zh">只支援 Windows 10 或 11（64 位元）。</span><span class="en">Windows 10 or 11 (64-bit) only.</span></li>
+        <li><span class="zh">程式不附金鑰，呼叫費用由你自己的帳號支付。</span><span class="en">No keys are bundled; calls are billed to your own accounts.</span></li>
+        <li><span class="zh">「最佳品質」的簡報與報告約需 5 分鐘。</span><span class="en">“Best quality” decks and reports take about five minutes.</span></li>
+        <li><span class="zh">Gemini 無法即時搜尋，選用時改由其他模型查資料，並在答案最上方註明。</span><span class="en">Gemini can’t search live; another model does the lookup and the answer says so at the top.</span></li>
+        <li><span class="zh">手機鏡像走區網內未加密的 HTTP，只在信任的 Wi-Fi 上使用。</span><span class="en">Phone mirroring uses unencrypted HTTP on the local network; use it only on Wi-Fi you trust.</span></li>
+        <li><span class="zh">程式未經數位簽章，首次開啟要在 Windows 的提示上選「仍要執行」。</span><span class="en">The app is unsigned; on first launch choose “Run anyway” in the Windows prompt.</span></li>
+      </ul>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <a class="wordmark" href="#top">cat5201<span>-pro</span></a>
+  <p>
+    <span class="zh">畢業專題。本軟體不是開源軟體，著作權人保留一切權利；允許為評估、學術審查與面試展示檢視原始碼與執行程式。</span>
+    <span class="en">A graduation project. Not open source; all rights reserved. Viewing the source and running the app is permitted for evaluation, academic review and interviews.</span>
+  </p>
+  <p>
+    <span class="zh">插畫以 AI 生成，畫的是比喻，不是產品。程式畫面為實際截圖。</span>
+    <span class="en">Illustrations are AI-generated and show a metaphor, not the product. App images are real screenshots.</span>
+  </p>
+  <p><a href="https://github.com/cat52011/cat5201-pro">GitHub</a></p>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

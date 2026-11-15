@@ -389,7 +389,8 @@ namespace Cat5201
                     CreateCurve(anchor, "ThumbTR", created, "ThumbTL", flowMode: false); // 灰色實線（使用者要求）；上游注入不依賴 FlowMode
                 _ = created.RunCurrentTopTextAsync();          // fire-and-forget，立即回應手機（會自動注入上游輸出）
                 BuildAndPublishMirrorSnapshot();
-                AppLog.Info("MobileMirror", $"手機下指令建節點：{(text.Length > 40 ? text[..40] + "…" : text)}" +
+                // 只記長度，不記指令內容（日誌會進診斷檔）。
+                AppLog.Info("MobileMirror", $"手機下指令建節點（{text.Length} 字）" +
                                             (anchor != null ? UiLanguage.P("（已接為下游）", " (linked as downstream)") : ""));
                 return Task.FromResult(new MirrorCommandResult
                 {

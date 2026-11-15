@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="zh-Hant" data-lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#EEE8DC">
+<title>看得見的 AI</title>
+<meta name="description" content="Windows 上的 AI 工作台。每一次執行都留下紀錄：誰寫的、查過什麼、花了多少。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* 侘寂・陶器：灰米和紙、墨、陶土、苔綠。留白多、不對稱、四角圓角不一致、沒有框線。 */
+:root{
+  --bg:#EEE8DC; --card:#F8F4ED; --ink:#2B2723; --deep:#3A342E; --on-deep:#EEE8DC;
+  --muted:#6E665B; --faint:#978E81; --hair:rgba(43,39,35,.14);
+  --clay:#9A6F50; --moss:#5F6A4B; --rust:#93432F;
+  --r-card:10px 4px 12px 5px; --r-btn:4px 2px 5px 3px;
+  --shadow:0 1px 0 rgba(43,39,35,.05), 0 24px 44px -28px rgba(60,48,36,.45);
+  --serif:"Noto Serif TC","Songti TC",Georgia,PMingLiU,serif;
+  --sans:-apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;
+  --wrap:min(1080px, 100% - 48px);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.9;font-variant-numeric:tabular-nums;
+  background-color:var(--bg);
+  background-image:url("assets/img/paper.png");background-size:120px 120px}
+[data-lang="zh"] .en,[data-lang="en"] .zh{display:none}
+img{max-width:100%;height:auto;display:block}
+a{color:inherit}
+h1,h2,h3{font-family:var(--serif);font-weight:500;margin:0}
+p{margin:0}
+code{font-family:Consolas,"Courier New",monospace;font-size:.86em;background:rgba(43,39,35,.06);padding:2px 6px;border-radius:var(--r-btn)}
+.wrap{width:var(--wrap);margin-inline:auto}
+/* 墨線：兩端淡、中間濃 */
+.ink{height:1px;border:0;margin:0;background:linear-gradient(90deg,rgba(43,39,35,.04),rgba(43,39,35,.42) 16%,rgba(43,39,35,.22) 58%,rgba(43,39,35,.38) 84%,rgba(43,39,35,.06))}
+.kicker{font-family:var(--serif);font-size:13px;letter-spacing:.5em;color:var(--clay)}
+.lede{font-size:17px;color:#4A443D;max-width:34em}
+.note{font-size:13px;color:var(--muted)}
+
+/* 進場：慢慢浮出來 */
+.rise{opacity:0;transform:translateY(14px);transition:opacity 1.1s ease, transform 1.1s ease}
+.rise.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.rise{opacity:1;transform:none;transition:none} html{scroll-behavior:auto}}
+
+/* 頂列 */
+.mast{width:var(--wrap);margin-inline:auto;display:flex;align-items:baseline;justify-content:space-between;gap:24px;padding:30px 0 0}
+.mark{font-family:var(--serif);font-size:15px;letter-spacing:.42em;text-decoration:none}
+.mast nav{display:flex;gap:30px;font-size:13.5px;letter-spacing:.2em}
+.mast nav a{text-decoration:none;color:var(--muted);padding-bottom:4px;border-bottom:1px solid transparent;transition:color .3s,border-color .3s}
+.mast nav a:hover{color:var(--ink);border-color:var(--clay)}
+.lang{font:inherit;font-size:12.5px;letter-spacing:.2em;color:var(--muted);background:none;border:1px solid var(--hair);border-radius:var(--r-btn);padding:5px 12px;cursor:pointer}
+
+/* 按鈕 */
+.btn{display:inline-flex;align-items:center;gap:12px;font-size:15px;letter-spacing:.2em;text-decoration:none;
+  background:var(--deep);color:var(--on-deep);padding:15px 26px;border-radius:5px 3px 6px 2px;border:0;cursor:pointer;font-family:inherit;transition:background .3s}
+.btn:hover{background:var(--ink)}
+.btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.3}
+.btn.quiet{background:transparent;color:var(--ink);border:1px solid rgba(43,39,35,.2);padding:10px 18px;font-size:13.5px}
+.btn.quiet:hover{background:rgba(43,39,35,.05)}
+.link{font-size:15px;letter-spacing:.1em;text-decoration:none;border-bottom:1px solid rgba(43,39,35,.45);padding-bottom:3px}
+.link:hover{border-color:var(--clay);color:var(--clay)}
+.actions{display:flex;flex-wrap:wrap;align-items:center;gap:28px;margin-top:40px}
+
+/* 封面：直書標題＋一只陶色的圓 */
+.cover{position:relative;overflow:hidden}
+.cover .wrap{position:relative;min-height:min(84vh,820px);display:grid;grid-template-columns:1fr auto;gap:40px;align-items:end;padding:90px 0 110px}
+.moon{position:absolute;right:-9vw;top:6vh;width:min(46vw,620px);aspect-ratio:1;
+  border-radius:49% 51% 47% 53% / 53% 48% 52% 47%;
+  background:radial-gradient(circle at 36% 30%, #BE9C80 0%, #A47B5C 46%, #8C6247 100%);
+  opacity:.5}
+.cover-copy{position:relative;max-width:30em;padding-bottom:6px}
+.cover-copy .kicker{margin-bottom:26px}
+.cover h1{position:relative;font-size:clamp(58px,9.4vw,128px);line-height:1.22;letter-spacing:.14em;
+  writing-mode:vertical-rl;text-orientation:mixed;height:min(64vh,640px);justify-self:end;margin-right:4vw}
+.tcy{-webkit-text-combine:horizontal;text-combine-upright:all;letter-spacing:0}
+.cover h1 small{display:block;font-size:.2em;letter-spacing:.5em;color:var(--muted);margin-right:1.6em;padding-top:.4em}
+[data-lang="en"] .cover h1{writing-mode:horizontal-tb;height:auto;font-size:clamp(46px,7vw,92px);letter-spacing:.01em;line-height:1.1;align-self:center}
+[data-lang="en"] .cover h1 small{margin:18px 0 0;letter-spacing:.12em;font-size:.24em}
+
+/* 三個問題：深色 */
+.night{background:var(--deep);color:var(--on-deep);padding:150px 0}
+.night .wrap{display:grid;grid-template-columns:1.25fr 1fr;gap:70px;align-items:end}
+.questions{font-size:clamp(26px,3.5vw,44px);line-height:1.75;letter-spacing:.06em}
+.questions .q{display:block}
+.questions .q:nth-child(2){padding-left:1.6em;color:#D9CDB9}
+.questions .q:nth-child(3){padding-left:3.2em;color:#B9A88F}
+.night p{color:#C7BCAB;font-size:16px;max-width:24em}
+
+/* 章節通用 */
+.sec{padding:150px 0}
+.sec-head{display:grid;grid-template-columns:88px 1fr 1.15fr;gap:0 40px;align-items:start;margin-bottom:76px}
+.no{font-family:var(--serif);font-size:15px;color:var(--clay);letter-spacing:.3em;padding-top:16px}
+.sec-head h2{font-size:clamp(34px,4.6vw,58px);line-height:1.4;letter-spacing:.08em}
+.sec-head .prose{padding-top:16px;display:grid;gap:22px}
+.pull{font-family:var(--serif);font-size:21px;letter-spacing:.06em;color:var(--ink);padding-left:18px;border-left:1px solid var(--clay)}
+
+/* 陶器卡 */
+.pot{background:var(--card);border-radius:var(--r-card);box-shadow:var(--shadow);padding:34px 34px 30px}
+.pot.b{border-radius:5px 11px 4px 12px}
+.pot.c{border-radius:9px 5px 4px 11px}
+
+/* 示範：節點＋決策紀錄 */
+.demo{display:grid;grid-template-columns:1.1fr 1fr;gap:30px;align-items:start}
+.demo .tape{margin-top:54px}
+.node-q{font-family:var(--serif);font-size:23px;line-height:1.6;letter-spacing:.04em}
+.chip{font-size:12.5px;letter-spacing:.14em;color:var(--clay);margin:10px 0 22px}
+.chip span{color:var(--faint);margin:0 4px}
+.node-a{display:grid;gap:10px;padding:20px 0 26px;border-top:1px solid var(--hair);font-size:15px;color:#4A443D}
+.node-a b{font-weight:600;color:var(--ink)}
+.ln,.row{transition:opacity .9s ease}
+.wait{opacity:0}
+.tape-title{font-family:var(--serif);font-size:13px;letter-spacing:.5em;color:var(--clay);margin-bottom:14px}
+.tape dl{margin:0}
+.row{display:grid;grid-template-columns:5.2em 1fr;gap:14px;padding:12px 0;border-top:1px solid var(--hair);font-size:14.5px;line-height:1.75}
+.row dt{color:var(--faint);letter-spacing:.2em;font-size:13px;padding-top:1px}
+.row dd{margin:0}
+.row small{display:block;color:var(--muted);font-size:12.5px}
+.row.total dd{font-family:var(--serif);font-size:24px;letter-spacing:.04em}
+.row.total sup{font-size:12px;color:var(--faint)}
+.tape-foot{font-size:12px;color:var(--faint);margin-top:12px;line-height:1.7}
+.shot{margin:110px 0 0}
+.shot img{border-radius:var(--r-card);box-shadow:var(--shadow)}
+figcaption{font-size:13px;color:var(--muted);margin-top:18px;letter-spacing:.06em}
+
+/* 流程 */
+.columns{display:grid;grid-template-columns:1fr 1fr;gap:34px}
+.columns article:nth-child(2){margin-top:70px}
+.pot h3{font-size:23px;letter-spacing:.06em;line-height:1.6;margin-bottom:14px}
+.pot p:not([class]){font-size:15px;color:#4A443D}
+.aside{font-size:13.5px !important;color:var(--muted) !important;padding-top:18px;margin-top:22px;border-top:1px solid var(--hair)}
+.chain{display:flex;align-items:center;margin:28px 0 0}
+.mini{flex:none;font-family:var(--serif);font-size:14px;letter-spacing:.1em;padding:12px 14px;background:rgba(43,39,35,.05);border-radius:var(--r-btn);display:grid;gap:4px}
+.mini code{background:none;padding:0;color:var(--clay);font-size:11px}
+.wire{flex:1;height:1px;min-width:18px;background:repeating-linear-gradient(90deg,var(--clay) 0 5px,transparent 5px 10px)}
+.stages{list-style:none;margin:28px 0 0;padding:0;display:grid;gap:0;counter-reset:s}
+.stages li{counter-increment:s;display:flex;gap:18px;align-items:baseline;font-family:var(--serif);font-size:16px;letter-spacing:.1em;padding:11px 0;border-top:1px solid var(--hair)}
+.stages li:before{content:counter(s,cjk-ideographic);color:var(--clay);font-size:13px}
+
+/* 成品 */
+.kinds{list-style:none;padding:0;margin:0 0 90px;display:flex;flex-wrap:wrap;gap:0}
+.kinds li{flex:1 1 130px;padding:20px 0 4px;border-top:1px solid var(--hair);display:grid;gap:2px;font-size:13.5px;color:var(--muted)}
+.kinds b{font-family:var(--serif);font-weight:500;font-size:19px;color:var(--ink);letter-spacing:.04em}
+.shot.deck{margin:0 0 90px}
+.trio{display:grid;grid-template-columns:repeat(3,1fr);gap:26px;align-items:start}
+.trio article:nth-child(2){margin-top:44px}
+.trio article:nth-child(3){margin-top:88px}
+.trio h3{font-size:20px}
+.dialog{margin:90px 0 0;display:grid;grid-template-columns:auto 1fr;gap:34px;align-items:end}
+.dialog img{width:min(420px,100%);border-radius:var(--r-card);box-shadow:var(--shadow)}
+.dialog figcaption{font-family:var(--serif);font-size:19px;color:var(--ink);letter-spacing:.08em;margin:0 0 20px}
+
+/* 帳 */
+.ledger-grid{display:grid;grid-template-columns:1.3fr 1fr;gap:70px;align-items:start}
+.prices{width:100%;border-collapse:collapse}
+.prices caption{text-align:left;font-family:var(--serif);font-size:13px;letter-spacing:.5em;color:var(--clay);padding-bottom:16px}
+.prices th,.prices td{padding:17px 0;border-top:1px solid var(--hair);font-weight:400;text-align:left;font-size:15.5px}
+.prices td{text-align:right;font-family:var(--serif);font-size:18px;letter-spacing:.04em;white-space:nowrap}
+.prices tr:last-child th,.prices tr:last-child td{border-bottom:1px solid var(--hair)}
+.guards{list-style:none;margin:0;padding:0;display:grid;gap:26px}
+.guards li{display:grid;gap:4px;font-size:14.5px;color:#4A443D}
+.guards b{font-family:var(--serif);font-weight:500;font-size:18px;letter-spacing:.14em;color:var(--ink)}
+
+/* 故事 */
+.story{padding:170px 0;text-align:center}
+.story blockquote{margin:0 auto;width:min(760px,100% - 48px)}
+.story-big{font-family:var(--serif);font-size:clamp(30px,4.6vw,56px);line-height:1.7;letter-spacing:.14em}
+.story-mark{width:1px;height:70px;background:var(--clay);margin:44px auto;opacity:.7}
+.story-body{font-size:16px;color:#4A443D;max-width:32em;margin:0 auto;text-align:left}
+
+/* 下載：深色 */
+.get{background:var(--deep);color:var(--on-deep);padding:150px 0 130px}
+.get .wrap{display:grid;grid-template-columns:1fr 1.2fr;gap:70px;align-items:start}
+.get h2{font-size:clamp(40px,5.6vw,72px);letter-spacing:.14em;line-height:1.4}
+.get .no{color:#C9A483;padding:0 0 22px}
+.steps{list-style:none;margin:0;padding:0;counter-reset:s}
+.steps li{counter-increment:s;display:grid;grid-template-columns:44px 1fr;padding:18px 0;border-top:1px solid rgba(238,232,220,.16);color:#D9CDB9;font-size:15.5px}
+.steps li:before{content:counter(s,cjk-ideographic);font-family:var(--serif);color:#C9A483;letter-spacing:.2em}
+.steps code,.limits code{background:rgba(238,232,220,.1)}
+.get .btn{background:var(--on-deep);color:var(--ink)}
+.get .btn:hover{background:#fff}
+.get .link{border-color:rgba(238,232,220,.45)}
+.get .link:hover{color:#D9B691;border-color:#D9B691}
+.limits{margin-top:54px;font-size:13.5px;color:#B9A88F}
+.limits summary{cursor:pointer;letter-spacing:.14em;color:#D9CDB9}
+.limits ul{margin:16px 0 0;padding-left:1.2em;display:grid;gap:6px;line-height:1.8}
+
+/* 頁尾 */
+.colophon{width:var(--wrap);margin-inline:auto;padding:64px 0 80px;display:grid;gap:12px;font-size:12.5px;color:var(--muted);line-height:1.9}
+.colophon .mark{color:var(--ink);margin-bottom:10px}
+.colophon p{max-width:46em}
+
+@media (max-width:860px){
+  body{font-size:15.5px}
+  .mast{padding-top:22px}
+  .mast nav{display:none}
+  .cover .wrap{grid-template-columns:1fr;min-height:0;padding:56px 0 80px;gap:44px}
+  .cover h1{order:-1;height:auto;max-height:440px;justify-self:end;margin-right:2vw;font-size:clamp(52px,15vw,84px)}
+  [data-lang="en"] .cover h1{justify-self:start;margin:0}
+  .moon{width:78vw;right:-26vw;top:4vh}
+  .night,.sec,.get{padding:96px 0}
+  .story{padding:110px 0}
+  .night .wrap,.demo,.columns,.trio,.ledger-grid,.get .wrap,.dialog{grid-template-columns:1fr;gap:26px}
+  .questions .q:nth-child(2){padding-left:.9em}
+  .questions .q:nth-child(3){padding-left:1.8em}
+  .sec-head{grid-template-columns:1fr;gap:14px;margin-bottom:48px}
+  .no{padding-top:0}
+  .demo .tape,.columns article:nth-child(2),.trio article:nth-child(2),.trio article:nth-child(3){margin-top:0}
+  .pot{padding:26px 24px 24px}
+  .shot{margin-top:64px}
+  .kinds{margin-bottom:56px}
+  .kinds li{flex-basis:33%}
+  .dialog{margin-top:56px}
+  .chain{flex-wrap:wrap;gap:8px 0}
+  .ledger-grid{gap:56px}
+}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <a class="mark" href="#top"><span class="zh">看得見的 AI</span><span class="en">AI YOU CAN SEE</span></a>
+  <nav aria-label="主要章節">
+    <a href="#record"><span class="zh">來歷</span><span class="en">Record</span></a>
+    <a href="#flow"><span class="zh">流程</span><span class="en">Flows</span></a>
+    <a href="#output"><span class="zh">成品</span><span class="en">Work</span></a>
+    <a href="#ledger"><span class="zh">帳</span><span class="en">Ledger</span></a>
+    <a href="#get"><span class="zh">下載</span><span class="en">Download</span></a>
+  </nav>
+  <button class="lang" type="button" id="langBtn" aria-label="Switch language"><span class="zh">EN</span><span class="en">中文</span></button>
+</header>
+
+<main id="top">
+
+<section class="cover">
+  <div class="moon" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="cover-copy rise">
+      <p class="kicker"><span class="zh">Windows 上的 AI 工作台</span><span class="en">AN AI WORKBENCH FOR WINDOWS</span></p>
+      <p class="lede">
+        <span class="zh">它回答問題、做簡報、寫報告，然後把這一趟是誰寫的、查過什麼、花了多少，一筆一筆留在畫布上。</span>
+        <span class="en">It answers questions, builds decks and writes reports, then leaves on the canvas who wrote it, what was looked up and what it cost.</span>
+      </p>
+      <div class="actions">
+        <a class="btn" href="https://github.com/cat52011/cat5201-pro/releases">
+          <span class="zh">下載 Windows 版</span><span class="en">Download for Windows</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4 7.5 8 11.5 12 7.5M3 14h10"/></svg>
+        </a>
+        <a class="link" href="#record"><span class="zh">看一個答案的來歷</span><span class="en">See one answer’s record</span></a>
+      </div>
+      <p class="note" style="margin-top:34px"><span class="zh">v1.9.4　Windows 10／11　畢業專題</span><span class="en">v1.9.4 &nbsp; Windows 10 / 11 &nbsp; Graduation project</span></p>
+    </div>
+    <h1 class="rise">
+      <span class="zh">看得見<br>的 <span class="tcy">AI</span><small>每一個答案，都有來歷。</small></span>
+      <span class="en">AI you<br>can see.<small>Every answer comes with its record.</small></span>
+    </h1>
+  </div>
+</section>
+
+<section class="night" aria-labelledby="q-title">
+  <div class="wrap">
+    <h2 id="q-title" class="questions rise">
+      <span class="q"><span class="zh">這個答案，是誰寫的？</span><span class="en">Who wrote this answer?</span></span>
+      <span class="q"><span class="zh">它查過什麼？</span><span class="en">What did it look up?</span></span>
+      <span class="q"><span class="zh">花了多少？</span><span class="en">What did it cost?</span></span>
+    </h2>
+    <p class="rise">
+      <span class="zh">你每天都在問 AI 問題。但這三件事，它從來沒有告訴過你。蓋子關著，你只拿得到最後那張紙條。</span>
+      <span class="en">You ask AI questions every day. It has never told you these three things. The lid stays shut, and all you get is the slip that comes out.</span>
+    </p>
+  </div>
+</section>
+
+<section class="sec" id="record">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <div class="no">一</div>
+      <h2><span class="zh">一個答案<br>的來歷</span><span class="en">The record<br>behind one answer</span></h2>
+      <div class="prose">
+        <p>
+          <span class="zh">在畫布上點兩下，長出一張節點卡，問它一個問題。它先判斷這是什麼任務，再決定交給哪個模型。理由、來源、token 數與費用，都寫在右上角的決策窗裡。</span>
+          <span class="en">Double-click the canvas, a node appears, and you ask. It first decides what kind of task this is, then which model should take it. The reason, the sources, the token count and the cost are all written in the decision panel.</span>
+        </p>
+        <p class="pull"><span class="zh">你不必相信它。你可以檢查它。</span><span class="en">You don’t have to trust it. You can check it.</span></p>
+      </div>
+    </div>
+
+    <div class="demo" id="demo">
+      <article class="pot rise" aria-live="polite">
+        <p class="node-q"><span class="zh">東京這週末會下雨嗎？</span><span class="en">Will it rain in Tokyo this weekend?</span></p>
+        <p class="chip">Perplexity Sonar <span>＋</span> GPT-5.6 Sol</p>
+        <div class="node-a">
+          <p class="ln"><b><span class="zh">下雨機率偏低，整體不太像會有明顯降雨。</span><span class="en">Rain is unlikely; no significant rainfall expected.</span></b></p>
+          <p class="ln"><span class="zh">11 月 7 日（六）：晴到多雲，降雨機率約 1%～22%。</span><span class="en">Sat 7 Nov: clear to partly cloudy, 1–22% chance of rain.</span></p>
+          <p class="ln"><span class="zh">11 月 8 日（日）：資料未涵蓋當日，無法可靠判斷。</span><span class="en">Sun 8 Nov: the data doesn’t cover the day; no reliable call.</span></p>
+        </div>
+        <button class="btn quiet" type="button" id="replay"><span class="zh">重新送出</span><span class="en">Send again</span></button>
+      </article>
+
+      <div class="pot b tape rise" role="group" aria-label="決策紀錄">
+        <p class="tape-title"><span class="zh">決策紀錄</span><span class="en">DECISION RECORD</span></p>
+        <dl>
+          <div class="row"><dt><span class="zh">模式</span><span class="en">Mode</span></dt><dd>Auto</dd></div>
+          <div class="row"><dt><span class="zh">任務</span><span class="en">Task</span></dt><dd>Research<small><span class="zh">判斷分數 0.92</span><span class="en">score 0.92</span></small></dd></div>
+          <div class="row"><dt><span class="zh">模型</span><span class="en">Models</span></dt><dd>Perplexity Sonar<br>GPT-5.6 Sol</dd></div>
+          <div class="row"><dt><span class="zh">原因</span><span class="en">Why</span></dt><dd><span class="zh">偵測到查證與搜尋需求，交給研究代理。由 Perplexity Sonar 與 GPT-5.6 Sol 回覆。</span><span class="en">Needs lookup and verification, so it goes to the research agent. Perplexity Sonar and GPT-5.6 Sol answer.</span></dd></div>
+          <div class="row"><dt><span class="zh">查證</span><span class="en">Checked</span></dt><dd><span class="zh">已核對事實 12 項</span><span class="en">12 facts verified</span></dd></div>
+          <div class="row"><dt><span class="zh">耗時</span><span class="en">Time</span></dt><dd><span class="zh">1 分 36 秒</span><span class="en">1 min 36 s</span></dd></div>
+          <div class="row total"><dt><span class="zh">費用</span><span class="en">Cost</span></dt><dd>NT$ 2.84<sup>＊</sup></dd></div>
+        </dl>
+        <p class="tape-foot"><span class="zh">＊金額為示意。其餘欄位取自程式的實際畫面。</span><span class="en">＊Cost is illustrative. Other fields are taken from the real app.</span></p>
+      </div>
+    </div>
+
+    <figure class="shot rise">
+      <img src="assets/app/showcase-canvas.png" width="1568" height="1048" loading="lazy" alt="程式的畫布：五張節點卡分別是查天氣、做簡報、畫圖、比較程式語言與迴歸分析作業，右上角是決策窗">
+      <figcaption><span class="zh">程式實際畫面。查資料、做簡報、畫圖、寫分析報告，各自一張卡；右上角是被選中那張卡的決策紀錄。</span><span class="en">The real app. Research, a deck, an image, an analysis report, each on its own card; top right is the decision record of the selected card.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="wrap"><hr class="ink"></div>
+
+<section class="sec" id="flow">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <div class="no">二</div>
+      <h2><span class="zh">不只一個</span><span class="en">More than one</span></h2>
+      <div class="prose"><p class="lede"><span class="zh">一個問題可以接著下一個問題，也可以同時交給好幾個模型。</span><span class="en">One question can lead into the next, or go to several models at once.</span></p></div>
+    </div>
+    <div class="columns">
+      <article class="pot rise">
+        <h3><span class="zh">把提問連起來</span><span class="en">Chain your questions</span></h3>
+        <p>
+          <span class="zh">從節點角落的小圓點拉出一條線，就多一張下游的卡。在線上按右鍵，實線變成虛線：上一步做完，下一步自己接著跑。</span>
+          <span class="en">Drag from the small ring on a node and a downstream card appears. Right-click the line and it turns dashed: when the step above finishes, the next one runs by itself.</span>
+        </p>
+        <div class="chain" aria-hidden="true">
+          <div class="mini"><span class="zh">查資料</span><span class="en">Research</span></div>
+          <i class="wire"></i>
+          <div class="mini"><span class="zh">找出矛盾</span><span class="en">Find conflicts</span><code>{{input}}</code></div>
+          <i class="wire"></i>
+          <div class="mini"><span class="zh">寫成報告</span><span class="en">Write it up</span><code>{{input}}</code></div>
+        </div>
+        <p class="aside">
+          <span class="zh">下游輸入框裡的 <code>{{input}}</code> 會換成上游的回答。兩條以上的虛線接到同一張卡時，等所有上游都完成才開始。</span>
+          <span class="en"><code>{{input}}</code> in a downstream prompt is replaced by the upstream answer. When several dashed lines meet at one card, it waits for all of them.</span>
+        </p>
+      </article>
+      <article class="pot b rise">
+        <h3><span class="zh">讓模型互相檢查</span><span class="en">Let models check each other</span></h3>
+        <p>
+          <span class="zh">重要的問題，勾選 2 到 4 個模型。它們先各自回答，再讀彼此的答案。哪裡不一致，分開列給你看。</span>
+          <span class="en">For questions that matter, tick two to four models. Each answers alone, then reads the others. Where they disagree, you get it listed separately.</span>
+        </p>
+        <ol class="stages">
+          <li><span class="zh">各自的回答</span><span class="en">Each model’s answer</span></li>
+          <li><span class="zh">交叉檢視</span><span class="en">Cross-review</span></li>
+          <li><span class="zh">共識與分歧</span><span class="en">Agreement and dispute</span></li>
+        </ol>
+        <p class="aside">
+          <span class="zh">呼叫次數是模型數的兩倍：兩個模型就是四次呼叫，約 NT$3～5。</span>
+          <span class="en">Calls are twice the number of models: two models means four calls, about NT$3–5.</span>
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><hr class="ink"></div>
+
+<section class="sec" id="output">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <div class="no">三</div>
+      <h2><span class="zh">交得出東西</span><span class="en">It hands in real work</span></h2>
+      <div class="prose"><p class="lede"><span class="zh">你要的如果是成品，直接說。做完的檔案放在節點底下，點一下就能預覽。</span><span class="en">If what you want is a finished file, just say so. It lands under the node, one click to preview.</span></p></div>
+    </div>
+    <ul class="kinds rise">
+      <li><b>PowerPoint</b><span class="zh">簡報</span><span class="en">Decks</span></li>
+      <li><b>Word</b><span class="zh">書面報告</span><span class="en">Reports</span></li>
+      <li><b>Excel</b><span class="zh">表格</span><span class="en">Spreadsheets</span></li>
+      <li><b>PDF</b><span class="zh">文件</span><span class="en">Documents</span></li>
+      <li><b>Code</b><span class="zh">程式碼</span><span class="en">Source files</span></li>
+      <li><b>Image</b><span class="zh">圖片</span><span class="en">Images</span></li>
+      <li><b>Video</b><span class="zh">影片</span><span class="en">Video</span></li>
+    </ul>
+    <figure class="shot deck rise">
+      <img src="assets/app/showcase-deck.png" width="1372" height="752" loading="lazy" alt="簡報預覽：京都，千年古都的魅力，右側是一張和室望向秋日庭院的配圖">
+      <figcaption><span class="zh">「做一份 3 頁簡報介紹京都」交出來的封面，在程式裡直接預覽。</span><span class="en">The cover it handed in for “make a 3-page deck about Kyoto”, previewed right in the app.</span></figcaption>
+    </figure>
+    <div class="trio">
+      <article class="pot rise">
+        <h3><span class="zh">哪一頁不滿意，只改那一頁</span><span class="en">Redo only the page you dislike</span></h3>
+        <p><span class="zh">在預覽下方寫「第 3 頁改成比較表」，只有第 3 頁換掉。上一版、下一版隨時切換，不用重新生成。</span><span class="en">Type “make page 3 a comparison table” under the preview and only page 3 changes. Step between versions without regenerating.</span></p>
+      </article>
+      <article class="pot b rise">
+        <h3><span class="zh">給它資料，它真的去算</span><span class="en">Give it data and it really computes</span></h3>
+        <p><span class="zh">附上 CSV 或 Excel，它在沙箱裡實際執行程式：讀完整資料、分析、繪圖。報告裡的數字來自執行結果，另附可以重跑的 <code>.py</code>。</span><span class="en">Attach a CSV or Excel file and it runs real code in a sandbox: reads all the data, analyses, plots. The numbers in the report come from that run, with a <code>.py</code> you can rerun.</span></p>
+      </article>
+      <article class="pot c rise">
+        <h3><span class="zh">寫完，再請別人挑錯</span><span class="en">Then someone else checks it</span></h3>
+        <p><span class="zh">報告完成後，另開一次獨立呼叫來審查，Auto 模式由不同廠商的模型負責。它對照數字、表格與程式結果，另存一份審查清單，只列問題，不改你的報告。</span><span class="en">Once a report is done, a separate, independent call reviews it; in Auto mode that reviewer is a model from a different vendor. It compares the figures, tables and code output and saves a review list. It reports problems; it doesn’t touch your report.</span></p>
+      </article>
+    </div>
+    <figure class="dialog rise">
+      <img src="assets/app/confirm.png" width="472" height="299" loading="lazy" alt="確認框：簡報 12 頁約 NT$8.40，配圖 6 張約 NT$7.86">
+      <figcaption><span class="zh">動手之前，先給你看要花多少。</span><span class="en">Before it starts, it shows what it will cost.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<div class="wrap"><hr class="ink"></div>
+
+<section class="sec" id="ledger">
+  <div class="wrap">
+    <div class="sec-head rise">
+      <div class="no">四</div>
+      <h2><span class="zh">帳</span><span class="en">The ledger</span></h2>
+      <div class="prose"><p class="lede"><span class="zh">每一筆，當下入帳。快超過上限，它先停下來問你。金鑰只留在你的電腦裡。</span><span class="en">Every call is booked the moment it happens. Near your limit, it stops and asks. Your keys never leave your computer.</span></p></div>
+    </div>
+    <div class="ledger-grid">
+      <table class="prices rise">
+        <caption><span class="zh">實測約略花費</span><span class="en">MEASURED, APPROXIMATE</span></caption>
+        <tbody>
+          <tr><th scope="row"><span class="zh">一般問答</span><span class="en">A normal question</span></th><td><span class="zh">NT$1 以下</span><span class="en">under NT$1</span></td></tr>
+          <tr><th scope="row"><span class="zh">協作模式，兩個模型</span><span class="en">Two models cross-checking</span></th><td>NT$3–5</td></tr>
+          <tr><th scope="row"><span class="zh">3～5 頁簡報，快速版</span><span class="en">3–5 slide deck, quick mode</span></th><td><span class="zh">約 NT$2</span><span class="en">about NT$2</span></td></tr>
+          <tr><th scope="row"><span class="zh">5 頁簡報，最佳品質加配圖</span><span class="en">5 slides, best quality with images</span></th><td>NT$40–50</td></tr>
+          <tr><th scope="row"><span class="zh">附資料檔的分析報告</span><span class="en">Data analysis report</span></th><td>NT$20–25</td></tr>
+          <tr><th scope="row"><span class="zh">報告完成後的獨立審查</span><span class="en">Independent review of a report</span></th><td>NT$1–12</td></tr>
+        </tbody>
+      </table>
+      <ul class="guards rise">
+        <li><b><span class="zh">每日上限</span><span class="en">Daily limit</span></b><span class="zh">預設 NT$100。會超過時先問。</span><span class="en">NT$100 by default. It asks before going over.</span></li>
+        <li><b><span class="zh">確認框</span><span class="en">Confirm first</span></b><span class="zh">產檔之前列出檔案與費用。</span><span class="en">Files and cost are listed before anything is made.</span></li>
+        <li><b><span class="zh">金鑰</span><span class="en">Keys</span></b><span class="zh">以 Windows DPAPI 加密存在本機，不上傳。</span><span class="en">Encrypted with Windows DPAPI on your machine. Never uploaded.</span></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="wrap"><hr class="ink"></div>
+
+<section class="story">
+  <blockquote class="rise">
+    <p class="story-big"><span class="zh">看不見的東西，<br>沒有辦法改進。</span><span class="en">What you can’t see,<br>you can’t improve.</span></p>
+    <div class="story-mark" aria-hidden="true"></div>
+    <p class="story-body">
+      <span class="zh">為了知道錢花去哪裡，我把每一次呼叫都記了下來，累計 988 筆。也是靠這些紀錄，才發現有一次產一份文件花了 US$9.32，回頭把它壓到平均 US$1.03。</span>
+      <span class="en">To find out where the money went, I logged every single call: 988 of them. Those logs showed one document had cost US$9.32. I went back and brought the average down to US$1.03.</span>
+    </p>
+  </blockquote>
+</section>
+
+<section class="get" id="get">
+  <div class="wrap">
+    <div class="rise">
+      <div class="no">五</div>
+      <h2><span class="zh">打開來看</span><span class="en">Open it up</span></h2>
+    </div>
+    <div class="rise">
+      <ol class="steps">
+        <li><span><span class="zh">到 GitHub Releases 下載最新的 zip，完整解壓縮。</span><span class="en">Download the latest zip from GitHub Releases and extract all of it.</span></span></li>
+        <li><span><span class="zh">執行 <code>cat5201.exe</code>。不用另外安裝 .NET。</span><span class="en">Run <code>cat5201.exe</code>. No .NET install needed.</span></span></li>
+        <li><span><span class="zh">填一把自己的 API 金鑰。OpenAI、Anthropic、Google Gemini、Perplexity，有一把就能用。</span><span class="en">Enter one API key of your own. OpenAI, Anthropic, Google Gemini or Perplexity; one is enough.</span></span></li>
+      </ol>
+      <div class="actions">
+        <a class="btn" href="https://github.com/cat52011/cat5201-pro/releases">
+          <span class="zh">下載 Windows 版</span><span class="en">Download for Windows</span>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2v9M4 7.5 8 11.5 12 7.5M3 14h10"/></svg>
+        </a>
+        <a class="link" href="deck.html"><span class="zh">看專題簡報</span><span class="en">View the project deck</span></a>
+      </div>
+      <details class="limits">
+        <summary><span class="zh">下載前先知道的限制</span><span class="en">Limits to know before you download</span></summary>
+        <ul>
+          <li><span class="zh">只支援 Windows 10 或 11（64 位元）。</span><span class="en">Windows 10 or 11 (64-bit) only.</span></li>
+          <li><span class="zh">程式不附金鑰，呼叫費用由你自己的帳號支付。</span><span class="en">No keys are bundled; calls are billed to your own accounts.</span></li>
+          <li><span class="zh">「最佳品質」的簡報與報告約需 5 分鐘。</span><span class="en">“Best quality” decks and reports take about five minutes.</span></li>
+          <li><span class="zh">Gemini 無法即時搜尋，選用時改由其他模型查資料，並在答案最上方註明。</span><span class="en">Gemini can’t search live; another model does the lookup and the answer says so at the top.</span></li>
+          <li><span class="zh">手機鏡像走區網內未加密的 HTTP，只在信任的 Wi-Fi 上使用。</span><span class="en">Phone mirroring uses unencrypted HTTP on the local network; use it only on Wi-Fi you trust.</span></li>
+          <li><span class="zh">程式未經數位簽章，首次開啟要在 Windows 的提示上選「仍要執行」。</span><span class="en">The app is unsigned; on first launch choose “Run anyway” in the Windows prompt.</span></li>
+        </ul>
+      </details>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <a class="mark" href="#top"><span class="zh">看得見的 AI</span><span class="en">AI YOU CAN SEE</span></a>
+  <p>
+    <span class="zh">畢業專題。本軟體不是開源軟體，著作權人保留一切權利；允許為評估、學術審查與面試展示檢視原始碼與執行程式。</span>
+    <span class="en">A graduation project. Not open source; all rights reserved. Viewing the source and running the app is permitted for evaluation, academic review and interviews.</span>
+  </p>
+  <p><span class="zh">程式畫面為實際截圖。節點內容取自實際執行的結果，為了版面做過精簡。</span><span class="en">App images are real screenshots. Card contents come from real runs, trimmed to fit.</span></p>
+  <p><a href="https://github.com/cat52011/cat5201-pro">GitHub</a></p>
+</footer>
+
+<script>
+// 語言切換（與原站共用同一個儲存鍵）
+(function () {
+  var root = document.documentElement;
+  function setLang(l) {
+    root.setAttribute('data-lang', l);
+    root.setAttribute('lang', l === 'en' ? 'en' : 'zh-Hant');
+    try { localStorage.setItem('cat5201-lang', l); } catch (e) {}
+  }
+  try {
+    var saved = localStorage.getItem('cat5201-lang');
+    if (saved === 'en' || saved === 'zh') setLang(saved);
+  } catch (e) {}
+  document.getElementById('langBtn').addEventListener('click', function () {
+    setLang(root.getAttribute('data-lang') === 'en' ? 'zh' : 'en');
+  });
+})();
+
+// 進場：捲到才慢慢浮出來
+(function () {
+  var els = [].slice.call(document.querySelectorAll('.rise'));
+  if (!('IntersectionObserver' in window)) { els.forEach(function (e) { e.classList.add('in'); }); return; }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+  }, { threshold: 0.12 });
+  els.forEach(function (e) { io.observe(e); });
+})();
+
+// 示範：按「重新送出」，回答一行一行出現，決策紀錄一列一列出現
+(function () {
+  var demo = document.getElementById('demo');
+  var items = [].slice.call(demo.querySelectorAll('.ln')).concat([].slice.call(demo.querySelectorAll('.row')));
+  var timers = [];
+  document.getElementById('replay').addEventListener('click', function () {
+    timers.forEach(clearTimeout); timers = [];
+    items.forEach(function (el) { el.classList.add('wait'); });
+    items.forEach(function (el, i) {
+      timers.push(setTimeout(function () { el.classList.remove('wait'); }, 500 + i * 420));
+    });
+  });
+})();
+</script>
+</body>
+</html>

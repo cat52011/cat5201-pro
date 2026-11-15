@@ -26,6 +26,9 @@ namespace Cat5201
 
         private void ApplyRunStatus(NodeRunStatus status, string? detail = null)
         {
+            if (status is NodeRunStatus.Success or NodeRunStatus.Failed)
+                _finishedRuns++;
+
             _runStatus = status;
 
             StopStatusRevertTimer();
@@ -83,6 +86,9 @@ namespace Cat5201
         }
 
         /// <summary>被排入流動工作流、等待上游完成前的「等待中」狀態（節點琥珀框 + 手機鏡像顯示）。</summary>
+        /// <summary>跑完（成功或失敗）的次數。只拿來判斷「這次呼叫之後有沒有真的跑完一輪」。</summary>
+        private int _finishedRuns;
+
         public void MarkWaiting()
         {
             if (_isGenerating || _runStatus == NodeRunStatus.Running)
@@ -211,11 +217,9 @@ namespace Cat5201
             ContentChanged?.Invoke(this, EventArgs.Empty);
             _parent?.NotifyNodeSubmitted(this);
 
+            int before = _finishedRuns;
             await GenerateBottomReplyFromTopAsync(runTop, externalToken: externalToken);
-
-            string bottom = GetBottomText() ?? "";
-            return !string.IsNullOrWhiteSpace(bottom) &&
-                   !bottom.TrimStart().StartsWith("（AI 產生失敗）", StringComparison.Ordinal);
+            return LastRunSucceededSince(before);
         }
 
         // §3：用相同輸入整段重播工作流。
@@ -239,14 +243,21 @@ namespace Cat5201
             ContentChanged?.Invoke(this, EventArgs.Empty);
             _parent?.NotifyNodeSubmitted(this);
 
+            int before = _finishedRuns;
             await GenerateBottomReplyFromTopAsync(runTop, externalToken: externalToken);
-
-            string bottom = GetBottomText() ?? "";
-            return !string.IsNullOrWhiteSpace(bottom) &&
-                   !bottom.TrimStart().StartsWith("（AI 產生失敗）", StringComparison.Ordinal) &&
-                   !bottom.TrimStart().StartsWith("（AI 產生逾時）", StringComparison.Ordinal) &&
-                   !bottom.TrimStart().StartsWith("（AI 沒有回傳文字）", StringComparison.Ordinal);
+            return LastRunSucceededSince(before);
         }
+
+        /// <summary>
+        /// 這一輪有沒有成功：看執行結束時定下的狀態，不看畫面上的文字。
+        ///
+        /// 原本工作流用「回答框不是以三種錯誤字樣開頭」判斷成功，但逾時、停止、預算不足的訊息
+        /// 開頭都不是那三種——逾時的節點會被當成成功，下游拿錯誤訊息當輸入繼續跑、繼續花錢。
+        /// 另外要求「這次呼叫之後真的跑完了一輪」：被擋下來沒有開始的（例如節點正在跑），
+        /// 不能沿用上一輪留下的成功狀態。
+        /// </summary>
+        private bool LastRunSucceededSince(int finishedRunsBefore)
+            => _finishedRuns > finishedRunsBefore && _runStatus == NodeRunStatus.Success;
 
         private string BuildPromptForCurrentRun(string topText)
         {

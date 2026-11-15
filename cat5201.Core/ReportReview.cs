@@ -483,13 +483,18 @@ namespace Cat5201
             sb.AppendLine(Instructions).AppendLine();
 
             var p = Parts(reportMarkdown, tables, codeFiles, totalRows);
-            sb.AppendLine($"=== 報告：{reportName} ===").AppendLine(p.Report).AppendLine();
 
+            // 順序是為了提示快取：結果檔與程式碼在「審查 → 自動修正 → 再審查」之間不會變，放最前面；
+            // 報告是修正後會變的那一段，放在它們後面。
+            // 原本報告排第一，一改就讓後面約六萬 token 的結果檔與程式碼全部重算——
+            // 2026-11 的紀錄裡 24 次審查快取命中是 0%，再審查那一次等於白付一次全價（約 US$0.35）。
             if (p.Tables.Length > 0)
                 sb.AppendLine("=== 程式輸出的結果檔（核對報告數字用） ===").AppendLine(p.Tables).AppendLine();
 
             if (p.Code.Length > 0)
                 sb.AppendLine("=== 程式碼（核對做法描述用） ===").AppendLine(p.Code).AppendLine();
+
+            sb.AppendLine($"=== 報告：{reportName} ===").AppendLine(p.Report).AppendLine();
 
             if (programIssues is { Count: > 0 })
             {

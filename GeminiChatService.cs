@@ -14,7 +14,8 @@ namespace Cat5201
     /// </summary>
     public sealed class GeminiChatService
     {
-        private static readonly HttpClient _http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        // 會自動重試 5xx／429 這類暫時性錯誤（見 TransientHttpRetryHandler）。
+        private static readonly HttpClient _http = TransientHttpRetryHandler.CreateClient();
 
         private const string ApiBase = "https://generativelanguage.googleapis.com/v1beta";
 

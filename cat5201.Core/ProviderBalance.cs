@@ -214,6 +214,7 @@ namespace Cat5201
 
             string symbol = ApiHealthChecker.CurrencySymbol(CurrencyOf(providerId));
             double drift = 0;
+            double deductedSince = 0;
             bool hadReconciled;
 
             lock (_lock)
@@ -223,7 +224,11 @@ namespace Cat5201
 
                 // 誤差＝本機以為還剩多少 − 實際還剩多少。正數＝少記了（花得比記到的多）。
                 hadReconciled = !string.IsNullOrWhiteSpace(current?.ReconciledUtc);
-                if (hadReconciled) drift = current!.Remaining - usd;
+                if (hadReconciled)
+                {
+                    drift = current!.Remaining - usd;
+                    deductedSince = current.DeductedSinceReconcile;
+                }
 
                 _entries[providerId] = new Entry(
                     usd, total, DateTime.UtcNow.ToString("o"), current?.Currency ?? "",
@@ -236,13 +241,40 @@ namespace Cat5201
 
             if (hadReconciled && Math.Abs(drift) >= 0.01)
             {
-                string direction = drift > 0 ? "本機少記了這些花費" : "本機多記了這些花費";
-                AppLog.Warn("Balance",
-                    $"{providerId} 對帳差額 {symbol}{drift:0.00}（{direction}）——" +
-                    "圖片 / 影片是估算價，工具與沙盒費官方不回報，請以官網為準。");
+                var (kind, message) = DescribeDrift(drift, deductedSince);
+                string text = $"{providerId} 對帳差額 {symbol}{drift:0.00}：{message}";
+                if (kind == DriftKind.LikelyTopUp)
+                    AppLog.Info("Balance", text);
+                else
+                    AppLog.Warn("Balance", text + "——圖片 / 影片是估算價，工具與沙盒費官方不回報，請以官網為準。");
             }
 
             Changed?.Invoke();
+        }
+
+        internal enum DriftKind { UnderRecorded, OverRecorded, LikelyTopUp }
+
+        /// <summary>
+        /// 對帳差額怎麼解讀。
+        ///
+        /// 本機「多記」最多就是這段期間記到的全部花費——不可能多記比實際花掉還多的錢。
+        /// 實際餘額比本機多出的部分超過這個上限，多出來的那一截只能是儲值（或贈送的額度）。
+        /// 2026-11-13：Anthropic 對帳差額 −17.15，但上次對帳後本機只記了約 9.5，
+        /// 舊訊息卻說「本機多記了 17.15」，看起來像記帳嚴重失準。
+        /// </summary>
+        internal static (DriftKind Kind, string Message) DescribeDrift(double drift, double deductedSinceReconcile)
+        {
+            if (drift > 0)
+                return (DriftKind.UnderRecorded, "本機少記了這些花費");
+
+            double gap = -drift;
+            double maxOverRecord = Math.Max(0, deductedSinceReconcile);
+            if (gap > maxOverRecord + 0.01)
+                return (DriftKind.LikelyTopUp,
+                    $"實際餘額比本機多 {gap:0.00}，超過上次對帳後記到的花費 {maxOverRecord:0.00}，" +
+                    "應該是這段期間有儲值或贈送額度，不算記帳誤差");
+
+            return (DriftKind.OverRecorded, "本機多記了這些花費");
         }
 
         /// <summary>上一次照官網對帳的時間（null＝從來沒對過）。</summary>

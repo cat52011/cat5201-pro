@@ -84,14 +84,14 @@ cat5201-pro 是一個 Windows 桌面版的 AI 整合工作台：以心智圖樣�
 **把節點串聯成流程**
 
 1. 拖曳節點左上或右上的小圓點。拖到空白處會新增下游節點；拖到另一個節點上，則將其接為下游。
-2. 在連接線上按右鍵，切換為藍色虛線。藍線代表「上游完成後自動執行下游」。
+2. 在連接線上按右鍵，切換為駝色虛線。虛線代表「上游完成後自動執行下游」。
 3. 在下游節點的輸入框寫 `{{input}}`，執行時會替換為上游的回答。例如：
 
 ```
 比較以下兩份回答，列出彼此矛盾的地方，兩邊的說法都要寫出來：{{input}}
 ```
 
-兩條以上的藍線接到同一個節點時，會等所有上游完成才開始，每個上游的回答皆完整放入輸入，地位相同。
+兩條以上的虛線接到同一個節點時，會等所有上游完成才開始，每個上游的回答皆完整放入輸入，地位相同。
 
 **協作模式（多個模型一起回答）**
 
@@ -149,12 +149,12 @@ cat5201-pro 是一個 Windows 桌面版的 AI 整合工作台：以心智圖樣�
 - 未安裝 LibreOffice 時，Word 預覽僅顯示文字內容，實際版面請以「用系統程式開啟」查看。
 - Gemini 無法進行即時搜尋，選用 Gemini 時改由其他模型查詢資料，並於答案最上方註明。
 - 數字單位檢查（例如 billion 被寫成「億」）只比對聊天中的回答，不檢查產出的簡報或報告檔案。
-- 只支援 Windows。介面為 WPF；核心 `cat5201.Core`（模型路由、成本、任務編排、審查、使用紀錄）以 net8.0 撰寫，不引用 WPF，因此移植到 macOS、Linux 或網頁版主要是重寫介面層。核心目前仍有兩處依賴 Windows，移植時須替換：金鑰加密使用的 DPAPI，以及簡報圖片處理使用的 System.Drawing。
+- 只支援 Windows。介面為 WPF；核心 `cat5201.Core`（模型路由、成本、任務編排、審查、使用紀錄）以 net10.0 撰寫，不引用 WPF，因此移植到 macOS、Linux 或網頁版主要是重寫介面層。核心目前仍有兩處依賴 Windows，移植時須替換：金鑰加密使用的 DPAPI，以及簡報圖片處理使用的 System.Drawing。
 - 手機鏡像使用區網內未加密的 HTTP，存取權杖位於網址中。預設為唯讀模式；僅在信任的 Wi-Fi 上關閉唯讀，使用完畢即關閉鏡像模式。
 
 ### 給開發者
 
-需要 .NET 8 SDK。
+需要 .NET 10 SDK。
 
 ```powershell
 # 執行
@@ -170,11 +170,11 @@ dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 專案結構：
 
 ```
-cat5201.Core/    與介面無關的核心（net8.0）：模型註冊與路由、成本估算、任務編排、
+cat5201.Core/    與介面無關的核心（net10.0）：模型註冊與路由、成本估算、任務編排、
                  決策紀錄、輸出判斷。執行核心只依賴 IAgentHost / INodeContext 介面，
                  不引用任何 WPF 型別。執行核心 AgentRuntime 依職責分成多個檔案：
                  主流程、文件、簡報、配圖、圖片與影片、資料分析、獨立審查、最終整合、程式修改。
-cat5201.csproj   WPF 桌面前端（net8.0-windows）：畫布、節點、決策窗、手機鏡像伺服器
+cat5201.csproj   WPF 桌面前端（net10.0-windows）：畫布、節點、決策窗、手機鏡像伺服器
 tests/           xUnit 測試；評測題目等測試資料在 tests/cat5201.Tests/TestData/
 ```
 
@@ -266,10 +266,10 @@ Decks and reports can be made in two ways, chosen under the gear icon, "個人�
 **Chaining nodes into a flow**
 
 1. Drag the small dot at the top left or top right of a node. Dropping it on empty space creates a downstream node; dropping it on another node connects that node downstream.
-2. Right-click the connecting line to turn it into a blue dashed line. A blue line means "run the downstream node automatically when the upstream one finishes".
+2. Right-click the connecting line to turn it into a tan dashed line. A dashed line means "run the downstream node automatically when the upstream one finishes".
 3. Put `{{input}}` in the downstream node's prompt; it is replaced with the upstream answer when the node runs.
 
-When two or more blue lines lead into one node, it waits until every upstream node has finished. All upstream answers are included in full and treated equally.
+When two or more dashed lines lead into one node, it waits until every upstream node has finished. All upstream answers are included in full and treated equally.
 
 **Collaboration mode (several models answer together)**
 
@@ -324,12 +324,12 @@ All app data (projects, attachments, logs) is in `%LOCALAPPDATA%\cat5201-pro`; d
 - Without LibreOffice, the Word preview shows text only; view the actual layout with "用系統程式開啟" (open with the system app).
 - Gemini cannot do live search; when Gemini is selected, another model looks up the data and this is noted at the top of the answer.
 - The number-unit check (for example "billion" written as the wrong Chinese unit) only looks at the chat answer, not at generated deck or report files.
-- Windows only. The UI is WPF; the core, `cat5201.Core` (model routing, costs, task orchestration, review, usage records), targets net8.0 and references no WPF, so porting to macOS, Linux or the web mainly means rewriting the UI layer. Two parts of the core still depend on Windows and would need replacing: DPAPI for key encryption, and System.Drawing for deck image processing.
+- Windows only. The UI is WPF; the core, `cat5201.Core` (model routing, costs, task orchestration, review, usage records), targets net10.0 and references no WPF, so porting to macOS, Linux or the web mainly means rewriting the UI layer. Two parts of the core still depend on Windows and would need replacing: DPAPI for key encryption, and System.Drawing for deck image processing.
 - The phone mirror uses unencrypted HTTP on the local network, with the access token in the URL. Read-only mode is on by default; only turn it off on a Wi-Fi network you trust, and turn mirror mode off when you are done.
 
 ### For developers
 
-Requires the .NET 8 SDK.
+Requires the .NET 10 SDK.
 
 ```powershell
 # Run
@@ -345,13 +345,13 @@ dotnet test tests\cat5201.Tests\cat5201.Tests.csproj
 Project layout:
 
 ```
-cat5201.Core/    UI-independent core (net8.0): model registry and routing, cost estimates,
+cat5201.Core/    UI-independent core (net10.0): model registry and routing, cost estimates,
                  task orchestration, decision records, output detection. The runtime depends
                  only on the IAgentHost / INodeContext interfaces and references no WPF types.
                  The runtime, AgentRuntime, is split into files by responsibility: main flow,
                  documents, decks, illustrations, images and video, data analysis, independent
                  review, final synthesis, and code edits.
-cat5201.csproj   WPF desktop front end (net8.0-windows): canvas, nodes, decision panel,
+cat5201.csproj   WPF desktop front end (net10.0-windows): canvas, nodes, decision panel,
                  phone mirror server
 tests/           xUnit tests; fixtures such as evaluation tasks are in tests/cat5201.Tests/TestData/
 ```

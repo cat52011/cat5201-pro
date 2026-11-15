@@ -324,8 +324,13 @@ namespace Cat5201
                     return r;
                 }
                 case "GEMINI_API_KEY":
-                    return new HttpRequestMessage(HttpMethod.Get,
-                        $"https://generativelanguage.googleapis.com/v1beta/models?key={Uri.EscapeDataString(key)}");
+                {
+                    // 金鑰放標頭，不放網址：網址容易留在代理伺服器與各種紀錄裡。
+                    var r = new HttpRequestMessage(HttpMethod.Get,
+                        "https://generativelanguage.googleapis.com/v1beta/models");
+                    r.Headers.Add("x-goog-api-key", key);
+                    return r;
+                }
                 case "PERPLEXITY_API_KEY":
                 {
                     // Perplexity 沒有免費驗證端點：發一個 max_tokens=1 的極小請求（成本趨近 0）。

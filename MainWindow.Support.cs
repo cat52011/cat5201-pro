@@ -39,7 +39,7 @@ namespace Cat5201
                     UiLanguage.P($"已在桌面產生診斷檔：\n{Path.GetFileName(zipPath)}\n\n", $"A diagnostic file was created on your desktop:\n{Path.GetFileName(zipPath)}\n\n") +
                     UiLanguage.P($"請把這個檔案寄到 {SupportEmail}，並簡單寫下：\n", $"Please email it to {SupportEmail} with a short note on:\n") +
                     UiLanguage.P("・你做了什麼\n・預期會怎樣\n・實際發生什麼（有截圖更好）\n\n", "・What you did\n・What you expected\n・What actually happened (screenshots help)\n\n") +
-                    UiLanguage.P("檔案已自動遮蔽 API 金鑰與 Windows 使用者名稱，不含對話內容；寄出前也可以自己打開檢查。", "API keys and your Windows user name are masked automatically, and no conversation content is included. You can open the file to check before sending."),
+                    UiLanguage.P("檔案已自動遮蔽 API 金鑰與 Windows 使用者名稱，不含你的提問與回答。但會有附件與產出的檔名，以及 AI 執行程式時的步驟摘要；寄出前請自己打開檢查。", "API keys and your Windows user name are masked automatically, and your questions and answers are not included. File names of attachments and outputs, and a summary of the program steps the AI ran, are included; please open the file and check before sending."),
                     this);
             }
             catch (Exception ex)

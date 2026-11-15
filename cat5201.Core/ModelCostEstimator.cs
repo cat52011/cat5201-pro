@@ -357,11 +357,31 @@ namespace Cat5201
             return PriceTable.ContainsKey(alias) ? alias : id;
         }
 
+        /// <summary>
+        /// 有期限的促銷價：最後一天（含）過後自動改用標價。
+        ///
+        /// 促銷價寫死在價目表裡，到期那天沒人回來改，所有估算就會悄悄少算兩到三成，
+        /// 每日上限也跟著失準。到期後官方若延長促銷，這裡會偏高——寧可高估，不要低估；
+        /// 屆時把日期往後改即可。有 API 回報金額的呼叫不受影響（一律用回報值）。
+        /// </summary>
+        private static readonly Dictionary<string, (DateTime LastPromoDay, Price ListPrice)> PromoPrices =
+            new(StringComparer.OrdinalIgnoreCase)
+            {
+                // GPT-5.6 Sol：促銷 $4/$20「至少到 2026-11-21」，標價 $5/$30。
+                ["gpt-5.6-sol"] = (new DateTime(2026, 11, 21), new Price(5.00, 30.00)),
+            };
+
         private static Price ResolvePrice(string? modelId)
         {
             if (!string.IsNullOrWhiteSpace(modelId) &&
                 PriceTable.TryGetValue(modelId.Trim(), out var p))
             {
+                if (PromoPrices.TryGetValue(modelId.Trim(), out var promo) &&
+                    UserClock.Today > promo.LastPromoDay)
+                {
+                    return promo.ListPrice;
+                }
+
                 return p;
             }
 

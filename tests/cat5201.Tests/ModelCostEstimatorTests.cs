@@ -51,7 +51,6 @@ namespace Cat5201.Tests
         // 現役（官方價核對 2026-09-17）
         [InlineData("claude-opus-5", 30.00)]    // $5 in + $25 out
         [InlineData("claude-sonnet-5", 12.00)]  // $2 in + $10 out
-        [InlineData("gpt-5.6-sol", 24.00)]      // $4 in + $20 out（促銷價，至少到 2026-11-21）
         [InlineData("gpt-6-astra", 60.00)]      // $10 in + $50 out
         // 舊世代：價目必須保留，舊專案的歷史執行紀錄靠它算成本
         [InlineData("claude-opus-4-8", 30.00)]
@@ -61,6 +60,23 @@ namespace Cat5201.Tests
         {
             var e = ModelCostEstimator.FromUsage(modelId, 1_000_000, 1_000_000);
             Assert.Equal(expectedUsd, e.UsdCost, precision: 2);
+        }
+
+        // GPT-5.6 Sol 的促銷價有期限：最後一天（2026-11-21）還是 $4/$20，隔天起自動改用標價 $5/$30。
+        // 用 UserClock 釘住日期，這兩個測試在任何一天跑結果都一樣。
+        [Theory]
+        [InlineData(2026, 11, 13, 24.00)]   // 促銷期間
+        [InlineData(2026, 11, 21, 24.00)]   // 促銷最後一天
+        [InlineData(2026, 11, 22, 35.00)]   // 到期後改標價，不能繼續少算
+        [InlineData(2027, 1, 5, 35.00)]
+        public void FromUsage_Gpt56Sol_SwitchesToListPriceWhenThePromoEnds(int y, int m, int d, double expectedUsd)
+        {
+            var day = new DateTimeOffset(y, m, d, 12, 0, 0, TimeSpan.FromHours(8));
+            using (UserClock.Override(() => day))
+            {
+                var e = ModelCostEstimator.FromUsage("gpt-5.6-sol", 1_000_000, 1_000_000);
+                Assert.Equal(expectedUsd, e.UsdCost, precision: 2);
+            }
         }
 
         [Fact]

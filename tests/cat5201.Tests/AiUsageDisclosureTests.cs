@@ -67,7 +67,9 @@ namespace Cat5201.Tests
             Assert.Contains("需要讀資料檔與寫報告", md);          // 依據
             Assert.Contains("| 要交出什麼 | 書面報告 |", md);
             Assert.Contains("資料分析（沙箱）", md);
-            Assert.Contains("0.0800（估算）", md);
+            Assert.Contains("（估算） | 0.0800 |", md);          // 「估算」標在用量，不標在金額
+            Assert.DoesNotContain("0.0800（估算）", md);
+            Assert.Contains("不是服務商的帳單金額", md);
             Assert.Contains("**0.5760**", md);                   // 合計
             Assert.Contains("HW1（審查清單）_20261103.md", md);
             Assert.Contains("| 審查 |", md);

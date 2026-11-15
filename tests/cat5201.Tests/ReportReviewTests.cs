@@ -116,6 +116,26 @@ namespace Cat5201.Tests
             Assert.Null(deep.Model);
         }
 
+        // 結果檔與程式碼在「審查 → 自動修正 → 再審查」之間不變，必須排在會變的報告前面，
+        // 再審查才吃得到提示快取（原本報告排第一，快取命中是 0%）。
+        [Fact]
+        public void Prompt_PutsTheUnchangingPartsBeforeTheReport_SoTheRecheckCanReuseTheCache()
+        {
+            var tables = new List<(string, IReadOnlyList<IReadOnlyList<string>>)> { ("results.xlsx／cmp", Rows(new[] { "M1", "0.81" })) };
+            var code = new[] { ("hw1.py", "print('TABLE_MARKER_CODE')") };
+
+            string first = ReportReview.BuildPrompt("HW1.docx", "REPORT_V1 第一版報告", tables, null, code);
+            string second = ReportReview.BuildPrompt("HW1.docx", "REPORT_V2 修正後報告", tables, null, code);
+
+            int tableAt = first.IndexOf("M1 | 0.81", StringComparison.Ordinal);
+            int codeAt = first.IndexOf("TABLE_MARKER_CODE", StringComparison.Ordinal);
+            int reportAt = first.IndexOf("REPORT_V1", StringComparison.Ordinal);
+            Assert.True(tableAt >= 0 && codeAt > tableAt && reportAt > codeAt);
+
+            // 兩次提示在報告之前的部分必須一字不差——這一段就是能被快取的前綴。
+            Assert.Equal(first[..reportAt], second[..second.IndexOf("REPORT_V2", StringComparison.Ordinal)]);
+        }
+
         [Fact]
         public void Prompt_HasTheReportAndResults_ButNoImagesAndNoRepeatedProgramFindings()
         {
@@ -147,8 +167,9 @@ namespace Cat5201.Tests
             Assert.Contains("--- 程式：hw1.py ---", prompt);
             Assert.Contains("key=lambda m: m['test_rmse']", prompt);
             Assert.DoesNotContain("empty.py", prompt);
-            Assert.True(prompt.IndexOf("=== 報告：HW1.docx ===", StringComparison.Ordinal)
-                        < prompt.IndexOf("=== 程式碼（核對做法描述用） ===", StringComparison.Ordinal));
+            // 程式碼排在報告前面：它在再審查時不會變，放前面才吃得到提示快取。
+            Assert.True(prompt.IndexOf("=== 程式碼（核對做法描述用） ===", StringComparison.Ordinal)
+                        < prompt.IndexOf("=== 報告：HW1.docx ===", StringComparison.Ordinal));
         }
 
         [Fact]

@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cat5201-pro｜專題簡報</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Gloock&family=Noto+Serif+TC:wght@400;600;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/deck.css">
+</head>
+<body>
+<div class="stage" id="stage">
+
+<!-- 1 封面 -->
+<section class="slide cover is-on">
+  <img class="bleed" src="assets/img/hero.jpg" alt="">
+  <div class="cover-copy">
+    <h1>看得見<br>的 AI</h1>
+    <p class="sub">每一個答案，都有來歷。</p>
+    <p class="by">cat5201-pro　畢業專題報告<br><span class="fill">系所・姓名・日期（請改這一行）</span></p>
+  </div>
+</section>
+
+<!-- 2 三個問題 -->
+<section class="slide dark night">
+  <img class="bleed right" src="assets/img/night.jpg" alt="">
+  <div class="pad">
+    <h2 class="qs"><span>這個答案，是誰寫的？</span><span>它查過什麼？</span><span>花了多少？</span></h2>
+    <p class="lede dim">你每天都在問 AI 問題。<br>但這三件事，它從來沒有告訴過你。</p>
+  </div>
+</section>
+
+<!-- 3 問題 -->
+<section class="slide">
+  <div class="pad two">
+    <h2>蓋子關著，<br>你只拿得到<br>最後那張紙條</h2>
+    <ul class="rules">
+      <li><b>它會答錯</b>而你不知道這一題是哪個模型答的。</li>
+      <li><b>它會編來源</b>而你看不到它實際查了什麼。</li>
+      <li><b>帳單月底才出現</b>而你不知道剛才那一次花了多少。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 4 主張 -->
+<section class="slide dark statement">
+  <div class="pad center">
+    <p class="big">AI 給你答案。<br><em>cat5201-pro 連帳一起給你。</em></p>
+    <p class="lede dim">大家都在比誰的 AI 比較聰明。這個專題不比聰明，比的是交代。</p>
+  </div>
+</section>
+
+<!-- 5 它是什麼 -->
+<section class="slide">
+  <div class="pad shotpage">
+    <div>
+      <h2>一張畫布</h2>
+      <p class="lede">每個節點是一次 AI 互動。你在上面提問，它把過程留在上面。</p>
+      <p class="type">Windows 桌面程式　WPF　.NET 10<br>OpenAI　Anthropic　Google Gemini　Perplexity</p>
+    </div>
+    <figure><img src="assets/app/canvas.png" alt="程式畫布的實際畫面"><figcaption>程式實際畫面</figcaption></figure>
+  </div>
+</section>
+
+<!-- 6 決策窗 -->
+<section class="slide">
+  <div class="pad decision">
+    <figure class="tall"><img src="assets/app/decision.png" alt="決策窗的實際畫面"></figure>
+    <div>
+      <h2>一個答案<br>的來歷</h2>
+      <ol class="ledgerlist">
+        <li>這是什麼任務</li>
+        <li>選了哪個模型，為什麼</li>
+        <li>查過哪些來源</li>
+        <li>用了多少 token、花了多少錢</li>
+        <li>每一步收到的輸入</li>
+      </ol>
+      <p class="pull">你不必相信它。你可以檢查它。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 7 串聯 -->
+<section class="slide">
+  <div class="pad">
+    <h2>把提問連起來</h2>
+    <p class="lede w60">上一步做完，下一步自己接著跑。</p>
+    <div class="chain">
+      <div class="mini">查資料</div>
+      <svg class="wire" viewBox="0 0 80 24" preserveAspectRatio="none"><path d="M0 12H80"/></svg>
+      <div class="mini">找出矛盾<code>{{input}}</code></div>
+      <svg class="wire" viewBox="0 0 80 24" preserveAspectRatio="none"><path d="M0 12H80"/></svg>
+      <div class="mini">寫成報告<code>{{input}}</code></div>
+    </div>
+    <ul class="notes three">
+      <li><b>拉一條線</b>從節點角落的小圓點拉出去，就多一張下游的卡。</li>
+      <li><b>駝色虛線</b>在線上按右鍵切換。虛線代表上游完成後自動執行下游。</li>
+      <li><b><code>{{input}}</code></b>執行時換成上游的回答。多個上游會等全部完成才開始。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 8 協作 -->
+<section class="slide">
+  <img class="plate plate-right" src="assets/img/duo.jpg" alt="">
+  <div class="pad half">
+    <h2>讓模型<br>互相檢查</h2>
+    <ol class="stages">
+      <li>各自的回答</li>
+      <li>交叉檢視</li>
+      <li>共識與分歧</li>
+    </ol>
+    <p class="small">勾選 2 到 4 個模型。它們哪裡不一致，分開列給你看。<br>呼叫次數是模型數的兩倍，兩個模型約 NT$3～5。</p>
+  </div>
+</section>
+
+<!-- 9 成品 -->
+<section class="slide">
+  <img class="plate plate-left square" src="assets/img/press.jpg" alt="">
+  <div class="pad half rightside">
+    <h2>交得出東西</h2>
+    <ul class="kinds">
+      <li><b>PowerPoint</b><span>簡報</span></li>
+      <li><b>Word</b><span>書面報告</span></li>
+      <li><b>Excel</b><span>表格</span></li>
+      <li><b>PDF</b><span>文件</span></li>
+      <li><b>Code</b><span>程式碼</span></li>
+      <li><b>Image・Video</b><span>圖片與影片</span></li>
+    </ul>
+    <p class="small">哪一頁不滿意，只改那一頁：「第 3 頁改成比較表」。</p>
+  </div>
+</section>
+
+<!-- 10 分析與審查 -->
+<section class="slide">
+  <img class="plate plate-right square" src="assets/img/check.jpg" alt="">
+  <div class="pad half">
+    <h2>數字來自<br>實際執行</h2>
+    <ul class="notes">
+      <li><b>沙箱資料分析</b>附上 CSV 或 Excel，它真的執行程式：讀完整資料、分析、繪圖，另附可重跑的 <code>.py</code>。</li>
+      <li><b>獨立審查</b>寫完後另開一次獨立呼叫審查，Auto 模式由不同廠商的模型負責。對照數字與表格，另存一份審查清單。只列問題，不改報告。</li>
+      <li><b>照實說</b>審查沒回應或只抽查了一部分，清單會寫明，不會顯示成「沒有問題」。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 11 帳 -->
+<section class="slide">
+  <img class="plate plate-left" src="assets/img/ledger.jpg" alt="">
+  <div class="pad half rightside">
+    <h2>帳</h2>
+    <table class="prices">
+      <caption>實測約略花費</caption>
+      <tr><th>一般問答</th><td>NT$1 以下</td></tr>
+      <tr><th>協作模式，兩個模型</th><td>NT$3–5</td></tr>
+      <tr><th>3～5 頁簡報，快速版</th><td>約 NT$2</td></tr>
+      <tr><th>5 頁簡報，最佳品質加配圖</th><td>NT$40–50</td></tr>
+      <tr><th>附資料檔的分析報告</th><td>NT$20–25</td></tr>
+      <tr><th>報告完成後的獨立審查</th><td>NT$1–12</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- 12 三道關 -->
+<section class="slide">
+  <div class="pad gates">
+    <div>
+      <h2>成本不會<br>失控的<br>三道關</h2>
+    </div>
+    <ol class="ledgerlist wide">
+      <li><b>每日上限</b>預設 NT$100，會超過時先停下來問。</li>
+      <li><b>執行前的確認框</b>列出要產生的檔案與約略費用。</li>
+      <li><b>每筆即時入帳</b>填好儲值餘額後，每筆花費當下扣除並顯示。</li>
+    </ol>
+    <figure class="dialog"><img src="assets/app/confirm.png" alt="確認框的實際畫面"><figcaption>程式實際畫面</figcaption></figure>
+  </div>
+</section>
+
+<!-- 13 架構 -->
+<section class="slide">
+  <div class="pad">
+    <h2>怎麼做的</h2>
+    <div class="layers">
+      <div class="layer"><b>WPF 桌面前端</b><span>net10.0-windows</span><p>畫布、節點、決策窗、手機鏡像伺服器</p></div>
+      <div class="layer core"><b>cat5201.Core</b><span>net10.0，不引用任何 WPF 型別</span><p>模型註冊與路由、成本估算、任務編排、決策紀錄、輸出判斷、獨立審查</p></div>
+      <div class="layer"><b>xUnit 測試</b><span>1,239 項</span><p>路由、成本、審查、重試、執行安全</p></div>
+    </div>
+    <p class="small w70">核心與介面分開，所以移植到 macOS、Linux 或網頁版，主要是重寫介面層。金鑰以 Windows DPAPI 加密存在本機，不會上傳。</p>
+  </div>
+</section>
+
+<!-- 14 故事 -->
+<section class="slide dark statement">
+  <div class="pad story">
+    <p class="big">看不見的東西，<br>沒有辦法改進。</p>
+    <div class="figs">
+      <p><b>988</b><span>筆呼叫紀錄，一筆一筆記下來</span></p>
+      <p><b>US$9.32</b><span>紀錄裡發現的單次文件最高花費</span></p>
+      <p><b>US$1.03</b><span>回頭調整後，11 月的平均</span></p>
+    </div>
+  </div>
+</section>
+
+<!-- 15 限制 -->
+<section class="slide">
+  <div class="pad two">
+    <h2>還沒做好的</h2>
+    <ul class="rules plain">
+      <li>只支援 Windows。</li>
+      <li>「最佳品質」的簡報與報告約需 5 分鐘。</li>
+      <li>Gemini 無法即時搜尋，要由其他模型代查。</li>
+      <li>手機鏡像走區網內未加密的 HTTP。</li>
+      <li>數字單位檢查只比對聊天中的回答，不檢查產出的檔案。</li>
+    </ul>
+  </div>
+</section>
+
+<!-- 16 示範 -->
+<section class="slide">
+  <div class="pad two">
+    <h2>現場示範</h2>
+    <ol class="ledgerlist wide">
+      <li>問一個需要查資料的問題</li>
+      <li>打開決策窗，看它為什麼這樣答</li>
+      <li>拉出下游節點，讓結果往下做</li>
+      <li>讓兩個模型互相檢查</li>
+      <li>請它交一份簡報，看確認框上的費用</li>
+      <li>這一趟總共花了多少</li>
+    </ol>
+  </div>
+</section>
+
+<!-- 17 結尾 -->
+<section class="slide end">
+  <img class="bleed flip" src="assets/img/close.jpg" alt="">
+  <div class="end-copy">
+    <p class="big">AI 會越來越能幹。<br>所以更要看得見，<br>它在做什麼。</p>
+    <p class="by">cat5201-pro　看得見的 AI<br>謝謝各位。</p>
+  </div>
+</section>
+
+</div>
+
+<div class="hud" aria-hidden="true"><span id="count">01 / 17</span></div>
+<script src="assets/deck.js"></script>
+</body>
+</html>

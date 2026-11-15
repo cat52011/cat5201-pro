@@ -75,5 +75,48 @@ namespace Cat5201
 
             return null;
         }
+
+        /// <summary>
+        /// 讀檔並解析；主檔「讀不到、空白、或解析失敗」都退 .bak。都不行回 null。
+        /// ReadAllTextWithFallback 只救 IO 失敗，救不了「讀得到但內容毀損」（半寫入、亂碼）這種最常見的型態。
+        /// parse 解析失敗時可以拋例外或回 null，兩者都視為毀損。
+        /// </summary>
+        public static T? LoadWithFallback<T>(string path, Func<string, T?> parse, string logCategory) where T : class
+        {
+            if (TryLoad(path, parse, logCategory, out var fromMain))
+                return fromMain;
+
+            if (TryLoad(path + ".bak", parse, logCategory, out var fromBak))
+            {
+                if (File.Exists(path))
+                    AppLog.Warn(logCategory, $"主檔毀損，已改用 .bak 上一版備份：{path}");
+                return fromBak;
+            }
+
+            return null;
+        }
+
+        private static bool TryLoad<T>(string path, Func<string, T?> parse, string logCategory, out T? value) where T : class
+        {
+            value = null;
+            try
+            {
+                if (!File.Exists(path))
+                    return false;
+
+                string text = File.ReadAllText(path);
+                if (string.IsNullOrWhiteSpace(text))
+                    return false;
+
+                value = parse(text);
+                return value != null;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn(logCategory, $"檔案讀取或解析失敗：{path}", ex);
+                value = null;
+                return false;
+            }
+        }
     }
 }

@@ -21,7 +21,8 @@ namespace Cat5201
     /// </summary>
     public sealed class PerplexityService
     {
-        private static readonly HttpClient _http = new HttpClient
+        // 會自動重試 5xx／429 這類暫時性錯誤（見 TransientHttpRetryHandler）。
+        private static readonly HttpClient _http = new HttpClient(new TransientHttpRetryHandler())
         {
             Timeout = Timeout.InfiniteTimeSpan
         };
@@ -175,11 +176,13 @@ namespace Cat5201
 
             try
             {
-                while (!reader.EndOfStream)
+                // 不用 reader.EndOfStream：它會同步等下一批資料，把執行緒卡在網路上。
+                // ReadLineAsync 讀到結尾會回 null（下面那行處理），帶 ct 才能在等資料時被取消。
+                while (true)
                 {
                     ct.ThrowIfCancellationRequested();
 
-                    var line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    var line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
                     if (line == null) break;
 
                     if (line.Length == 0)

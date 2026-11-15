@@ -29,8 +29,44 @@ namespace Cat5201
                 args.SetObserved();
             };
 
+            UseInvariantNumberFormat();
+
             AppLog.Info("App", $"啟動 v{typeof(App).Assembly.GetName().Version}");
             base.OnStartup(e);
+        }
+
+        /// <summary>
+        /// 數字一律用「小數點是 .、千分位是 ,」的寫法，不跟著 Windows 地區設定變。
+        ///
+        /// 程式裡有一百多處把數字直接組進字串，其中不少會送進提示或寫進報告。
+        /// 在小數點用逗號的地區（德文、法文等）3.14 會變成 3,14，模型讀到的就是另一個數字。
+        /// 只換數字的分隔符號；日期、貨幣符號維持使用者的地區設定。
+        /// 繁體中文的 Windows 本來就是這組符號，所以對它沒有任何改變。
+        /// </summary>
+        private static void UseInvariantNumberFormat()
+        {
+            try
+            {
+                var culture = (System.Globalization.CultureInfo)System.Globalization.CultureInfo.CurrentCulture.Clone();
+                var n = culture.NumberFormat;
+                n.NumberDecimalSeparator = ".";
+                n.NumberGroupSeparator = ",";
+                n.NumberGroupSizes = new[] { 3 };
+                n.PercentDecimalSeparator = ".";
+                n.PercentGroupSeparator = ",";
+                n.CurrencyDecimalSeparator = ".";
+                n.CurrencyGroupSeparator = ",";
+                n.NegativeSign = "-";
+                n.PositiveSign = "+";
+                n.DigitSubstitution = System.Globalization.DigitShapes.None;
+
+                System.Globalization.CultureInfo.DefaultThreadCurrentCulture = culture;
+                System.Globalization.CultureInfo.CurrentCulture = culture;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("App", "數字格式設定失敗，沿用系統地區設定", ex);
+            }
         }
 
         protected override void OnExit(ExitEventArgs e)

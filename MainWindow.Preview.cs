@@ -19,10 +19,104 @@ namespace Cat5201
     /// </summary>
     public partial class MainWindow
     {
+        private bool _previewWebGuarded;
+
+        /// <summary>
+        /// 預覽視窗的防線（只掛一次）。
+        ///
+        /// 預覽的內容來自模型產出，而模型讀過網頁搜尋結果與使用者的附件——
+        /// 也就是說外部文字有機會變成這個視窗裡的連結或指令碼。這裡做三件事：
+        /// 1. 視窗本身只導覽本機檔案；http(s) 連結改用系統瀏覽器開，不在程式裡開。
+        /// 2. 想另開新視窗的一律擋下，同樣交給系統瀏覽器。
+        /// 3. 關掉用不到的自動填入與密碼儲存。
+        /// 指令碼不能關：簡報預覽的翻頁與「重生這張」都靠它。
+        /// </summary>
+        private void GuardPreviewWebOnce()
+        {
+            if (_previewWebGuarded || PreviewWeb?.CoreWebView2 == null)
+                return;
+            _previewWebGuarded = true;
+
+            var core = PreviewWeb.CoreWebView2;
+            try
+            {
+                core.Settings.IsPasswordAutosaveEnabled = false;
+                core.Settings.IsGeneralAutofillEnabled = false;
+                core.Settings.AreHostObjectsAllowed = false;
+            }
+            catch (Exception ex) { AppLog.Warn("Preview", "預覽視窗設定未套用", ex); }
+
+            core.NavigationStarting += (_, e) =>
+            {
+                if (IsLocalPreviewUri(e.Uri))
+                    return;
+
+                e.Cancel = true;
+                OpenExternally(e.Uri);
+            };
+
+            core.NewWindowRequested += (_, e) =>
+            {
+                e.Handled = true;
+                if (!IsLocalPreviewUri(e.Uri))
+                    OpenExternally(e.Uri);
+            };
+        }
+
+        private static bool IsLocalPreviewUri(string? uri)
+        {
+            if (string.IsNullOrWhiteSpace(uri))
+                return true;
+            return uri.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+                || uri.StartsWith("about:", StringComparison.OrdinalIgnoreCase)
+                || uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase)
+                || uri.StartsWith("blob:", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void OpenExternally(string? uri)
+        {
+            // 只把 http / https 交給系統；其他協定（自訂協定、指令碼等）一律不開。
+            if (string.IsNullOrWhiteSpace(uri) ||
+                !(uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                  uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase)))
+            {
+                return;
+            }
+
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri) { UseShellExecute = true });
+            }
+            catch (Exception ex) { AppLog.Warn("Preview", "外部連結開啟失敗", ex); }
+        }
+
+        /// <summary>
+        /// 「重生這張」這類指令會花錢，只接受程式自己組出來的那一頁（PreviewTempDir 裡的 preview.html）送來的。
+        /// 直接開啟的檔案（PDF、模型產出的網頁等）就算送訊息過來也不理。
+        /// </summary>
+        private static bool IsTrustedPreviewMessageSource(string? source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+                return false;
+            try
+            {
+                string trusted = new Uri(System.IO.Path.Combine(PreviewTempDir, "preview.html")).AbsoluteUri;
+                string from = source.Split('?', '#')[0];
+                return string.Equals(from, trusted, StringComparison.OrdinalIgnoreCase);
+            }
+            catch { return false; }
+        }
+
         // §7.2：重生簡報中的單一張投影片 → 重建 .pptx、換掉舊檔與 chip、更新節點的投影片清單。
         // §7.2：簡報預覽視窗（WebView2）按「重生這張」時，前端 postMessage 進來這裡。
         private async void OnPreviewWebMessage(object? sender, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs e)
         {
+            if (!IsTrustedPreviewMessageSource(e.Source))
+            {
+                AppLog.Warn("Preview", "忽略非預覽頁送來的訊息：" + e.Source);
+                return;
+            }
+
             string msg;
             try { msg = e.TryGetWebMessageAsString() ?? ""; }
             catch { return; }
@@ -1180,6 +1274,7 @@ namespace Cat5201
             try
             {
                 await PreviewWeb.EnsureCoreWebView2Async();
+                GuardPreviewWebOnce();
 
                 // 等待初始化期間若已關閉或切換到別的檔案，放棄這次導覽。
                 if (PreviewOverlay.Visibility != Visibility.Visible ||
@@ -1220,6 +1315,7 @@ namespace Cat5201
             try
             {
                 await PreviewWeb.EnsureCoreWebView2Async();
+                GuardPreviewWebOnce();
 
                 if (!_previewWebMsgHooked)
                 {

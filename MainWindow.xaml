@@ -2381,7 +2381,7 @@ Margin="0,20,20,0"
                                    Margin="0,0,0,10"/>
 
                         <TextBlock Text="{local:Tr '新增技能'}"
-                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#5E574C" Margin="0,0,0,4"/>
+                                   FontFamily="Noto Serif TC, Georgia, PMingLiU" FontSize="14.5" FontWeight="Normal" Foreground="#2A2019" Margin="0,0,0,4"/>
                         <Border Background="#FAF8F5" BorderBrush="#ECE7DF" BorderThickness="1" CornerRadius="3" Margin="0,0,0,6">
                             <TextBox x:Name="SkillNameInput"
                                      BorderThickness="0" Background="Transparent"
@@ -2421,7 +2421,7 @@ Margin="0,20,20,0"
                         <!-- 從 GitHub 匯入（支援 raw / blob 連結的 .md 或純文字技能檔；SKILL.md frontmatter 的 name 會自動帶入） -->
                         <Border Height="1" Background="#F1EDE7" Margin="0,16,0,0"/>
                         <TextBlock Text="{local:Tr '從 GitHub 匯入'}"
-                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#5E574C" Margin="0,14,0,2"/>
+                                   FontFamily="Noto Serif TC, Georgia, PMingLiU" FontSize="14.5" FontWeight="Normal" Foreground="#2A2019" Margin="0,14,0,2"/>
                         <TextBlock Text="{local:Tr '貼上 GitHub 上技能檔的連結（blob 或 raw 皆可，例如 SKILL.md），自動抓取並匯入成一條技能。frontmatter 的 name/description 會自動解析。'}"
                                    FontSize="11.5" Foreground="#A79F91" TextWrapping="Wrap" Margin="0,0,0,6"/>
                         <Grid>
@@ -2465,7 +2465,7 @@ Margin="0,20,20,0"
                         <!-- 已存在的技能清單 -->
                         <Border Height="1" Background="#F1EDE7" Margin="0,16,0,0"/>
                         <TextBlock Text="{local:Tr '我的技能'}"
-                                   FontSize="12.5" FontWeight="SemiBold" Foreground="#5E574C" Margin="0,14,0,6"/>
+                                   FontFamily="Noto Serif TC, Georgia, PMingLiU" FontSize="14.5" FontWeight="Normal" Foreground="#2A2019" Margin="0,14,0,6"/>
                         <StackPanel x:Name="SkillsListPanel"/>
                     </StackPanel>
                     </ScrollViewer>

@@ -25,6 +25,8 @@ namespace Cat5201.Tests
         [Fact]
         public async Task MixedModels_EachCallPricedAtItsOwnModel()
         {
+            // GPT-5.6 Sol 的 $4 是有期限的促銷價；把日期釘在促銷期間，這個測試才不會在到期後失敗。
+            using var clock = UserClock.Override(() => new DateTimeOffset(2026, 11, 13, 12, 0, 0, TimeSpan.FromHours(8)));
             FreshLedger();
             UsageScope? scope = null;
 
@@ -190,6 +192,23 @@ namespace Cat5201.Tests
             Assert.Equal(8, job.Seconds);
             Assert.Equal(0.40, job.CostUsd, 6);
             Assert.Equal("pending", job.Status); // 寫檔完成前保持可恢復
+        }
+
+        [Fact]
+        public void VideoJournal_CorruptMainFile_FallsBackToBak()
+        {
+            string dir = Path.Combine(Path.GetTempPath(), "cat5201-jobs-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(dir);
+
+            VideoJobJournal.Initialize(dir);
+            VideoJobJournal.Record("operations/first", "prompt", 8, 0.40, costRecorded: true);
+            VideoJobJournal.Record("operations/second", "prompt", 8, 0.40, costRecorded: true); // 這次寫入把上一版留成 .bak
+
+            // 主檔讀得到但內容是半寫入的 JSON：以前會被當成空紀錄，已付費的任務就撈不回來。
+            File.WriteAllText(Path.Combine(dir, "_video_jobs.json"), "{\"schema\":1,\"data\":[{\"Operat");
+            VideoJobJournal.Initialize(dir);
+
+            Assert.NotNull(VideoJobJournal.Find("operations/first"));
         }
     }
 }

@@ -134,7 +134,108 @@ namespace Cat5201
                 return;
             }
 
-            foreach (var path in _pendingFilePaths)
+            // 使用者明確清除（刪節點、清除輸出）：重跑時放在一邊的上一輪成果也一併清掉。
+            var toDelete = _pendingFilePaths.ToList();
+            if (_previousRunOutputs is { } aside)
+                toDelete.AddRange(aside.Files);
+            _previousRunOutputs = null;
+
+            DeleteOutputFilesFromDisk(toDelete);
+
+            _pendingFilePaths.Clear();
+
+            _outputFiles.Clear();
+            if (OutputFileHost != null)
+                OutputFileHost.Visibility = Visibility.Collapsed;
+
+            _outputImagePath = null;
+            if (OutputImage != null)
+                OutputImage.Source = null;
+            if (OutputImageHost != null)
+                OutputImageHost.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>重跑時放在一邊的上一輪成果（還沒刪）。</summary>
+        private (List<string> Files, string? Image)? _previousRunOutputs;
+
+        /// <summary>
+        /// 重跑開始：把上一輪的成果從畫面上收起來，但**不刪檔**。
+        /// 這一輪成功才刪（SettlePreviousOutputs），失敗、逾時、被預算擋下都放回來。
+        /// </summary>
+        internal void SetAsidePreviousOutputs()
+        {
+            var files = _pendingFilePaths.ToList();
+            string? image = _outputImagePath;
+
+            // 上一次放一邊的還沒處理（理論上不會發生）：合在一起，不能讓它們變成沒人管的檔案。
+            if (_previousRunOutputs is { } older)
+            {
+                files.InsertRange(0, older.Files.Where(f => !files.Contains(f, StringComparer.OrdinalIgnoreCase)));
+                image ??= older.Image;
+            }
+
+            _previousRunOutputs = files.Count == 0 && string.IsNullOrWhiteSpace(image) ? null : (files, image);
+
+            _pendingFilePaths.Clear();
+            _outputFiles.Clear();
+            if (OutputFileHost != null)
+                OutputFileHost.Visibility = Visibility.Collapsed;
+
+            _outputImagePath = null;
+            if (OutputImage != null)
+                OutputImage.Source = null;
+            if (OutputImageHost != null)
+                OutputImageHost.Visibility = Visibility.Collapsed;
+        }
+
+        /// <summary>
+        /// 重跑結束：成功＝刪掉上一輪、這一輪沒有沿用的檔案；失敗＝把上一輪的成果放回節點上。
+        ///
+        /// 失敗但這一輪已經產出部分檔案時，兩邊都留著（新的在前），讓使用者自己判斷。
+        /// 注意：上一輪的檔案在新的一輪產生時還在，所以新檔可能被編上 _2（GeneratedFileWriter 不覆蓋既有檔案）；
+        /// 下一次重跑舊名稱已經空出來，又會用回原名。
+        /// </summary>
+        internal void SettlePreviousOutputs(bool succeeded)
+        {
+            if (_previousRunOutputs is not { } previous)
+                return;
+            _previousRunOutputs = null;
+
+            if (succeeded)
+            {
+                var keep = new HashSet<string>(_pendingFilePaths, StringComparer.OrdinalIgnoreCase);
+                if (!string.IsNullOrWhiteSpace(_outputImagePath))
+                    keep.Add(_outputImagePath!);
+                DeleteOutputFilesFromDisk(previous.Files.Where(f => !keep.Contains(f)).ToList());
+                return;
+            }
+
+            int restored = 0;
+            foreach (var path in previous.Files)
+            {
+                if (_pendingFilePaths.Contains(path, StringComparer.OrdinalIgnoreCase) || !System.IO.File.Exists(path))
+                    continue;
+                _outputFiles.Add(new OutputFileVm { FileName = System.IO.Path.GetFileName(path), FullPath = path });
+                _pendingFilePaths.Add(path);
+                restored++;
+            }
+            if (OutputFileHost != null)
+                OutputFileHost.Visibility = _outputFiles.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            if (string.IsNullOrWhiteSpace(_outputImagePath) && !string.IsNullOrWhiteSpace(previous.Image))
+                SetOutputImage(previous.Image);
+
+            if (restored > 0)
+                AppLog.Info("Node", $"這一輪沒有成功，保留上一輪的 {restored} 個產出檔案");
+        }
+
+        /// <summary>刪掉磁碟上的產出檔案，並收掉因此變空的資料夾（不會超出產出根目錄）。</summary>
+        private void DeleteOutputFilesFromDisk(IReadOnlyCollection<string> paths)
+        {
+            if (paths.Count == 0)
+                return;
+
+            foreach (var path in paths)
             {
                 try
                 {
@@ -153,7 +254,7 @@ namespace Cat5201
             catch { genRoot = null; }
             if (genRoot != null)
             {
-                var dirs = _pendingFilePaths
+                var dirs = paths
                     .Select(System.IO.Path.GetDirectoryName)
                     .Where(d => !string.IsNullOrEmpty(d))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -161,7 +262,7 @@ namespace Cat5201
 
                 // 程式資料夾裡的「修正前」（審查後自動修正留下的上一版）屬於同一輪產出，跟著清掉；
                 // 它沒有列在輸出 chip 裡，不清的話會讓整個程式資料夾一直刪不掉。
-                foreach (var dir in _pendingFilePaths
+                foreach (var dir in paths
                              .Where(p => OutputFileCategory.Of(p).Label is "程式碼")
                              .Select(System.IO.Path.GetDirectoryName)
                              .Where(d => !string.IsNullOrEmpty(d))
@@ -184,18 +285,6 @@ namespace Cat5201
                 foreach (var dir in dirs)
                     GeneratedFileOrganizer.RemoveEmptyDirs(dir, genRoot);
             }
-
-            _pendingFilePaths.Clear();
-
-            _outputFiles.Clear();
-            if (OutputFileHost != null)
-                OutputFileHost.Visibility = Visibility.Collapsed;
-
-            _outputImagePath = null;
-            if (OutputImage != null)
-                OutputImage.Source = null;
-            if (OutputImageHost != null)
-                OutputImageHost.Visibility = Visibility.Collapsed;
         }
 
         /// <summary>設定本次執行產生、可在輸出區點擊開啟的檔案。可從背景執行緒呼叫。</summary>
@@ -282,10 +371,20 @@ namespace Cat5201
         }
 
         /// <summary>取得目前輸出區的可開啟檔案完整路徑，用於存檔持久化。</summary>
-        public IReadOnlyList<string> GetOutputFilePaths() => _pendingFilePaths.ToList();
+        /// <summary>
+        /// 這個節點目前擁有的產出檔案。重跑中、新的一輪還沒產出任何檔案時，回傳放在一邊的上一輪成果——
+        /// 中途存檔（或程式在這時關掉）不能把舊成果的連結洗掉，否則檔案還在磁碟上卻再也找不到。
+        /// </summary>
+        public IReadOnlyList<string> GetOutputFilePaths()
+            => _pendingFilePaths.Count == 0 && _previousRunOutputs is { } aside
+                ? aside.Files.ToList()
+                : _pendingFilePaths.ToList();
 
         /// <summary>取得目前輸出區 inline 顯示的圖片路徑，用於存檔持久化。</summary>
-        public string? GetOutputImagePath() => _outputImagePath;
+        public string? GetOutputImagePath()
+            => string.IsNullOrWhiteSpace(_outputImagePath) && _previousRunOutputs is { } aside
+                ? aside.Image
+                : _outputImagePath;
 
         /// <summary>從存檔還原輸出區檔案 chip（路徑指向的檔案需仍存在）。可從背景執行緒呼叫。</summary>
         public void RestoreOutputFiles(IEnumerable<string>? paths)

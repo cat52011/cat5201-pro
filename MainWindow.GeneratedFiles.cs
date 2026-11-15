@@ -116,12 +116,17 @@ namespace Cat5201
                     return null;
 
                 string name = System.IO.Path.GetFileName(recordedPath);
-                var hit = System.IO.Directory
+                var candidates = System.IO.Directory
                     .EnumerateFiles(root, name, System.IO.SearchOption.AllDirectories)
-                    .FirstOrDefault();
+                    .ToList();
+
+                string? hit = GeneratedFileRelink.Pick(recordedPath, root, GeneratedFilesDir, candidates);
 
                 if (hit != null)
-                    AppLog.Info("Output", $"附件已移動，改用新位置：{name}");
+                    AppLog.Info("Output", "產出檔案已移動，改用新位置");
+                else if (candidates.Count > 0)
+                    AppLog.Warn("Output",
+                        $"產出檔案不在原位置；找到 {candidates.Count} 個同名檔，但都不能確定屬於這個專案，不自動連結");
 
                 return hit;
             }

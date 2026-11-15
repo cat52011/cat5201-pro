@@ -1050,15 +1050,22 @@ namespace Cat5201
             if (!string.IsNullOrWhiteSpace(log.CostDisplay))
                 lines.Add(UiLanguage.P($"成本：{log.CostDisplay}（讀進 {log.InputTokens}、寫出 {log.OutputTokens} 個 token）", $"Cost: {log.CostDisplay} ({log.InputTokens} tokens in, {log.OutputTokens} out)"));
 
-            foreach (var r in log.UsageRecords ?? Array.Empty<UsageRecord>())
+            var usageRecords = log.UsageRecords ?? Array.Empty<UsageRecord>();
+            foreach (var r in usageRecords)
             {
                 string amount = r.Kind == UsageKinds.Llm
                     ? UiLanguage.P($"讀進 {r.InputTokens}、寫出 {r.OutputTokens} 個 token", $"{r.InputTokens} tokens in, {r.OutputTokens} out")
                     : $"{r.Quantity:0.##} {r.Unit}";
                 string note = string.IsNullOrWhiteSpace(r.Note) ? "" : $"（{r.Note}）";
+                // 「估算」只描述用量從哪來，標在用量後面；金額一律是依價目表換算的約略值。
                 string estimated = r.IsActual ? "" : UiLanguage.P("（估算）", " (estimate)");
-                lines.Add($"{r.AtUtc.ToLocalTime():HH:mm:ss}　{r.Purpose}・{GetModelLabel(r.ModelId)}・{amount}・{ModelCostEstimator.FormatTwd(r.UsdCost)}{estimated}{note}");
+                string twd = ModelCostEstimator.FormatTwd(r.UsdCost);
+                string money = twd.StartsWith("<") ? twd : UiLanguage.P("約 ", "~") + twd;
+                lines.Add($"{r.AtUtc.ToLocalTime():HH:mm:ss}　{r.Purpose}・{GetModelLabel(r.ModelId)}・{amount}{estimated}・{money}{note}");
             }
+            if (usageRecords.Count > 0)
+                lines.Add(UiLanguage.P("金額是用量乘上程式內建的價目表算出來的，以服務商帳單為準。",
+                                       "Amounts are computed from the built-in price table; your provider's bill is authoritative."));
 
             if (!string.IsNullOrWhiteSpace(log.ErrorMessage))
                 lines.Add(UiLanguage.P($"錯誤訊息：{log.ErrorMessage}", $"Error message: {log.ErrorMessage}"));

@@ -15,7 +15,8 @@ namespace Cat5201
     /// </summary>
     public sealed class OpenAIImageService
     {
-        private static readonly HttpClient _http = new HttpClient
+        // 會自動重試 5xx／429 這類暫時性錯誤（見 TransientHttpRetryHandler）。
+        private static readonly HttpClient _http = new HttpClient(new TransientHttpRetryHandler())
         {
             // 生成圖片可能要數十秒，交給 CancellationToken 控制，不用固定短 timeout。
             Timeout = Timeout.InfiniteTimeSpan

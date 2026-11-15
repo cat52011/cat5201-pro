@@ -516,12 +516,15 @@ namespace Cat5201
             }
         }
 
-        /// <summary>節點的短名稱，給紀錄用。</summary>
-        private static string ShortLabel(NodeControl node)
-        {
-            string text = (node?.GetTopText() ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
-            return text.Length <= 18 ? (text.Length == 0 ? UiLanguage.P("（空節點）", "(empty node)") : text) : text.Substring(0, 18) + "…";
-        }
+        /// <summary>
+        /// 節點在日誌裡的代號：節點 ID 的前 8 碼。
+        ///
+        /// 原本用提問的前 18 個字，但日誌會被打包進「回報問題」的診斷檔，
+        /// 而那個畫面跟使用者說「不含對話內容」——客戶名稱、作業題目就這樣跟著寄出去了。
+        /// 要對照是哪個節點，用存檔裡同一個 ID 查。
+        /// </summary>
+        internal static string ShortLabel(NodeControl node)
+            => node == null ? "node:?" : "node:" + node.Id.ToString("N")[..8];
 
         // 這一輪會走到哪些節點：沿流動邊從起點展開（含起點）。
         private void CollectFlowReachable(NodeControl root, HashSet<Guid> into)

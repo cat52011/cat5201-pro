@@ -72,12 +72,16 @@ namespace Cat5201
                 _parent!.ClearFlowSubtreeWaiting(this);
         }
 
-        // 本次執行是否產出可作為下游輸入的有效內容（排除錯誤 / 逾時 / 無回應訊息）。
+        // 本次執行是否產出可作為下游輸入的有效內容：以執行結束時定下的狀態為準（見 LastRunSucceededSince），
+        // 不從畫面文字判斷。下面保留舊的文字檢查作為第二道防線。
         private bool RunProducedUsableOutput()
         {
+            if (_runStatus != NodeRunStatus.Success)
+                return false;
+
             string bottom = (GetBottomText() ?? "").TrimStart();
             if (string.IsNullOrWhiteSpace(bottom))
-                return false;
+                return _outputFiles.Count > 0;
 
             return !bottom.StartsWith("（AI 產生失敗）", StringComparison.Ordinal)
                 && !bottom.StartsWith("（AI 產生逾時）", StringComparison.Ordinal)
@@ -105,7 +109,9 @@ namespace Cat5201
             BeginUsageScope();
             bool isImageTask = IsImageTask(topText);
             UpdateEditButtons();
-            ClearOutputFiles();
+            // 舊成果先放一邊、不刪：這一輪成功才清掉，失敗就放回來（見 SettlePreviousOutputs）。
+            // 原本這裡直接刪檔，接著才檢查預算——預算滿了按重跑，昨天的報告就沒了。
+            SetAsidePreviousOutputs();
             ApplyRunStatus(NodeRunStatus.Running);
             TimeSpan executionTimeout = ResolveExecutionTimeout(topText);
 
@@ -234,6 +240,7 @@ namespace Cat5201
             finally
             {
                 StopBottomLoadingAnimation(clearIfLoading: false);
+                SettlePreviousOutputs(succeeded: _runStatus == NodeRunStatus.Success);
                 _isGenerating = false;
                 _activeManualStop?.Dispose();
                 _activeManualStop = null;

@@ -1014,8 +1014,11 @@ namespace Cat5201
                 foreach (var message in probe["messages"] as JsonArray ?? new JsonArray())
                 {
                     if (message is not JsonObject m || m["content"] is not JsonArray blocks) continue;
+                    // 用 file_id 引用的附件（document／image 的 source.type = "file"）也一樣不收。
+                    // 2026-11-13：只拿掉 container_upload，資料分析帶 CSV 時預檢每次都被退回，等於沒做。
                     for (int i = blocks.Count - 1; i >= 0; i--)
-                        if ((string?)blocks[i]?["type"] == "container_upload")
+                        if ((string?)blocks[i]?["type"] == "container_upload" ||
+                            (string?)blocks[i]?["source"]?["type"] == "file")
                             blocks.RemoveAt(i);
                 }
 

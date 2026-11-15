@@ -63,6 +63,32 @@ namespace Cat5201.Tests
             Assert.True(SpendLedger.IsOverDailyBudget(30));
             Assert.False(SpendLedger.IsOverDailyBudget(100));
         }
+
+        [Fact]
+        public void CorruptMainFile_FallsBackToBak()
+        {
+            string dir = FreshDir();
+            SpendLedger.Initialize(dir);
+            SpendLedger.Add(0.25, "test");
+            SpendLedger.Add(0.10, "test"); // 這次寫入把 0.25 那一版留成 .bak
+
+            // 主檔讀得到但內容是半寫入的 JSON：以前會從零開始，每日上限就失效了。
+            File.WriteAllText(Path.Combine(dir, "_spend.json"), "{\"days\":{\"20");
+            SpendLedger.Initialize(dir);
+
+            Assert.Equal(0.25, SpendLedger.TodayUsd, 6);
+        }
+
+        [Fact]
+        public void CorruptMainAndBak_StartsFromZero()
+        {
+            string dir = FreshDir();
+            File.WriteAllText(Path.Combine(dir, "_spend.json"), "not json");
+            File.WriteAllText(Path.Combine(dir, "_spend.json.bak"), "{broken");
+            SpendLedger.Initialize(dir);
+
+            Assert.Equal(0, SpendLedger.TodayUsd, 6);
+        }
     }
 
     /// <summary>原子寫檔：使用者資產（偏好/專案/帳本）的防毀損保證。</summary>

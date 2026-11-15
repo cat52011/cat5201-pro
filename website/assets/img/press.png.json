@@ -1,0 +1,9 @@
+{
+  "prompt": "A vintage colour-magazine illustration from the late 1950s, painted in gouache and reproduced by offset printing with visible fine halftone dots and very slight colour misregistration, on warm cream paper. Match the reference image exactly in painting style, print texture, palette, the same tabby cat, the same brass-and-walnut calculating machine and the same wooden desk.\r\n\r\nScene: on the desk, a neat stack of finished documents: a bound report, a folder of charts with a bar chart and a pie chart visible as simple shapes, a deck of presentation cards fanned out, a roll of film, and a small framed picture. The calculating machine is behind them, its paper tape feeding into the stack. The tabby cat sits on top of the bound report, satisfied.\r\n\r\nComposition: square. Subject centred, cream paper background fading out softly at all four edges like a magazine spot illustration with no hard border.\r\n\r\nPalette drawn from old print: warm cream paper (#F8F4ED), deep espresso brown (#2A2019), camel and ochre (#9C7A54), muted brass, one restrained accent of dusty teal. Soft, matte, poetic and restrained. No neon, no glow, no modern objects, no screens.\r\n\r\nNo text, no letters, no legible numbers, no logo, no border, no frame, no watermark.",
+  "createdAt": "2026-11-15T06:07:09.500Z",
+  "tool": "impeccable generate-image",
+  "model": "gpt-image-2.5-flare",
+  "refs": [
+    "img/hero.png"
+  ]
+}

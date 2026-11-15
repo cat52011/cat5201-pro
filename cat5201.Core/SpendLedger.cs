@@ -41,11 +41,19 @@ namespace Cat5201
                 {
                     _path = Path.Combine(configDir, "_spend.json");
                     _usdByDayProvider = new();
-                    string? json = AtomicFile.ReadAllTextWithFallback(_path);
-                    if (!string.IsNullOrWhiteSpace(json))
-                        LoadFromJsonLocked(json!);
+                    // 主檔毀損（半寫入、亂碼）時改讀 .bak：帳本歸零會讓每日預算上限失效。
+                    var data = AtomicFile.LoadWithFallback(_path, ParseLedger, "Spend");
+                    if (data != null)
+                    {
+                        _usdByDay = data.Days;
+                        _usdByDayProvider = data.Providers;
+                    }
+                    else if (File.Exists(_path) || File.Exists(_path + ".bak"))
+                    {
+                        AppLog.Warn("Spend", "帳本與備份都無法解析，從零開始");
+                    }
                 }
-                catch { _usdByDay = new(); }
+                catch { _usdByDay = new(); _usdByDayProvider = new(); }
             }
         }
 
@@ -202,29 +210,31 @@ namespace Cat5201
 
         // 檔案格式：新版 {"days":{...},"providers":{day:{provider:usd}}}；
         // 舊版是純 {day: usd}，照樣讀得進來（分服務資料從那天起才有）。
-        private static void LoadFromJsonLocked(string json)
+        private sealed record LedgerData(
+            Dictionary<string, double> Days,
+            Dictionary<string, Dictionary<string, double>> Providers);
+
+        // 解析失敗會拋例外或回 null，由 AtomicFile.LoadWithFallback 改讀 .bak。
+        private static LedgerData? ParseLedger(string json)
         {
-            try
-            {
-                using var doc = JsonDocument.Parse(json);
-                var root = doc.RootElement;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+                return null;
 
-                if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("days", out var daysEl))
-                {
-                    _usdByDay = JsonSerializer.Deserialize<Dictionary<string, double>>(daysEl.GetRawText()) ?? new();
-                    if (root.TryGetProperty("providers", out var provEl))
-                        _usdByDayProvider = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, double>>>(provEl.GetRawText()) ?? new();
-                    return;
-                }
-
-                _usdByDay = JsonSerializer.Deserialize<Dictionary<string, double>>(json) ?? new();
-            }
-            catch (Exception ex)
+            if (root.TryGetProperty("days", out var daysEl))
             {
-                AppLog.Warn("Spend", "帳本格式無法解析，從零開始", ex);
-                _usdByDay = new();
-                _usdByDayProvider = new();
+                var days = JsonSerializer.Deserialize<Dictionary<string, double>>(daysEl.GetRawText());
+                if (days == null)
+                    return null;
+                var providers = root.TryGetProperty("providers", out var provEl)
+                    ? JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, double>>>(provEl.GetRawText()) ?? new()
+                    : new();
+                return new LedgerData(days, providers);
             }
+
+            var legacy = JsonSerializer.Deserialize<Dictionary<string, double>>(json);
+            return legacy == null ? null : new LedgerData(legacy, new());
         }
 
         private static void Persist()
