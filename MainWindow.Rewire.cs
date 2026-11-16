@@ -51,9 +51,9 @@ namespace Cat5201
 
             _rewireGhost = new PathShape
             {
-                Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString("#9C7A54")!,
-                StrokeThickness = 1.6,
-                StrokeDashArray = new DoubleCollection { 5, 4 },
+                Stroke = (SolidColorBrush)new BrushConverter().ConvertFromString(ThemeColors.Hex("#9C7A54", "#5B6CFF"))!,
+                StrokeThickness = ThemeColors.Pick(1.6, 3),
+                StrokeDashArray = new DoubleCollection { ThemeColors.Pick(5, 4), 4 },
                 IsHitTestVisible = false
             };
             Canvas.SetZIndex(_rewireGhost, GetNextZIndex());

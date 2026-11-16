@@ -99,15 +99,15 @@ namespace Cat5201
                 {
                     case ApiKeyStore.KeySource.Environment:
                         row.Status.Text = UiLanguage.P("環境變數", "Environment variable");
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x37, 0x85, 0x58));
+                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0x37, 0x85, 0x58, 0x1F9D55));
                         break;
                     case ApiKeyStore.KeySource.UserEntered:
                         row.Status.Text = UiLanguage.P("已儲存", "Saved");
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x9C, 0x7A, 0x54));
+                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0x9C, 0x7A, 0x54, 0x2E6BE6));
                         break;
                     default:
                         row.Status.Text = UiLanguage.P("未設定", "Not set");
-                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xB3, 0xAC, 0xA1));
+                        row.Status.Foreground = new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0xB3, 0xAC, 0xA1, 0xA8A8AC));
                         break;
                 }
             }
@@ -136,8 +136,8 @@ namespace Cat5201
                 ApiSaveHint.Text = updates.Count > 0 ? UiLanguage.P("已儲存（已加密落地）。", "Saved (encrypted on disk).") : UiLanguage.P("沒有新輸入的金鑰。", "No new keys entered.");
                 ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(
                     updates.Count > 0
-                        ? System.Windows.Media.Color.FromRgb(0x37, 0x85, 0x58)
-                        : System.Windows.Media.Color.FromRgb(0xB3, 0xAC, 0xA1));
+                        ? ThemeColors.Rgb(0x37, 0x85, 0x58, 0x1F9D55)
+                        : ThemeColors.Rgb(0xB3, 0xAC, 0xA1, 0xA8A8AC));
                 ApiSaveHint.Visibility = Visibility.Visible;
             }
         }
@@ -153,7 +153,7 @@ namespace Cat5201
             if (ApiSaveHint != null)
             {
                 ApiSaveHint.Text = UiLanguage.P("已清除該金鑰。", "Key cleared.");
-                ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xB3, 0xAC, 0xA1));
+                ApiSaveHint.Foreground = new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0xB3, 0xAC, 0xA1, 0xA8A8AC));
                 ApiSaveHint.Visibility = Visibility.Visible;
             }
         }

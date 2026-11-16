@@ -60,23 +60,23 @@ namespace Cat5201
                 Topmost = true;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-                Width = 400;   // 含四周 16px 的陰影留白
+                Width = ThemeColors.Pick(400, 360);   // 含四周 16px 的陰影留白（原始主題沒有陰影、不留白）
                 SizeToContent = SizeToContent.Height;   // 依內容自動長高，避免長訊息被截斷
                 MaxHeight = 600;
 
                 var bg = TryGetBrush(resourceHost, "FileMenuBg", "NodeMenuBg", Colors.White);
-                var border = TryGetBrush(resourceHost, "FileMenuBorder", "NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#DBD7D1")!);
-                var text = TryGetBrush(resourceHost, "FileMenuText", "NodeMenuText", (Color)ColorConverter.ConvertFromString("#26231E")!);
+                var border = TryGetBrush(resourceHost, "FileMenuBorder", "NodeMenuBorder", (Color)ColorConverter.ConvertFromString(ThemeColors.Hex("#DBD7D1", "#D6D6D6"))!);
+                var text = TryGetBrush(resourceHost, "FileMenuText", "NodeMenuText", (Color)ColorConverter.ConvertFromString(ThemeColors.Hex("#26231E", "#222222"))!);
 
                 var outer = new Border
                 {
                     Background = bg,
                     BorderBrush = border,
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(26, 22, 22, 20),
-                    Margin = new Thickness(16),
-                    Effect = DialogChrome.CardShadow(),
+                    CornerRadius = new CornerRadius(ThemeColors.Pick(4, 12)),
+                    Padding = ThemeColors.Pick(new Thickness(26, 22, 22, 20), new Thickness(12)),
+                    Margin = ThemeColors.Pick(new Thickness(16), new Thickness(0)),
+                    Effect = ThemeColors.IsOriginal ? null : DialogChrome.CardShadow(),
                     SnapsToDevicePixels = true
                 };
 
@@ -97,10 +97,10 @@ namespace Cat5201
                 {
                     Text = title,
                     Foreground = text,
-                    FontSize = 18,
-                    FontWeight = FontWeights.Normal,
-                    FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
-                    Margin = new Thickness(0, 2, 0, 10)
+                    FontSize = ThemeColors.Pick(18, 13),
+                    FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.SemiBold),
+                    FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily),
+                    Margin = ThemeColors.Pick(new Thickness(0, 2, 0, 10), new Thickness(0, 0, 0, 8))
                 };
                 Grid.SetRow(titleText, 0);
                 root.Children.Add(titleText);
@@ -110,11 +110,11 @@ namespace Cat5201
                     Text = message,
                     Foreground = text,
                     FontSize = 13,
-                    LineHeight = 21,
-                    Opacity = 0.82,
+                    LineHeight = ThemeColors.Pick(21.0, double.NaN),
+                    Opacity = ThemeColors.Pick(0.82, 1.0),
                     TextWrapping = TextWrapping.Wrap,
-                    TextAlignment = TextAlignment.Left,
-                    HorizontalAlignment = HorizontalAlignment.Left,
+                    TextAlignment = ThemeColors.Pick(TextAlignment.Left, TextAlignment.Center),
+                    HorizontalAlignment = ThemeColors.Pick(HorizontalAlignment.Left, HorizontalAlignment.Center),
                     VerticalAlignment = VerticalAlignment.Center
                 };
                 Grid.SetRow(msgText, 1);
@@ -124,12 +124,12 @@ namespace Cat5201
                 {
                     Orientation = Orientation.Horizontal,
                     HorizontalAlignment = HorizontalAlignment.Right,
-                    Margin = new Thickness(0, 22, 0, 0)
+                    Margin = new Thickness(0, ThemeColors.Pick(22, 12), 0, 0)
                 };
 
                 if (!string.IsNullOrEmpty(cancelText))
                 {
-                    var cancel = DialogChrome.Secondary(cancelText);
+                    var cancel = ThemeColors.IsOriginal ? CreateMenuButton(cancelText, text) : DialogChrome.Secondary(cancelText);
                     cancel.IsCancel = true;
                     cancel.Margin = new Thickness(0, 0, 8, 0);
                     cancel.Click += (_, __) => { DialogResult = false; Close(); };
@@ -137,9 +137,10 @@ namespace Cat5201
                 }
 
                 var confirmBrush = danger
-                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#C14141")!)
+                    ? new SolidColorBrush((Color)ColorConverter.ConvertFromString(ThemeColors.Hex("#C14141", "#D32F2F"))!)
                     : text;
-                var confirm = danger ? DialogChrome.Danger(confirmText) : DialogChrome.Primary(confirmText);
+                var confirm = ThemeColors.IsOriginal ? CreateMenuButton(confirmText, confirmBrush)
+                    : danger ? DialogChrome.Danger(confirmText) : DialogChrome.Primary(confirmText);
                 confirm.IsDefault = true;
                 confirm.Click += (_, __) => { DialogResult = true; Close(); };
                 btnPanel.Children.Add(confirm);

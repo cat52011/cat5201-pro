@@ -32,13 +32,13 @@ namespace Cat5201
 
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(ThemeColors.Rgb(0xFF, 0xFD, 0xF9, 0xFFFFFF)),
+                BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(ThemeColors.Pick(1, 0)),
+                CornerRadius = new CornerRadius(ThemeColors.Pick(4, 16)),
                 Padding = new Thickness(26, 22, 26, 22),
                 Margin = new Thickness(14),
-                Effect = new DropShadowEffect { Color = Color.FromRgb(0x2A, 0x20, 0x19), Opacity = 0.15, BlurRadius = 26, ShadowDepth = 4 },
+                Effect = new DropShadowEffect { Color = ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x000000), Opacity = ThemeColors.Pick(0.15, 0.20), BlurRadius = 26, ShadowDepth = 4 },
             };
             card.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
 
@@ -46,15 +46,15 @@ namespace Cat5201
             root.Children.Add(new TextBlock
             {
                 Text = "選擇語言 · Choose your language",
-                FontSize = 21, FontWeight = FontWeights.Normal, FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18)),
+                FontSize = ThemeColors.Pick(21, 18), FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.Bold), FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x20, 0x1D, 0x18, 0x1A1A1E)),
                 Margin = new Thickness(0, 0, 0, 6),
             });
             root.Children.Add(new TextBlock
             {
                 Text = "之後可以在 設定 → 個人化 → 語言 更改。\nYou can change this later in Settings → Personal → Language.",
                 FontSize = 12, LineHeight = 18,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x90, 0x80)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 18),
             });
@@ -79,9 +79,9 @@ namespace Cat5201
         private Button MakeChoice(string title, string subtitle, string code)
         {
             bool suggested = code == SelectedCode;
-            var bg = suggested ? Color.FromRgb(0x2A, 0x20, 0x19) : Color.FromRgb(0xF5, 0xF3, 0xEF);
-            var fg = suggested ? Colors.White : Color.FromRgb(0x26, 0x23, 0x1E);
-            var sub = suggested ? Color.FromRgb(0xC2, 0xBD, 0xB4) : Color.FromRgb(0x9A, 0x90, 0x80);
+            var bg = suggested ? ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111) : ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3);
+            var fg = suggested ? Colors.White : ThemeColors.Rgb(0x26, 0x23, 0x1E, 0x222222);
+            var sub = suggested ? ThemeColors.Rgb(0xC2, 0xBD, 0xB4, 0xB8B8BE) : ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90);
 
             var content = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             content.Children.Add(new TextBlock
@@ -108,7 +108,7 @@ namespace Cat5201
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
             { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(4));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(4, 12)));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
             presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);

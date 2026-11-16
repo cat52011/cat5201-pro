@@ -48,8 +48,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel + " + Runtime Fallback",
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#FDEBEB",
-                    statusTextBrushHex: "#8F3838");
+                    statusBrushHex: ThemeColors.Hex("#FDEBEB", "#FFE9E9"),
+                    statusTextBrushHex: ThemeColors.Hex("#8F3838", "#9B2C2C"));
                 return;
             }
 
@@ -61,8 +61,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#FEF4E9",
-                    statusTextBrushHex: "#915809");
+                    statusBrushHex: ThemeColors.Hex("#FEF4E9", "#FFF4E8"),
+                    statusTextBrushHex: ThemeColors.Hex("#915809", "#9A5A00"));
                 return;
             }
 
@@ -76,8 +76,8 @@ namespace Cat5201
                         resolver: decision.ResolverLabel,
                         model: modelLabel,
                         taskSummary: taskSummary,
-                        statusBrushHex: "#FEF4E9",
-                        statusTextBrushHex: "#915809");
+                        statusBrushHex: ThemeColors.Hex("#FEF4E9", "#FFF4E8"),
+                        statusTextBrushHex: ThemeColors.Hex("#915809", "#9A5A00"));
                     return;
                 }
 
@@ -87,8 +87,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#F8F3EB",
-                    statusTextBrushHex: "#8A6835");
+                    statusBrushHex: ThemeColors.Hex("#F8F3EB", "#EAF4FF"),
+                    statusTextBrushHex: ThemeColors.Hex("#8A6835", "#245A9B"));
                 return;
             }
 
@@ -100,8 +100,8 @@ namespace Cat5201
                     resolver: decision.ResolverLabel,
                     model: modelLabel,
                     taskSummary: taskSummary,
-                    statusBrushHex: "#EFF5EC",
-                    statusTextBrushHex: "#395F39");
+                    statusBrushHex: ThemeColors.Hex("#EFF5EC", "#EEF7EA"),
+                    statusTextBrushHex: ThemeColors.Hex("#395F39", "#2E6A2E"));
                 return;
             }
 
@@ -111,8 +111,8 @@ namespace Cat5201
                 resolver: decision.ResolverLabel,
                 model: modelLabel,
                 taskSummary: taskSummary,
-                statusBrushHex: "#F1EEE9",
-                statusTextBrushHex: "#46423A");
+                statusBrushHex: ThemeColors.Hex("#F1EEE9", "#EDEDED"),
+                statusTextBrushHex: ThemeColors.Hex("#46423A", "#404040"));
         }
 
         private static string GetRuntimeModelLabel(string model)

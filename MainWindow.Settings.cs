@@ -81,11 +81,13 @@ namespace Cat5201
         {
             if (btn == null) return;
             btn.Background = selected
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2A, 0x20, 0x19))
-                : System.Windows.Media.Brushes.Transparent;
+                ? new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111))
+                : ThemeColors.IsOriginal
+                    ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0xF1, 0xF1, 0xF3))
+                    : System.Windows.Media.Brushes.Transparent;
             btn.Foreground = selected
-                ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2A, 0x20, 0x19))
-                : new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x9A, 0x8D, 0x7C));
+                ? new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0x2A, 0x20, 0x19, 0xFFFFFF))
+                : new System.Windows.Media.SolidColorBrush(ThemeColors.Rgb(0x9A, 0x8D, 0x7C, 0x444444));
         }
 
         private void CloseSettings_Click(object sender, RoutedEventArgs e)
@@ -141,7 +143,7 @@ namespace Cat5201
             try
             {
                 TaskRoutingList.Children.Clear();
-                var labelBrush = new SolidColorBrush(Color.FromRgb(0x38, 0x34, 0x2E));
+                var labelBrush = new SolidColorBrush(ThemeColors.Rgb(0x38, 0x34, 0x2E, 0x333333));
                 var comboStyle = TryFindResource("RoutingComboBoxStyle") as Style;
 
                 foreach (var (mode, label) in _routingModes)

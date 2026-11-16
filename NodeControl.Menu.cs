@@ -190,7 +190,7 @@ namespace Cat5201
             _runStatus = NodeRunStatus.Idle;
             StopStatusRevertTimer();
 
-            var amber = new SolidColorBrush(Color.FromRgb(0xAF, 0x79, 0x20));
+            var amber = new SolidColorBrush(ThemeColors.Rgb(0xAF, 0x79, 0x20, 0xB97B16));
             if (NodeBorder != null)
                 NodeBorder.BorderBrush = amber;
             if (StatusText != null)

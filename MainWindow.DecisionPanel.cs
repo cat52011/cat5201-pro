@@ -245,8 +245,8 @@ namespace Cat5201
     reason: "-",
     keywords: "-",
     extra: "-",
-    statusBrushHex: "#F1EEE9",
-    statusTextBrushHex: "#46423A");
+    statusBrushHex: ThemeColors.Hex("#F1EEE9", "#EDEDED"),
+    statusTextBrushHex: ThemeColors.Hex("#46423A", "#404040"));
                 return;
             }
 
@@ -261,8 +261,8 @@ namespace Cat5201
      reason: "-",
      keywords: "-",
      extra: "-",
-     statusBrushHex: "#F8F3EB",
-     statusTextBrushHex: "#8A6835");
+     statusBrushHex: ThemeColors.Hex("#F8F3EB", "#EAF4FF"),
+     statusTextBrushHex: ThemeColors.Hex("#8A6835", "#245A9B"));
                 return;
             }
 
@@ -275,8 +275,8 @@ namespace Cat5201
      reason: "-",
      keywords: "-",
      extra: "-",
-     statusBrushHex: "#EFF5EC",
-     statusTextBrushHex: "#395F39");
+     statusBrushHex: ThemeColors.Hex("#EFF5EC", "#EEF7EA"),
+     statusTextBrushHex: ThemeColors.Hex("#395F39", "#2E6A2E"));
         }
 
         public void SetDecisionVisualization(
@@ -289,8 +289,8 @@ namespace Cat5201
     string keywords = "-",
     string extra = "-",
     string agent = "-",
-    string statusBrushHex = "#F1EEE9",
-    string statusTextBrushHex = "#46423A")
+    string? statusBrushHex = null,          // null＝預設（奶油 #F1EEE9；CreateBrush 的 fallback，會跟著主題）
+    string? statusTextBrushHex = null)      // null＝預設（奶油 #46423A）
         {
             Dispatcher.Invoke(() =>
             {
@@ -322,10 +322,10 @@ namespace Cat5201
                     DecisionExtraText.Text = string.IsNullOrWhiteSpace(extra) ? "-" : extra;
 
                 if (DecisionStatusBadge != null)
-                    DecisionStatusBadge.Background = CreateBrush(statusBrushHex, "#F1EEE9");
+                    DecisionStatusBadge.Background = CreateBrush(statusBrushHex, ThemeColors.Hex("#F1EEE9", "#EDEDED"));
 
                 if (DecisionStatusText != null)
-                    DecisionStatusText.Foreground = CreateBrush(statusTextBrushHex, "#46423A");
+                    DecisionStatusText.Foreground = CreateBrush(statusTextBrushHex, ThemeColors.Hex("#46423A", "#404040"));
             });
         }
         private static SolidColorBrush CreateBrush(string? hex, string fallbackHex)
@@ -419,8 +419,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#FDEBEB",
-                    statusTextBrushHex: "#8F3838");
+                    statusBrushHex: ThemeColors.Hex("#FDEBEB", "#FFE9E9"),
+                    statusTextBrushHex: ThemeColors.Hex("#8F3838", "#9B2C2C"));
                 return;
             }
 
@@ -436,8 +436,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#FEF4E9",
-                    statusTextBrushHex: "#915809");
+                    statusBrushHex: ThemeColors.Hex("#FEF4E9", "#FFF4E8"),
+                    statusTextBrushHex: ThemeColors.Hex("#915809", "#9A5A00"));
                 return;
             }
 
@@ -454,8 +454,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#F8F3EB",
-                    statusTextBrushHex: "#8A6835");
+                    statusBrushHex: ThemeColors.Hex("#F8F3EB", "#EAF4FF"),
+                    statusTextBrushHex: ThemeColors.Hex("#8A6835", "#245A9B"));
                 return;
             }
 
@@ -471,8 +471,8 @@ namespace Cat5201
                     keywords: keywords,
                     extra: extra,
                     agent: agent,
-                    statusBrushHex: "#EFF5EC",
-                    statusTextBrushHex: "#395F39");
+                    statusBrushHex: ThemeColors.Hex("#EFF5EC", "#EEF7EA"),
+                    statusTextBrushHex: ThemeColors.Hex("#395F39", "#2E6A2E"));
                 return;
             }
 
@@ -486,8 +486,8 @@ namespace Cat5201
                 keywords: keywords,
                 extra: extra,
                 agent: agent,
-                statusBrushHex: "#F1EEE9",
-                statusTextBrushHex: "#46423A");
+                statusBrushHex: ThemeColors.Hex("#F1EEE9", "#EDEDED"),
+                statusTextBrushHex: ThemeColors.Hex("#46423A", "#404040"));
         }
     }
 }

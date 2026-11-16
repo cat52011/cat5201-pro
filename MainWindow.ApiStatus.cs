@@ -51,7 +51,7 @@ namespace Cat5201
 
             private string _state = UiLanguage.P("尚未檢查", "Not checked yet");
             private string _detail = "";
-            private string _dot = "#D4D0C9";
+            private string _dot = ThemeColors.Hex("#D4D0C9", "#C9CDD4");
             private string _spend = "";
             private string _topUp = "";
             private string _balanceText = UiLanguage.P("未設定", "Not set");
@@ -171,13 +171,13 @@ namespace Cat5201
 
         private static string StateColor(ApiHealthChecker.HealthState state) => state switch
         {
-            ApiHealthChecker.HealthState.Ok => "#458D6A",
-            ApiHealthChecker.HealthState.NoKey => "#D4D0C9",
-            ApiHealthChecker.HealthState.NoCredit => "#D0584F",
-            ApiHealthChecker.HealthState.InvalidKey => "#D0584F",
-            ApiHealthChecker.HealthState.Offline => "#D0584F",
-            ApiHealthChecker.HealthState.RateLimited => "#DEA147",
-            _ => "#D4D0C9"
+            ApiHealthChecker.HealthState.Ok => ThemeColors.Hex("#458D6A", "#2FA36B"),
+            ApiHealthChecker.HealthState.NoKey => ThemeColors.Hex("#D4D0C9", "#C9CDD4"),
+            ApiHealthChecker.HealthState.NoCredit => ThemeColors.Hex("#D0584F", "#E2483D"),
+            ApiHealthChecker.HealthState.InvalidKey => ThemeColors.Hex("#D0584F", "#E2483D"),
+            ApiHealthChecker.HealthState.Offline => ThemeColors.Hex("#D0584F", "#E2483D"),
+            ApiHealthChecker.HealthState.RateLimited => ThemeColors.Hex("#DEA147", "#E8A33D"),
+            _ => ThemeColors.Hex("#D4D0C9", "#C9CDD4")
         };
 
         /// <summary>

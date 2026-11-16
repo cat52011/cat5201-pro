@@ -13,11 +13,11 @@ namespace Cat5201
     /// </summary>
     internal static class DialogChrome
     {
-        public static readonly Color Ink = Color.FromRgb(0x2A, 0x20, 0x19);
-        public static readonly Color Cream = Color.FromRgb(0xFF, 0xFD, 0xF9);
-        public static readonly Color Oat = Color.FromRgb(0xF1, 0xEB, 0xE0);
-        public static readonly Color Hairline = Color.FromRgb(0xE0, 0xD6, 0xC6);
-        public static readonly Color Oxblood = Color.FromRgb(0x9B, 0x3B, 0x34);
+        public static readonly Color Ink = ThemeColors.Rgb(0x2A, 0x20, 0x19);
+        public static readonly Color Cream = ThemeColors.Rgb(0xFF, 0xFD, 0xF9);
+        public static readonly Color Oat = ThemeColors.Rgb(0xF1, 0xEB, 0xE0);
+        public static readonly Color Hairline = ThemeColors.Rgb(0xE0, 0xD6, 0xC6);
+        public static readonly Color Oxblood = ThemeColors.Rgb(0x9B, 0x3B, 0x34);
 
         public const string SerifFamily = "Noto Serif TC, Georgia, PMingLiU";
 
@@ -53,7 +53,7 @@ namespace Cat5201
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new Binding("Background")
             { RelativeSource = new RelativeSource(RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
+            border.SetValue(Border.CornerRadiusProperty, ThemeColors.DialogCornerRadius);
             border.SetValue(Border.PaddingProperty, new Thickness(18, 0, 18, 0));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);

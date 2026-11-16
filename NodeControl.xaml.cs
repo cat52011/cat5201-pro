@@ -196,6 +196,8 @@ namespace Cat5201
 
         public NodeControl(string idString)
         {
+            // 沒有 Application（單元測試、設計工具）時，主題字典不在 Application.Resources 裡，XAML 的 StaticResource 會找不到鍵。
+            InterfaceThemes.EnsureResourcesWithoutApplication(this);
             InitializeComponent();
 
             LostMouseCapture += (_, __) =>

@@ -30,30 +30,7 @@ namespace Cat5201
         private static readonly string _savesDirResolved = ResolveSavesDir();
         private string SavesDir => _savesDirResolved;
 
-        private static string ResolveSavesDir()
-        {
-            const string legacyDevDir = @"D:\desk\college\cat5201-pro\file";
-            try
-            {
-                if (Directory.Exists(legacyDevDir))
-                    return legacyDevDir;
-            }
-            catch { /* 磁碟機不存在等：直接走可攜路徑 */ }
-
-            try
-            {
-                string root = System.IO.Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "cat5201-pro", "file");
-                Directory.CreateDirectory(root);
-                return root;
-            }
-            catch (Exception ex)
-            {
-                AppLog.Warn("Startup", "LOCALAPPDATA 資料目錄建立失敗，退回程式所在目錄", ex);
-                return System.IO.Path.Combine(AppContext.BaseDirectory, "file");
-            }
-        }
+        private static string ResolveSavesDir() => DataRoot.Resolve();
         private string AttachmentsRootDir => System.IO.Path.Combine(SavesDir, "_attachments");
         /// <summary>
         /// 使用者自己指定的產出資料夾（空＝用預設的 SavesDir\_generated）。
@@ -401,6 +378,42 @@ namespace Cat5201
             catch (Exception ex)
             {
                 AppLog.Warn("Memory", "舊記憶遷移失敗（將以現有/空白記憶啟動）", ex);
+            }
+        }
+    }
+}
+
+namespace Cat5201
+{
+    /// <summary>
+    /// 資料根目錄的解析（原本是 MainWindow.ResolveSavesDir，內容原樣搬來）。
+    /// 獨立成一個類別，是因為介面風格要在 MainWindow 載入之前讀偏好檔，
+    /// 而碰到 MainWindow 型別會觸發它的靜態欄位初始化（那時主題還沒決定）。
+    /// </summary>
+    internal static class DataRoot
+    {
+        internal static string Resolve()
+        {
+            const string legacyDevDir = @"D:\desk\college\cat5201-pro\file";
+            try
+            {
+                if (Directory.Exists(legacyDevDir))
+                    return legacyDevDir;
+            }
+            catch { /* 磁碟機不存在等：直接走可攜路徑 */ }
+
+            try
+            {
+                string root = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "cat5201-pro", "file");
+                Directory.CreateDirectory(root);
+                return root;
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn("Startup", "LOCALAPPDATA 資料目錄建立失敗，退回程式所在目錄", ex);
+                return System.IO.Path.Combine(AppContext.BaseDirectory, "file");
             }
         }
     }

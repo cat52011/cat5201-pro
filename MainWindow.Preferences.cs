@@ -60,7 +60,8 @@ namespace Cat5201
             bool MobileMirrorReadOnly = true,                // 手機鏡像只能看、不能操作（預設開；舊偏好檔沒有這欄也是唯讀）
             bool IndependentReviewEnabled = true,            // 產出報告後跑獨立審查（預設開）
             bool AutoFixAfterReviewEnabled = false,          // 審查找到高／中問題時自動修正一輪（預設關，要多花時間與費用）
-            string InterfaceLanguage = ""                    // 介面語言 zh-TW / en；空＝還沒選過，啟動時會問一次
+            string InterfaceLanguage = "",                   // 介面語言 zh-TW / en；空＝還沒選過，啟動時會問一次
+            string InterfaceTheme = "Cream"                  // 介面風格 Cream / Wabi（之後會有 Original）；缺欄位＝奶油。重新啟動後生效，見 Themes\InterfaceThemes.cs
         );
 
         // ===== P2-2 會話還原：上次未正常關閉 → 提示開回最後的專案 =====
@@ -167,7 +168,8 @@ namespace Cat5201
                     DocumentEngine: DocumentEngineHelper.ToStorageValue(_documentEngine),
                     ProviderTopUp: BuildProviderTopUpStorage(),
                     ShowApiBalancePanel: _showApiBalancePanel,
-                    InterfaceLanguage: _interfaceLanguageChosen ? UiLanguage.Code : ""
+                    InterfaceLanguage: _interfaceLanguageChosen ? UiLanguage.Code : "",
+                    InterfaceTheme: InterfaceThemes.ToStorageValue(_selectedInterfaceTheme)
                 );
 
                 var dir = System.IO.Path.GetDirectoryName(PreferencesPath);
@@ -259,6 +261,8 @@ namespace Cat5201
                 _interfaceLanguageChosen = lang.Length > 0;
                 if (_interfaceLanguageChosen)
                     UiLanguage.Code = lang;
+
+                _selectedInterfaceTheme = InterfaceThemes.Parse(prefs.InterfaceTheme);
             }
             catch (Exception ex)
             {

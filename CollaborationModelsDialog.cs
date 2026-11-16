@@ -33,18 +33,18 @@ namespace Cat5201
             Width = 380;
             SizeToContent = SizeToContent.Height;
 
-            var ink = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18));
-            var muted = new SolidColorBrush(Color.FromRgb(0x9A, 0x90, 0x80));
+            var ink = new SolidColorBrush(ThemeColors.Rgb(0x20, 0x1D, 0x18, 0x1A1A1E));
+            var muted = new SolidColorBrush(ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90));
 
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(ThemeColors.Rgb(0xFF, 0xFD, 0xF9, 0xFFFFFF)),
+                BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(ThemeColors.Pick(1, 0)),
+                CornerRadius = new CornerRadius(ThemeColors.Pick(4, 14)),
                 Padding = new Thickness(24, 22, 24, 18),
                 Margin = new Thickness(14),
-                Effect = new DropShadowEffect { Color = Color.FromRgb(0x2A, 0x20, 0x19), Opacity = 0.15, BlurRadius = 28, ShadowDepth = 5 },
+                Effect = new DropShadowEffect { Color = ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x000000), Opacity = ThemeColors.Pick(0.15, 0.16), BlurRadius = 28, ShadowDepth = 5 },
             };
             card.MouseLeftButtonDown += (_, e) =>
             {
@@ -55,7 +55,7 @@ namespace Cat5201
             root.Children.Add(new TextBlock
             {
                 Text = UiLanguage.P("這個節點由哪幾個模型一起回答？", "Which models should answer this node together?"),
-                FontSize = 19, FontWeight = FontWeights.Normal, FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), Foreground = ink,
+                FontSize = ThemeColors.Pick(19, 16), FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.Bold), FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily), Foreground = ink,
                 Margin = new Thickness(0, 0, 0, 8),
             });
             root.Children.Add(new TextBlock
@@ -71,7 +71,7 @@ namespace Cat5201
 
             var hint = new TextBlock
             {
-                FontSize = 11.5, Foreground = new SolidColorBrush(Color.FromRgb(0xA5, 0x4C, 0x0B)),
+                FontSize = 11.5, Foreground = new SolidColorBrush(ThemeColors.Rgb(0xA5, 0x4C, 0x0B, 0xB04A00)),
                 TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 8, 0, 0),
             };
 
@@ -121,7 +121,7 @@ namespace Cat5201
                 var border = new FrameworkElementFactory(typeof(Border));
                 border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
                     { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(3, 9)));
                 var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
                 presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
                 presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -131,12 +131,12 @@ namespace Cat5201
                 return b;
             }
 
-            var clear = Pill(UiLanguage.P("關閉協作", "Turn off collaboration"), Color.FromRgb(0xF5, 0xF3, 0xEF), Color.FromRgb(0x4B, 0x46, 0x3D));
+            var clear = Pill(UiLanguage.P("關閉協作", "Turn off collaboration"), ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), ThemeColors.Rgb(0x4B, 0x46, 0x3D, 0x444444));
             clear.Click += (_, __) => { SelectedModels = Array.Empty<string>(); DialogResult = true; Close(); };
-            var cancel = Pill(UiLanguage.P("取消", "Cancel"), Color.FromRgb(0xF5, 0xF3, 0xEF), Color.FromRgb(0x4B, 0x46, 0x3D));
+            var cancel = Pill(UiLanguage.P("取消", "Cancel"), ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), ThemeColors.Rgb(0x4B, 0x46, 0x3D, 0x444444));
             cancel.IsCancel = true;
             cancel.Click += (_, __) => { DialogResult = false; Close(); };
-            var ok = Pill(UiLanguage.P("確定", "OK"), Color.FromRgb(0x2A, 0x20, 0x19), Colors.White);
+            var ok = Pill(UiLanguage.P("確定", "OK"), ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111), Colors.White);
             ok.IsDefault = true;
             ok.Click += (_, __) =>
             {

@@ -18,6 +18,10 @@ namespace Cat5201
         {
             base.OnSourceInitialized(e);
 
+            // 原始主題：b4a30e3 沒有標題列配色，維持系統預設。
+            if (ThemeColors.IsOriginal)
+                return;
+
             try
             {
                 IntPtr hwnd = new WindowInteropHelper(this).Handle;

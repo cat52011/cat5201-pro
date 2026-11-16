@@ -36,11 +36,9 @@ namespace Cat5201
              UiLanguage.P("畫布右下角為 Auto 開關。開啟時依任務內容自動選用模型；關閉後以節點上的模型選單指定。",
                           "The Auto switch is at the bottom right of the canvas. When it is on, a model is chosen based on the task; with it off, choose one from the node's model menu.")),
             (UiLanguage.P("串聯流程", "Flows"),
-             UiLanguage.P("拖曳節點左上或右上的小圓點：拖到空白處會新增下游節點，拖到另一個節點上則將其接為下游。在連接線上按右鍵可切換為駝色虛線，代表上游完成後自動執行下游。",
-                          "Drag the small dot at the top left or top right of a node. Dropping it on empty space creates a downstream node; dropping it on another node connects that node downstream. Right-click a line to turn it into a tan dashed line, which runs the downstream node automatically when the upstream one finishes.")),
+             UiLanguage.P(ThemeColors.Pick("拖曳節點左上或右上的小圓點：拖到空白處會新增下游節點，拖到另一個節點上則將其接為下游。在連接線上按右鍵可切換為駝色虛線，代表上游完成後自動執行下游。", "拖曳節點左上或右上的小圓點：拖到空白處會新增下游節點，拖到另一個節點上則將其接為下游。在連接線上按右鍵可切換為藍色虛線，代表上游完成後自動執行下游。"), ThemeColors.Pick("Drag the small dot at the top left or top right of a node. Dropping it on empty space creates a downstream node; dropping it on another node connects that node downstream. Right-click a line to turn it into a tan dashed line, which runs the downstream node automatically when the upstream one finishes.", "Drag the small dot at the top left or top right of a node. Dropping it on empty space creates a downstream node; dropping it on another node connects that node downstream. Right-click a line to turn it into a blue dashed line, which runs the downstream node automatically when the upstream one finishes."))),
             (UiLanguage.P("匯流", "Merging"),
-             UiLanguage.P("兩條以上的虛線接到同一個節點時，會等所有上游完成才開始，每個上游的回答皆完整放入輸入。",
-                          "When two or more dashed lines lead into one node, it waits until every upstream node has finished. All upstream answers are included in full.")),
+             UiLanguage.P(ThemeColors.Pick("兩條以上的虛線接到同一個節點時，會等所有上游完成才開始，每個上游的回答皆完整放入輸入。", "兩條以上的藍線接到同一個節點時，會等所有上游完成才開始，每個上游的回答皆完整放入輸入。"), ThemeColors.Pick("When two or more dashed lines lead into one node, it waits until every upstream node has finished. All upstream answers are included in full.", "When two or more blue lines lead into one node, it waits until every upstream node has finished. All upstream answers are included in full."))),
             (UiLanguage.P("決策窗", "Decision panel"),
              UiLanguage.P("點選節點後，右上角的決策窗會顯示該次執行的細節：任務類型、選用的模型與原因、搜尋來源、token 數與費用。",
                           "Click a node and the decision panel at the top right shows the details of that run: task type, the chosen model and why, search sources, tokens and cost.")),
@@ -93,13 +91,13 @@ namespace Cat5201
 
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(ThemeColors.Rgb(0xFF, 0xFD, 0xF9, 0xFFFFFF)),
+                BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(ThemeColors.Pick(1, 0)),
+                CornerRadius = new CornerRadius(ThemeColors.Pick(4, 16)),
                 Padding = new Thickness(26, 22, 26, 20),
                 Margin = new Thickness(14),
-                Effect = new DropShadowEffect { Color = Color.FromRgb(0x2A, 0x20, 0x19), Opacity = 0.15, BlurRadius = 26, ShadowDepth = 4 },
+                Effect = new DropShadowEffect { Color = ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x000000), Opacity = ThemeColors.Pick(0.15, 0.20), BlurRadius = 26, ShadowDepth = 4 },
             };
             card.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
 
@@ -111,8 +109,8 @@ namespace Cat5201
             var title = new TextBlock
             {
                 Text = UiLanguage.P("歡迎使用 cat5201-pro", "Welcome to cat5201-pro"),
-                FontSize = 22, FontWeight = FontWeights.Normal, FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18)),
+                FontSize = ThemeColors.Pick(22, 19), FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.Bold), FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x20, 0x1D, 0x18, 0x1A1A1E)),
                 Margin = new Thickness(0, 0, 0, 8),
             };
             Grid.SetRow(title, 0); layout.Children.Add(title);
@@ -129,7 +127,7 @@ namespace Cat5201
             {
                 Text = UiLanguage.P("本程式不附金鑰，呼叫費用由各自帳號支付。內容會直接傳送至所選的模型供應商，不經過開發者的伺服器。金鑰之後可由左下角齒輪 →「API」分頁修改。", "No keys are included; calls are billed to your own accounts. Your content goes directly to the model providers you choose, not through the developer's servers. Keys can be changed later under the gear icon (bottom left), \"API\" tab."),
                 FontSize = 12, LineHeight = 18,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x9A, 0x90, 0x80)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 6),
             });
@@ -139,7 +137,7 @@ namespace Cat5201
             {
                 Text = UiLanguage.P("至少一把即可使用，建議備有 OpenAI 或 Anthropic 其中一把。未設定金鑰的功能會自動略過。", "One key is enough to start; at least one of OpenAI or Anthropic is recommended. Features without a key are skipped."),
                 FontSize = 12.5, FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x30, 0x69, 0x4D)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x30, 0x69, 0x4D, 0x1F7A4D)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 14),
             });
@@ -152,9 +150,9 @@ namespace Cat5201
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-                var nm = new TextBlock { Text = name, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x2F, 0x27)) };
+                var nm = new TextBlock { Text = name, FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(ThemeColors.Rgb(0x33, 0x2F, 0x27, 0x2A2A30)) };
                 Grid.SetColumn(nm, 0); head.Children.Add(nm);
-                var hb = new TextBlock { Text = "　" + hint, FontSize = 11, Foreground = new SolidColorBrush(Color.FromRgb(0xB3, 0xAC, 0xA1)), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = hint };
+                var hb = new TextBlock { Text = "　" + hint, FontSize = 11, Foreground = new SolidColorBrush(ThemeColors.Rgb(0xB3, 0xAC, 0xA1, 0xA8A8AC)), VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis, ToolTip = hint };
                 Grid.SetColumn(hb, 1); head.Children.Add(hb);
 
                 // 「取得金鑰 ↗」：點了直接開該家申請頁 —— 別讓使用者自己 Google 去哪申請。
@@ -162,7 +160,7 @@ namespace Cat5201
                 {
                     Text = UiLanguage.P("取得金鑰 ↗", "Get a key ↗"),
                     FontSize = 11,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x9C, 0x7A, 0x54)),
+                    Foreground = new SolidColorBrush(ThemeColors.Rgb(0x9C, 0x7A, 0x54, 0x4A6CF7)),
                     VerticalAlignment = VerticalAlignment.Center,
                     Cursor = Cursors.Hand,
                     Margin = new Thickness(0, 0, 10, 0),
@@ -191,10 +189,10 @@ namespace Cat5201
                 row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 var boxBorder = new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0xFA, 0xF8, 0xF5)),
-                    BorderBrush = new SolidColorBrush(Color.FromRgb(0xEC, 0xE7, 0xDF)),
+                    Background = new SolidColorBrush(ThemeColors.Rgb(0xFA, 0xF8, 0xF5, 0xF7F7F8)),
+                    BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xEC, 0xE7, 0xDF, 0xE4E4E7)),
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(3),
+                    CornerRadius = new CornerRadius(ThemeColors.Pick(3, 9)),
                     Padding = new Thickness(10, 2, 10, 2),
                 };
                 var pb = new PasswordBox { Height = 30, FontSize = 12.5, Background = Brushes.Transparent, BorderThickness = new Thickness(0), VerticalContentAlignment = VerticalAlignment.Center };
@@ -202,7 +200,7 @@ namespace Cat5201
                 Grid.SetColumn(boxBorder, 0); row.Children.Add(boxBorder);
                 _boxes[env] = pb;
 
-                var testBtn = MakePill(UiLanguage.P("測試", "Test"), Color.FromRgb(0xF5, 0xF3, 0xEF), Color.FromRgb(0x4B, 0x46, 0x3D));
+                var testBtn = MakePill(UiLanguage.P("測試", "Test"), ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), ThemeColors.Rgb(0x4B, 0x46, 0x3D, 0x444444));
                 testBtn.Margin = new Thickness(8, 0, 0, 0);
                 string envCopy = env;
                 testBtn.Click += async (_, __) => await ValidateAsync(envCopy);
@@ -219,7 +217,7 @@ namespace Cat5201
             {
                 Text = UiLanguage.P("基本操作", "Basic use"),
                 FontSize = 13, FontWeight = FontWeights.SemiBold,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x33, 0x2F, 0x27)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x33, 0x2F, 0x27, 0x2A2A30)),
                 Margin = new Thickness(0, 16, 0, 6),
             });
 
@@ -233,7 +231,7 @@ namespace Cat5201
                 {
                     Text = step,
                     FontSize = 11.5, FontWeight = FontWeights.SemiBold,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x56, 0x50, 0x46)),
+                    Foreground = new SolidColorBrush(ThemeColors.Rgb(0x56, 0x50, 0x46, 0x4A4A52)),
                     TextWrapping = TextWrapping.Wrap,
                 };
                 Grid.SetColumn(left, 0); line.Children.Add(left);
@@ -242,7 +240,7 @@ namespace Cat5201
                 {
                     Text = detail,
                     FontSize = 11.5, LineHeight = 17,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x8B, 0x81, 0x71)),
+                    Foreground = new SolidColorBrush(ThemeColors.Rgb(0x8B, 0x81, 0x71, 0x7A7A82)),
                     TextWrapping = TextWrapping.Wrap,
                 };
                 Grid.SetColumn(right, 1); line.Children.Add(right);
@@ -251,12 +249,12 @@ namespace Cat5201
             }
 
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 14, 0, 0) };
-            var skip = MakePill(UiLanguage.P("略過，稍後再設", "Skip for now"), Color.FromRgb(0xF5, 0xF3, 0xEF), Color.FromRgb(0x70, 0x69, 0x5C));
+            var skip = MakePill(UiLanguage.P("略過，稍後再設", "Skip for now"), ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), ThemeColors.Rgb(0x70, 0x69, 0x5C, 0x666666));
             skip.Margin = new Thickness(0, 0, 8, 0);
             skip.Click += (_, __) => { DialogResult = false; Close(); };
             btnRow.Children.Add(skip);
 
-            var ok = MakePill(UiLanguage.P("儲存並開始", "Save and start"), Color.FromRgb(0x2A, 0x20, 0x19), Colors.White);
+            var ok = MakePill(UiLanguage.P("儲存並開始", "Save and start"), ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111), Colors.White);
             ok.Click += (_, __) =>
             {
                 foreach (var (env, box) in _boxes)
@@ -353,9 +351,9 @@ namespace Cat5201
             st.Text = text;
             st.Foreground = new SolidColorBrush(ok switch
             {
-                true => Color.FromRgb(0x37, 0x85, 0x58),
-                false => Color.FromRgb(0xB1, 0x49, 0x56),
-                null => Color.FromRgb(0x9A, 0x90, 0x80),
+                true => ThemeColors.Rgb(0x37, 0x85, 0x58, 0x1F9D55),
+                false => ThemeColors.Rgb(0xB1, 0x49, 0x56, 0xC03A4B),
+                null => ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90),
             });
         }
 
@@ -371,7 +369,7 @@ namespace Cat5201
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
             { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(3, 9)));
             border.SetValue(Border.PaddingProperty, new Thickness(14, 0, 14, 0));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);

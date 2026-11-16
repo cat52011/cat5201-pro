@@ -634,11 +634,17 @@ namespace Cat5201
 
         private class SimpleInputDialog : Window
         {
-            private readonly TextBox _tb;
+            private TextBox _tb = null!;
             private string _result = "";
 
             private SimpleInputDialog(string title, string prompt, string defaultValue)
             {
+                if (ThemeColors.IsOriginal)
+                {
+                    BuildOriginalLayout(title, prompt, defaultValue);
+                    return;
+                }
+
                 Title = title;
                 Width = 420;
                 SizeToContent = SizeToContent.Height;
@@ -698,7 +704,7 @@ namespace Cat5201
                 {
                     Text = prompt,
                     FontSize = 12.5,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0x8E, 0x81, 0x72)),
+                    Foreground = new SolidColorBrush(ThemeColors.Rgb(0x8E, 0x81, 0x72, 0x000000)),
                     Margin = new Thickness(0, 0, 0, 10),
                     TextWrapping = TextWrapping.Wrap
                 };
@@ -745,6 +751,75 @@ namespace Cat5201
 
                 card.Child = root;
                 Content = card;
+
+                Loaded += (_, __) =>
+                {
+                    _tb.Focus();
+                    _tb.SelectAll();
+                };
+            }
+
+            /// <summary>原始主題（b4a30e3）：系統標題列、白底、系統按鈕，確定在左、取消在右。</summary>
+            private void BuildOriginalLayout(string title, string prompt, string defaultValue)
+            {
+                Title = title;
+                Width = 380;
+                Height = 170;
+                WindowStartupLocation = WindowStartupLocation.CenterOwner;
+                ResizeMode = ResizeMode.NoResize;
+                Background = Brushes.White;
+
+                var root = new Grid { Margin = new Thickness(14) };
+                root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var txt = new TextBlock
+                {
+                    Text = prompt,
+                    Foreground = Brushes.Black,
+                    Margin = new Thickness(0, 0, 0, 10),
+                    TextWrapping = TextWrapping.Wrap
+                };
+                Grid.SetRow(txt, 0);
+                root.Children.Add(txt);
+
+                _tb = new TextBox
+                {
+                    Text = defaultValue,
+                    Margin = new Thickness(0, 0, 0, 12)
+                };
+                Grid.SetRow(_tb, 1);
+                root.Children.Add(_tb);
+
+                var btnPanel = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    HorizontalAlignment = HorizontalAlignment.Right
+                };
+
+                var ok = new Button { Content = UiLanguage.P("確定", "OK"), Width = 72, Margin = new Thickness(0, 0, 8, 0) };
+                ok.Click += (_, __) =>
+                {
+                    _result = _tb.Text;
+                    DialogResult = true;
+                    Close();
+                };
+
+                var cancel = new Button { Content = UiLanguage.P("取消", "Cancel"), Width = 72 };
+                cancel.Click += (_, __) =>
+                {
+                    DialogResult = false;
+                    Close();
+                };
+
+                btnPanel.Children.Add(ok);
+                btnPanel.Children.Add(cancel);
+
+                Grid.SetRow(btnPanel, 2);
+                root.Children.Add(btnPanel);
+
+                Content = root;
 
                 Loaded += (_, __) =>
                 {

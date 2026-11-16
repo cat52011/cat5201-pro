@@ -1,0 +1,627 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!--
+        侘寂・陶器：奶油色票經 grade() 轉換，加上不對稱圓角與節點陰影。
+        資源鍵以「奶油的色碼」命名：Br_xxxxxx 是 SolidColorBrush、Cl_xxxxxx 是 Color。
+        每套主題用同一組鍵，值各自不同（侘寂＝grade(奶油值)，見 tools\theme\wabi_grade.py）。
+        新增主題時：複製一份、保留所有鍵、改值；也可以替換下面任何一個 Style 或 ControlTemplate。
+        這個檔案由 tools\theme\build_theme.py 產生；全域樣式在檔案後半。
+    -->
+    <sys:String x:Key="ThemeName">Wabi</sys:String>
+
+    <!-- 色票（值＝grade(奶油值)） -->
+    <Color x:Key="Cl_26231E">#242320</Color>
+    <Color x:Key="Cl_2A2019">#25211E</Color>
+    <Color x:Key="Cl_3A2A10">#2E281C</Color>
+    <Color x:Key="Cl_AAA396">#A89F95</Color>
+    <Color x:Key="Cl_D9CFBF">#D6CABE</Color>
+    <Color x:Key="Cl_FFFDF9">#F4EFE6</Color>
+    <SolidColorBrush x:Key="Br_00FFFFFF" x:Shared="False" Color="#00F4F1EC"/>
+    <SolidColorBrush x:Key="Br_01FFFFFF" x:Shared="False" Color="#01F4F1EC"/>
+    <SolidColorBrush x:Key="Br_14000000" x:Shared="False" Color="#14000000"/>
+    <SolidColorBrush x:Key="Br_211F1A" x:Shared="False" Color="#1F1E1C"/>
+    <SolidColorBrush x:Key="Br_26231E" x:Shared="False" Color="#242320"/>
+    <SolidColorBrush x:Key="Br_28241E" x:Shared="False" Color="#252421"/>
+    <SolidColorBrush x:Key="Br_2A2019" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2E2A24" x:Shared="False" Color="#2B2A27"/>
+    <SolidColorBrush x:Key="Br_2F2B25" x:Shared="False" Color="#2C2B28"/>
+    <SolidColorBrush x:Key="Br_36322A" x:Shared="False" Color="#33312D"/>
+    <SolidColorBrush x:Key="Br_378558" x:Shared="False" Color="#526F44"/>
+    <SolidColorBrush x:Key="Br_38342E" x:Shared="False" Color="#353431"/>
+    <SolidColorBrush x:Key="Br_395F39" x:Shared="False" Color="#48533E"/>
+    <SolidColorBrush x:Key="Br_3A2E25" x:Shared="False" Color="#342F2B"/>
+    <SolidColorBrush x:Key="Br_3D3932" x:Shared="False" Color="#3A3835"/>
+    <SolidColorBrush x:Key="Br_3E3932" x:Shared="False" Color="#3B3935"/>
+    <SolidColorBrush x:Key="Br_433F37" x:Shared="False" Color="#403E3A"/>
+    <SolidColorBrush x:Key="Br_4A3B30" x:Shared="False" Color="#433D37"/>
+    <SolidColorBrush x:Key="Br_4B463D" x:Shared="False" Color="#474541"/>
+    <SolidColorBrush x:Key="Br_514C43" x:Shared="False" Color="#4D4B47"/>
+    <SolidColorBrush x:Key="Br_52241A12" x:Shared="False" Color="#521F1B17"/>
+    <SolidColorBrush x:Key="Br_5A4636" x:Shared="False" Color="#504840"/>
+    <SolidColorBrush x:Key="Br_5C241A12" x:Shared="False" Color="#5C1F1B17"/>
+    <SolidColorBrush x:Key="Br_5E574C" x:Shared="False" Color="#5C544C"/>
+    <SolidColorBrush x:Key="Br_6B5A4A" x:Shared="False" Color="#69564A"/>
+    <SolidColorBrush x:Key="Br_6C6559" x:Shared="False" Color="#6A6259"/>
+    <SolidColorBrush x:Key="Br_6D665A" x:Shared="False" Color="#6B635A"/>
+    <SolidColorBrush x:Key="Br_70695C" x:Shared="False" Color="#6E665C"/>
+    <SolidColorBrush x:Key="Br_7A5A28" x:Shared="False" Color="#76512A"/>
+    <SolidColorBrush x:Key="Br_7D6F5F" x:Shared="False" Color="#7B6B5F"/>
+    <SolidColorBrush x:Key="Br_81796A" x:Shared="False" Color="#7F756A"/>
+    <SolidColorBrush x:Key="Br_837A6B" x:Shared="False" Color="#81766B"/>
+    <SolidColorBrush x:Key="Br_867D6E" x:Shared="False" Color="#84796E"/>
+    <SolidColorBrush x:Key="Br_8E8172" x:Shared="False" Color="#8C7D72"/>
+    <SolidColorBrush x:Key="Br_938A79" x:Shared="False" Color="#918679"/>
+    <SolidColorBrush x:Key="Br_948B7A" x:Shared="False" Color="#92877A"/>
+    <SolidColorBrush x:Key="Br_958B7B" x:Shared="False" Color="#93877B"/>
+    <SolidColorBrush x:Key="Br_99743C" x:Shared="False" Color="#7C6244"/>
+    <SolidColorBrush x:Key="Br_998F7F" x:Shared="False" Color="#978B7F"/>
+    <SolidColorBrush x:Key="Br_999080" x:Shared="False" Color="#978C80"/>
+    <SolidColorBrush x:Key="Br_9A8D7C" x:Shared="False" Color="#97897C"/>
+    <SolidColorBrush x:Key="Br_9C7A54" x:Shared="False" Color="#987256"/>
+    <SolidColorBrush x:Key="Br_A29A8C" x:Shared="False" Color="#A0968B"/>
+    <SolidColorBrush x:Key="Br_A49C8E" x:Shared="False" Color="#A2988D"/>
+    <SolidColorBrush x:Key="Br_A54848" x:Shared="False" Color="#90584A"/>
+    <SolidColorBrush x:Key="Br_A79F91" x:Shared="False" Color="#A59B90"/>
+    <SolidColorBrush x:Key="Br_A88962" x:Shared="False" Color="#A48163"/>
+    <SolidColorBrush x:Key="Br_A8A092" x:Shared="False" Color="#A69C91"/>
+    <SolidColorBrush x:Key="Br_A9A193" x:Shared="False" Color="#A79D92"/>
+    <SolidColorBrush x:Key="Br_AEA79B" x:Shared="False" Color="#ACA39A"/>
+    <SolidColorBrush x:Key="Br_B1514A" x:Shared="False" Color="#9A5C4D"/>
+    <SolidColorBrush x:Key="Br_B3ACA1" x:Shared="False" Color="#B1A8A0"/>
+    <SolidColorBrush x:Key="Br_B9AB96" x:Shared="False" Color="#B6A696"/>
+    <SolidColorBrush x:Key="Br_BBB5AB" x:Shared="False" Color="#B9B2AA"/>
+    <SolidColorBrush x:Key="Br_BEB8AE" x:Shared="False" Color="#BCB5AD"/>
+    <SolidColorBrush x:Key="Br_C14141" x:Shared="False" Color="#A75A47"/>
+    <SolidColorBrush x:Key="Br_C4B6A1" x:Shared="False" Color="#C1B1A1"/>
+    <SolidColorBrush x:Key="Br_C9B79C" x:Shared="False" Color="#C5B19C"/>
+    <SolidColorBrush x:Key="Br_D2CDC6" x:Shared="False" Color="#CFCAC4"/>
+    <SolidColorBrush x:Key="Br_D3CFC8" x:Shared="False" Color="#D1CCC6"/>
+    <SolidColorBrush x:Key="Br_D4D0C9" x:Shared="False" Color="#D1CDC7"/>
+    <SolidColorBrush x:Key="Br_D7D4CE" x:Shared="False" Color="#D5D1CC"/>
+    <SolidColorBrush x:Key="Br_D8CCBA" x:Shared="False" Color="#D5C7B9"/>
+    <SolidColorBrush x:Key="Br_D8D0C2" x:Shared="False" Color="#D5CCC1"/>
+    <SolidColorBrush x:Key="Br_D8D5CF" x:Shared="False" Color="#D6D2CD"/>
+    <SolidColorBrush x:Key="Br_D9CFBF" x:Shared="False" Color="#D6CABE"/>
+    <SolidColorBrush x:Key="Br_DCD9D4" x:Shared="False" Color="#DAD6D2"/>
+    <SolidColorBrush x:Key="Br_DDD3C3" x:Shared="False" Color="#DACEC2"/>
+    <SolidColorBrush x:Key="Br_DFD5C4" x:Shared="False" Color="#DCD0C3"/>
+    <SolidColorBrush x:Key="Br_E0D6C6" x:Shared="False" Color="#DDD1C5"/>
+    <SolidColorBrush x:Key="Br_E2DBD0" x:Shared="False" Color="#D9D1C2"/>
+    <SolidColorBrush x:Key="Br_E5DCCD" x:Shared="False" Color="#DCD2BF"/>
+    <SolidColorBrush x:Key="Br_E6DDCE" x:Shared="False" Color="#DDD3C0"/>
+    <SolidColorBrush x:Key="Br_E6E0D6" x:Shared="False" Color="#DDD6C7"/>
+    <SolidColorBrush x:Key="Br_ECE7DF" x:Shared="False" Color="#E2DCCF"/>
+    <SolidColorBrush x:Key="Br_ECE8E0" x:Shared="False" Color="#E2DCD0"/>
+    <SolidColorBrush x:Key="Br_EDE6DA" x:Shared="False" Color="#E3DBCB"/>
+    <SolidColorBrush x:Key="Br_EDE9E2" x:Shared="False" Color="#E3DDD2"/>
+    <SolidColorBrush x:Key="Br_EEE9E2" x:Shared="False" Color="#E4DED2"/>
+    <SolidColorBrush x:Key="Br_EFEBE5" x:Shared="False" Color="#E5E0D4"/>
+    <SolidColorBrush x:Key="Br_EFF5EC" x:Shared="False" Color="#E3E8DD"/>
+    <SolidColorBrush x:Key="Br_F0E7D7" x:Shared="False" Color="#E6DCC8"/>
+    <SolidColorBrush x:Key="Br_F1EBE0" x:Shared="False" Color="#E7DFD0"/>
+    <SolidColorBrush x:Key="Br_F1EDE7" x:Shared="False" Color="#E7E1D6"/>
+    <SolidColorBrush x:Key="Br_F2DCDC" x:Shared="False" Color="#E3D5D1"/>
+    <SolidColorBrush x:Key="Br_F2EFEA" x:Shared="False" Color="#E8E3D9"/>
+    <SolidColorBrush x:Key="Br_F2F2EE" x:Shared="False" Color="#E8E4DD"/>
+    <SolidColorBrush x:Key="Br_F3F0EB" x:Shared="False" Color="#E9E4DA"/>
+    <SolidColorBrush x:Key="Br_F4F4F0" x:Shared="False" Color="#EAE6DE"/>
+    <SolidColorBrush x:Key="Br_F5F3EF" x:Shared="False" Color="#EBE6DD"/>
+    <SolidColorBrush x:Key="Br_F7F1E8" x:Shared="False" Color="#ECE5D7"/>
+    <SolidColorBrush x:Key="Br_F7F2EA" x:Shared="False" Color="#ECE6D9"/>
+    <SolidColorBrush x:Key="Br_F7F3EA" x:Shared="False" Color="#ECE6D9"/>
+    <SolidColorBrush x:Key="Br_F7F5F1" x:Shared="False" Color="#ECE8DF"/>
+    <SolidColorBrush x:Key="Br_F7F6F3" x:Shared="False" Color="#ECE9E1"/>
+    <SolidColorBrush x:Key="Br_F8F1E4" x:Shared="False" Color="#EDE5D4"/>
+    <SolidColorBrush x:Key="Br_F8F3EB" x:Shared="False" Color="#EDE7DA"/>
+    <SolidColorBrush x:Key="Br_F8F4ED" x:Shared="False" Color="#EDE7DC"/>
+    <SolidColorBrush x:Key="Br_F9ECEC" x:Shared="False" Color="#EBE1DE"/>
+    <SolidColorBrush x:Key="Br_F9EDEC" x:Shared="False" Color="#EBE1DE"/>
+    <SolidColorBrush x:Key="Br_F9F6F0" x:Shared="False" Color="#EEE9DE"/>
+    <SolidColorBrush x:Key="Br_F9F8F5" x:Shared="False" Color="#EEEAE3"/>
+    <SolidColorBrush x:Key="Br_FAF8F5" x:Shared="False" Color="#EFEBE3"/>
+    <SolidColorBrush x:Key="Br_FAFAF8" x:Shared="False" Color="#EFECE6"/>
+    <SolidColorBrush x:Key="Br_FBF6EC" x:Shared="False" Color="#F0E9DB"/>
+    <SolidColorBrush x:Key="Br_FBF9F5" x:Shared="False" Color="#F0ECE3"/>
+    <SolidColorBrush x:Key="Br_FCFAF8" x:Shared="False" Color="#F1EDE6"/>
+    <SolidColorBrush x:Key="Br_FCFBF9" x:Shared="False" Color="#F1EDE6"/>
+    <SolidColorBrush x:Key="Br_FFFDF9" x:Shared="False" Color="#F4EFE6"/>
+    <SolidColorBrush x:Key="Br_FFFFFF" x:Shared="False" Color="#F4F1EC"/>
+
+    <!-- 原始主題用的變體鍵：值與基本鍵相同（奶油、侘寂不因此改變），只有原始主題的值不同 -->
+    <SolidColorBrush x:Key="Br_2A2019__FF000000" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FF111111" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FF222222" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FF2A2A28" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FF303030" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FF555555" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__FFFFFFFF" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__controltext" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_2A2019__null" x:Shared="False" Color="#25211E"/>
+    <SolidColorBrush x:Key="Br_4A3B30__FF000000" x:Shared="False" Color="#433D37"/>
+    <SolidColorBrush x:Key="Br_8E8172__FF555555" x:Shared="False" Color="#8C7D72"/>
+    <SolidColorBrush x:Key="Br_9C7A54__FF3B54FF" x:Shared="False" Color="#987256"/>
+    <SolidColorBrush x:Key="Br_9C7A54__FF5B6CFF" x:Shared="False" Color="#987256"/>
+    <SolidColorBrush x:Key="Br_9C7A54__highlight" x:Shared="False" Color="#987256"/>
+    <SolidColorBrush x:Key="Br_A8A092__FF9A9AA0" x:Shared="False" Color="#A69C91"/>
+    <SolidColorBrush x:Key="Br_DDD3C3__null" x:Shared="False" Color="#DACEC2"/>
+    <SolidColorBrush x:Key="Br_DFD5C4__FFE2E2E2" x:Shared="False" Color="#DCD0C3"/>
+    <SolidColorBrush x:Key="Br_E0D6C6__null" x:Shared="False" Color="#DDD1C5"/>
+    <SolidColorBrush x:Key="Br_E6E0D6__FFDCDCE0" x:Shared="False" Color="#DDD6C7"/>
+    <SolidColorBrush x:Key="Br_ECE8E0__FFE4E4E8" x:Shared="False" Color="#E2DCD0"/>
+    <SolidColorBrush x:Key="Br_F5F3EF__FFF2F2F2" x:Shared="False" Color="#EBE6DD"/>
+    <SolidColorBrush x:Key="Br_F7F6F3__FFF5F5F5" x:Shared="False" Color="#ECE9E1"/>
+    <SolidColorBrush x:Key="Br_FFFDF9__FFECECEC" x:Shared="False" Color="#F4EFE6"/>
+    <SolidColorBrush x:Key="Br_Lit_Transparent" x:Shared="False" Color="Transparent"/>
+    <CornerRadius x:Key="CR_0_0_4_4__0_0_16_16">0,0,4,4</CornerRadius>
+    <CornerRadius x:Key="CR_2__18">2</CornerRadius>
+    <CornerRadius x:Key="CR_3__10">3</CornerRadius>
+    <CornerRadius x:Key="CR_3__6">3</CornerRadius>
+    <CornerRadius x:Key="CR_3__7">3</CornerRadius>
+    <CornerRadius x:Key="CR_3__8">3</CornerRadius>
+    <CornerRadius x:Key="CR_3__9">3</CornerRadius>
+    <CornerRadius x:Key="CR_4__12">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__13">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__14">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__16">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__18">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__22">4</CornerRadius>
+    <CornerRadius x:Key="CR_4__999">4</CornerRadius>
+    <Color x:Key="Cl_2A2019__black">#25211E</Color>
+    <FontFamily x:Key="FF_Noto_Serif_TC_Cambria_Georgia_PMingLiU__system">Noto Serif TC, Cambria, Georgia, PMingLiU</FontFamily>
+    <FontFamily x:Key="FF_Noto_Serif_TC_Georgia_PMingLiU__system">Noto Serif TC, Georgia, PMingLiU</FontFamily>
+    <FontWeight x:Key="FW_Light__Normal">Light</FontWeight>
+    <FontWeight x:Key="FW_Normal__SemiBold">Normal</FontWeight>
+    <sys:Double x:Key="Num_0p10__0p25">0.10</sys:Double>
+    <sys:Double x:Key="Num_0p12__0p16">0.12</sys:Double>
+    <sys:Double x:Key="Num_0p20__0p18">0.20</sys:Double>
+    <sys:Double x:Key="Num_0p20__0p22">0.20</sys:Double>
+    <sys:Double x:Key="Num_0p20__0p25">0.20</sys:Double>
+    <sys:Double x:Key="Num_11p5__12">11.5</sys:Double>
+    <sys:Double x:Key="Num_13p5__13">13.5</sys:Double>
+    <sys:Double x:Key="Num_148__100">148</sys:Double>
+    <sys:Double x:Key="Num_14__0">14</sys:Double>
+    <sys:Double x:Key="Num_14__2">14</sys:Double>
+    <sys:Double x:Key="Num_14p5__12p5">14.5</sys:Double>
+    <sys:Double x:Key="Num_14p5__16">14.5</sys:Double>
+    <sys:Double x:Key="Num_15__16">15</sys:Double>
+    <sys:Double x:Key="Num_15p5__13">15.5</sys:Double>
+    <sys:Double x:Key="Num_15p5__14">15.5</sys:Double>
+    <sys:Double x:Key="Num_19__16">19</sys:Double>
+    <sys:Double x:Key="Num_1p3__1p6">1.3</sys:Double>
+    <sys:Double x:Key="Num_1p4__2">1.4</sys:Double>
+    <sys:Double x:Key="Num_20__16">20</sys:Double>
+    <sys:Double x:Key="Num_22__16">22</sys:Double>
+    <sys:Double x:Key="Num_270__315">270</sys:Double>
+    <sys:Double x:Key="Num_36__28">36</sys:Double>
+    <sys:Double x:Key="Num_44__36">44</sys:Double>
+    <sys:Double x:Key="Num_460__440">460</sys:Double>
+    <sys:Double x:Key="Num_46__24">46</sys:Double>
+    <sys:Double x:Key="Num_46__28">46</sys:Double>
+    <sys:Double x:Key="Num_4__2">4</sys:Double>
+    <sys:Double x:Key="Num_552__540">552</sys:Double>
+    <sys:Double x:Key="Num_572__560">572</sys:Double>
+    <sys:Double x:Key="Num_624__600">624</sys:Double>
+    <sys:Double x:Key="Num_6__0">6</sys:Double>
+    <Thickness x:Key="Th_0_0_0_34__0_0_0_16">0,0,0,34</Thickness>
+    <Thickness x:Key="Th_0_0_1_0__0">0,0,1,0</Thickness>
+    <Thickness x:Key="Th_0_0_24_0__0_0_8_0">0,0,24,0</Thickness>
+    <Thickness x:Key="Th_0_22_0_10__0_10_0_10">0,22,0,10</Thickness>
+    <Thickness x:Key="Th_0_4_2_0__0_2_0_0">0,4,2,0</Thickness>
+    <Thickness x:Key="Th_10_5_12_5__0">10,5,12,5</Thickness>
+    <Thickness x:Key="Th_1__0">1</Thickness>
+    <Thickness x:Key="Th_26_18_16_16__20_14_12_12">26,18,16,16</Thickness>
+    <Thickness x:Key="Th_2_0_0_0__0">2,0,0,0</Thickness>
+    <Thickness x:Key="Th_30_26_30_24__20">30,26,30,24</Thickness>
+    <Thickness x:Key="Th_30_26__24_20">30,26</Thickness>
+    <Visibility x:Key="Vis_Visible__Collapsed">Visible</Visibility>
+
+    <Color x:Key="Cl_3A2A10__black">#2E281C</Color>
+    <sys:Double x:Key="Num_18__6">18</sys:Double>
+
+    <!-- 形狀 -->
+    <SolidColorBrush x:Key="Br_PaperWhite" x:Shared="False" Color="#F4EFE6"/>
+    <CornerRadius x:Key="DecisionPanelCornerRadius">5,10,4,11</CornerRadius>
+    <CornerRadius x:Key="DialogCornerRadius">8,3,9,4</CornerRadius>
+    <Style x:Key="NodeBorderStyle" TargetType="{x:Type Border}">
+        <Setter Property="CornerRadius" Value="9,3,10,4"/>
+        <Setter Property="Background" Value="{StaticResource Br_FFFDF9}"/>
+        <Setter Property="BorderBrush" Value="#D3C7B8"/>
+        <Setter Property="BorderThickness" Value="1.2"/>
+        <Setter Property="Effect">
+            <Setter.Value>
+                <DropShadowEffect BlurRadius="26" ShadowDepth="8" Direction="270" Opacity="0.16" Color="#3C3024"/>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+        <DrawingBrush x:Key="CanvasBackgroundBrush" x:Shared="False" TileMode="Tile" Viewport="0,0,20,20" ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+                <!-- 畫布底：奶油色＋每 20px 一個極淡的點（取代方格線） -->
+                <DrawingGroup>
+                    <GeometryDrawing Brush="{StaticResource Br_F8F4ED}">
+                        <GeometryDrawing.Geometry>
+                            <RectangleGeometry Rect="0,0,20,20"/>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <GeometryDrawing Brush="{StaticResource Br_D8CCBA}">
+                        <GeometryDrawing.Geometry>
+                            <EllipseGeometry Center="10,10" RadiusX="0.8" RadiusY="0.8"/>
+                        </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                </DrawingGroup>
+            </DrawingBrush.Drawing>
+        </DrawingBrush>
+
+    <ControlTemplate x:Key="SettingsTabTemplate" TargetType="Button">
+            <!-- 底線分頁：Background 只用來畫底線（選中＝深咖啡，未選＝透明） -->
+            <Border Background="Transparent" BorderBrush="{TemplateBinding Background}"
+                    BorderThickness="0,0,0,1.5" Padding="2,0">
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                  TextElement.Foreground="{TemplateBinding Foreground}"/>
+            </Border>
+        </ControlTemplate>
+
+    <ControlTemplate x:Key="ConnectorRingTemplate" TargetType="{x:Type Thumb}">
+            <!-- 透明底維持原本 20x20 的可點範圍，看得到的只是一個細環 -->
+            <Grid Background="Transparent">
+                <Ellipse x:Name="Ring" Width="9" Height="9"
+                         Fill="{StaticResource Br_FFFDF9}" Stroke="{StaticResource Br_9C7A54}" StrokeThickness="1.25"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Ring" Property="Fill" Value="{StaticResource Br_9C7A54}"/>
+                    <Setter TargetName="Ring" Property="Width" Value="11"/>
+                    <Setter TargetName="Ring" Property="Height" Value="11"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+    <ControlTemplate x:Key="ConnectorDotTemplate" TargetType="{x:Type Thumb}">
+            <!-- 透明底維持原本 10x10 的可拖範圍 -->
+            <Grid Background="Transparent">
+                <Ellipse x:Name="Dot" Width="4" Height="4" Fill="{StaticResource Br_C4B6A1}"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Dot" Property="Fill" Value="{StaticResource Br_2A2019}"/>
+                    <Setter TargetName="Dot" Property="Width" Value="6"/>
+                    <Setter TargetName="Dot" Property="Height" Value="6"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
+    <!-- 全域樣式（原本在 App.xaml） -->
+        <!-- 細膠囊捲軸滑塊：淺灰、圓角，hover / 拖曳時加深 -->
+        <Style x:Key="ThinPillThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Border x:Name="thumb" CornerRadius="3" Background="{StaticResource Br_D7D4CE}" Margin="3,2,5,2"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="thumb" Property="Background" Value="{StaticResource Br_BEB8AE}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="thumb" Property="Background" Value="{StaticResource Br_A9A193}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域細捲軸（無 x:Key → 套用到整個 App 的所有 ScrollBar）-->
+        <Style TargetType="{x:Type ScrollBar}">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="13"/>
+            <Setter Property="MinWidth" Value="13"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ScrollBar}">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageUpCommand"
+                                                  Opacity="0" Focusable="False" IsTabStop="False"
+                                                  Width="0" Height="0"/>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="ScrollBar.PageDownCommand"
+                                                  Opacity="0" Focusable="False" IsTabStop="False"
+                                                  Width="0" Height="0"/>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="ScrollThumb"
+                                           Style="{StaticResource ThinPillThumb}"
+                                           MinHeight="24"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Width" Value="Auto"/>
+                                <Setter Property="Height" Value="8"/>
+                                <Setter Property="MinHeight" Value="8"/>
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False"/>
+                                <Setter TargetName="ScrollThumb" Property="MinHeight" Value="0"/>
+                                <Setter TargetName="ScrollThumb" Property="MinWidth" Value="24"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域單選：細環＋實心點（沒有指定 Style 的 RadioButton 都套用） -->
+        <Style TargetType="{x:Type RadioButton}">
+            <Setter Property="Foreground" Value="{StaticResource Br_38342E}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RadioButton}">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="15" Height="15" VerticalAlignment="Center">
+                                <Ellipse x:Name="Ring" Stroke="{StaticResource Br_B9AB96}" StrokeThickness="1" Fill="{StaticResource Br_FFFDF9}"/>
+                                <Ellipse x:Name="Dot" Width="7" Height="7" Fill="{StaticResource Br_2A2019}" Visibility="Collapsed"/>
+                            </Grid>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0"
+                                              VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Ring" Property="Stroke" Value="{StaticResource Br_2A2019}"/>
+                                <Setter TargetName="Dot" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域勾選：方正細框（開關與膠囊各自有指定的 Style，不受影響） -->
+        <Style TargetType="{x:Type CheckBox}">
+            <Setter Property="Foreground" Value="{StaticResource Br_38342E}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type CheckBox}">
+                        <Grid Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Border x:Name="Box" Width="15" Height="15" VerticalAlignment="Center"
+                                    Background="{StaticResource Br_FFFDF9}" BorderBrush="{StaticResource Br_B9AB96}" BorderThickness="1" CornerRadius="2">
+                                <Grid>
+                                    <Path x:Name="Tick" Data="M3,7.5 L6,10.5 L11.5,4.5" Stroke="{StaticResource Br_FFFDF9}" StrokeThickness="1.4"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Visibility="Collapsed"/>
+                                    <Border x:Name="Dash" Width="7" Height="1.4" Background="{StaticResource Br_FFFDF9}" Visibility="Collapsed"/>
+                                </Grid>
+                            </Border>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0"
+                                              VerticalAlignment="Center" RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource Br_2A2019}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Br_2A2019}"/>
+                                <Setter TargetName="Tick" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="{x:Null}">
+                                <Setter TargetName="Box" Property="Background" Value="{StaticResource Br_2A2019}"/>
+                                <Setter TargetName="Box" Property="BorderBrush" Value="{StaticResource Br_2A2019}"/>
+                                <Setter TargetName="Dash" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域提示：奶油底細框 -->
+        <Style TargetType="{x:Type ToolTip}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="HasDropShadow" Value="False"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_3A2E25}"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type ToolTip}">
+                        <Border Background="{StaticResource Br_FFFDF9}" BorderBrush="{StaticResource Br_D9CFBF}" BorderThickness="1"
+                                CornerRadius="2" Padding="10,7" SnapsToDevicePixels="True">
+                            <ContentPresenter/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域按鈕：沒有自訂樣板的 Button 一律是方正、無系統外框的樣子（顏色仍由各按鈕自己的屬性決定） -->
+        <Style TargetType="{x:Type Button}">
+            <Setter Property="Background" Value="{StaticResource Br_F1EBE0}"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_2A2019}"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="1"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Button}">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.68"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域輸入框：拿掉系統的藍色對焦框，改成細框、對焦時轉深咖啡（內距與尺寸維持各自原本的設定） -->
+        <Style TargetType="{x:Type TextBox}">
+            <Setter Property="Background" Value="{StaticResource Br_FFFDF9}"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_2A2019}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Br_DDD3C3}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Br_2A2019}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource Br_9C7A54}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type TextBox}">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Focusable="False"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="bd" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style TargetType="{x:Type PasswordBox}">
+            <Setter Property="Background" Value="{StaticResource Br_FFFDF9}"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_2A2019}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Br_DDD3C3}"/>
+            <Setter Property="CaretBrush" Value="{StaticResource Br_2A2019}"/>
+            <Setter Property="SelectionBrush" Value="{StaticResource Br_9C7A54}"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type PasswordBox}">
+                        <Border x:Name="bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="2"
+                                SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Focusable="False"
+                                          HorizontalScrollBarVisibility="Hidden"
+                                          VerticalScrollBarVisibility="Hidden"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="bd" Property="BorderBrush" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- 全域滑桿：一條細線＋小圓鈕 -->
+        <Style x:Key="SliderLineButton" TargetType="{x:Type RepeatButton}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type RepeatButton}">
+                        <Border Background="Transparent" Height="18">
+                            <Border Height="1.5" Background="{TemplateBinding Background}" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SliderRoundThumb" TargetType="{x:Type Thumb}">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Thumb}">
+                        <Grid Width="18" Height="18" Background="Transparent">
+                            <Ellipse x:Name="knob" Width="13" Height="13" Fill="{StaticResource Br_FFFDF9}" Stroke="{StaticResource Br_2A2019}" StrokeThickness="1.5"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="knob" Property="Fill" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="knob" Property="Fill" Value="{StaticResource Br_2A2019}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType="{x:Type Slider}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="MinHeight" Value="18"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="{x:Type Slider}">
+                        <Track x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Command="Slider.DecreaseLarge" Background="{StaticResource Br_2A2019}" Style="{StaticResource SliderLineButton}"/>
+                            </Track.DecreaseRepeatButton>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Command="Slider.IncreaseLarge" Background="{StaticResource Br_D9CFBF}" Style="{StaticResource SliderLineButton}"/>
+                            </Track.IncreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource SliderRoundThumb}"/>
+                            </Track.Thumb>
+                        </Track>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+    
+
+</ResourceDictionary>

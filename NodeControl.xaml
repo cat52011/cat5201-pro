@@ -11,10 +11,10 @@
         <local:HeaderWidthConverter x:Key="HeaderWidthConverter"/>
         <local:AttachmentPanelMarginConverter x:Key="AttachmentPanelMarginConverter"/>
 
-        <SolidColorBrush x:Key="NodeMenuBg" Color="#FFFDF9"/>
-        <SolidColorBrush x:Key="NodeMenuBorder" Color="#D9CFBF"/>
-        <SolidColorBrush x:Key="NodeMenuText" Color="#26231E"/>
-        <SolidColorBrush x:Key="NodeMenuDisabled" Color="#AAA396"/>
+        <SolidColorBrush x:Key="NodeMenuBg" Color="{StaticResource Cl_FFFDF9}"/>
+        <SolidColorBrush x:Key="NodeMenuBorder" Color="{StaticResource Cl_D9CFBF}"/>
+        <SolidColorBrush x:Key="NodeMenuText" Color="{StaticResource Cl_26231E}"/>
+        <SolidColorBrush x:Key="NodeMenuDisabled" Color="{StaticResource Cl_AAA396}"/>
 
         <Style x:Key="NodeContextMenuStyle" TargetType="{x:Type ContextMenu}">
             <Setter Property="SnapsToDevicePixels" Value="True"/>
@@ -30,7 +30,7 @@
                         <Border Background="{TemplateBinding Background}"
                                 BorderBrush="{TemplateBinding BorderBrush}"
                                 BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="3"
+                                CornerRadius="{StaticResource CR_3__10}"
                                 Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
                             <StackPanel IsItemsHost="True"
@@ -53,7 +53,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type MenuItem}">
                         <Border Background="Transparent"
-                                CornerRadius="3"
+                                CornerRadius="{StaticResource CR_3__8}"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter x:Name="HeaderPresenter"
                                               ContentSource="Header"
@@ -86,7 +86,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="{x:Type Separator}">
                         <Border Height="1"
-                                Background="#EFEBE5"
+                                Background="{StaticResource Br_EFEBE5}"
                                 CornerRadius="0.5"/>
                     </ControlTemplate>
                 </Setter.Value>
@@ -140,7 +140,7 @@
                     <ControlTemplate TargetType="{x:Type Button}">
                         <Border x:Name="pb"
                                 Background="{TemplateBinding Background}"
-                                CornerRadius="4"
+                                CornerRadius="{StaticResource CR_4__999}"
                                 Padding="{TemplateBinding Padding}"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter HorizontalAlignment="Center"
@@ -192,7 +192,7 @@
         </Style>
 
         <Style x:Key="NodeModelComboBoxItemStyle" TargetType="{x:Type ComboBoxItem}">
-            <Setter Property="Foreground" Value="#26231E"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_26231E}"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Padding" Value="8,6"/>
             <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
@@ -205,7 +205,7 @@
                     <ControlTemplate TargetType="{x:Type ComboBoxItem}">
                         <Border x:Name="ItemBorder"
                                 Background="Transparent"
-                                CornerRadius="3"
+                                CornerRadius="{StaticResource CR_3__8}"
                                 Margin="1"
                                 SnapsToDevicePixels="True">
                             <ContentPresenter Margin="{TemplateBinding Padding}"
@@ -214,10 +214,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#F7F5F1"/>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource Br_F7F5F1}"/>
                             </Trigger>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="ItemBorder" Property="Background" Value="#F3F0EB"/>
+                                <Setter TargetName="ItemBorder" Property="Background" Value="{StaticResource Br_F3F0EB}"/>
                             </Trigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter Property="Opacity" Value="0.45"/>
@@ -231,9 +231,9 @@
         <Style x:Key="NodeModelComboBoxStyle" TargetType="{x:Type ComboBox}">
             <Setter Property="Height" Value="28"/>
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="Foreground" Value="#26231E"/>
-            <Setter Property="Background" Value="#FCFAF8"/>
-            <Setter Property="BorderBrush" Value="#ECE8E0"/>
+            <Setter Property="Foreground" Value="{StaticResource Br_26231E}"/>
+            <Setter Property="Background" Value="{StaticResource Br_FCFAF8}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Br_ECE8E0}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="8,2,8,2"/>
             <Setter Property="Cursor" Value="Hand"/>
@@ -248,7 +248,7 @@
                                     Background="{TemplateBinding Background}"
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="3"
+                                    CornerRadius="{StaticResource CR_3__10}"
                                     SnapsToDevicePixels="True">
                                 <ContentPresenter x:Name="ContentSite"
                                                   IsHitTestVisible="False"
@@ -281,10 +281,10 @@
                                 <Grid MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
                                       MaxHeight="{TemplateBinding MaxDropDownHeight}">
                                     <Border Margin="0,2,0,0"
-                                            Background="#FFFFFF"
-                                            BorderBrush="#ECE8E0"
+                                            Background="{StaticResource Br_FFFFFF}"
+                                            BorderBrush="{StaticResource Br_ECE8E0}"
                                             BorderThickness="1"
-                                            CornerRadius="3"
+                                            CornerRadius="{StaticResource CR_3__10}"
                                             Padding="4">
                                         <ScrollViewer CanContentScroll="True"
                                                       VerticalScrollBarVisibility="Auto">
@@ -298,15 +298,15 @@
 
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="MainBorder" Property="Background" Value="#F9F8F5"/>
+                                <Setter TargetName="MainBorder" Property="Background" Value="{StaticResource Br_F9F8F5}"/>
                             </Trigger>
 
                             <Trigger Property="IsKeyboardFocusWithin" Value="True">
-                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="#DCD9D4"/>
+                                <Setter TargetName="MainBorder" Property="BorderBrush" Value="{StaticResource Br_DCD9D4}"/>
                             </Trigger>
 
                             <Trigger Property="IsDropDownOpen" Value="True">
-                                <Setter TargetName="MainBorder" Property="Background" Value="#FFFFFF"/>
+                                <Setter TargetName="MainBorder" Property="Background" Value="{StaticResource Br_FFFFFF}"/>
                             </Trigger>
 
                             <Trigger Property="IsEnabled" Value="False">
@@ -352,12 +352,12 @@
                       Click="SkipStepMenuItem_Click"/>
             <MenuItem x:Name="StopGenerationMenuItem"
                       Header="{local:Tr '強制停止生成'}"
-                      Foreground="#C14141"
+                      Foreground="{StaticResource Br_C14141}"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="StopGenerationMenuItem_Click"/>
             <MenuItem x:Name="StopWorkflowMenuItem"
                       Header="{local:Tr '停止工作流'}"
-                      Foreground="#C14141"
+                      Foreground="{StaticResource Br_C14141}"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="StopWorkflowMenuItem_Click"/>
             <Separator Style="{StaticResource NodeMenuSeparatorStyle}"/>
@@ -380,7 +380,7 @@
             <Separator Style="{StaticResource NodeMenuSeparatorStyle}"/>
             <MenuItem x:Name="DeleteMenuItem"
                       Header="{local:Tr '刪除'}"
-                      Foreground="#C14141"
+                      Foreground="{StaticResource Br_C14141}"
                       Style="{StaticResource NodeMenuItemStyle}"
                       Click="DeleteMenuItem_Click"/>
         </ContextMenu>
@@ -390,14 +390,11 @@
         <Border x:Name="NodeBorder"
                 Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=UserControl}}"
                 Height="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                CornerRadius="3"
-                Background="#FFFDF9"
-                BorderBrush="#C4B6A1"
-                BorderThickness="1.5" />
+                Style="{StaticResource NodeBorderStyle}" />
 
         <Border x:Name="DragHeader"
                 Height="24"
-                Background="#01FFFFFF"
+                Background="{StaticResource Br_01FFFFFF}"
                 Canvas.Top="0"
                 Canvas.Left="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource HeaderLeftConverter}, ConverterParameter=20}"
                 Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource HeaderWidthConverter}, ConverterParameter=40}"
@@ -408,7 +405,7 @@
             <Border x:Name="DragIndicator"
                     Width="80"
                     Height="4"
-                    Background="#D8D0C2"
+                    Background="{StaticResource Br_D8D0C2}"
                     CornerRadius="2"
                     HorizontalAlignment="Center"
                     VerticalAlignment="Center"
@@ -425,7 +422,7 @@
                 <RowDefinition Height="7*"/>
             </Grid.RowDefinitions>
 
-            <Border Grid.Row="0" Background="#00FFFFFF">
+            <Border Grid.Row="0" Background="{StaticResource Br_00FFFFFF}">
                 <Grid>
                     <TextBox x:Name="TopEditor"
                              Margin="20,10,20,44"
@@ -433,10 +430,10 @@
                              AcceptsReturn="True"
                              Background="Transparent"
                              BorderThickness="0"
-                             FontFamily="Noto Serif TC, Cambria, Georgia, PMingLiU"
-                             Foreground="#2A2019"
-                             CaretBrush="#2A2019"
-                             SelectionBrush="#9C7A54"
+                             FontFamily="{StaticResource FF_Noto_Serif_TC_Cambria_Georgia_PMingLiU__system}"
+                             Foreground="{StaticResource Br_2A2019__controltext}"
+                             CaretBrush="{StaticResource Br_2A2019__null}"
+                             SelectionBrush="{StaticResource Br_9C7A54__highlight}"
                              FontSize="20"
                              IsReadOnly="True"
                              IsHitTestVisible="True"
@@ -461,13 +458,13 @@
                             IsEnabled="False">
                         <Grid Width="14" Height="14">
                             <Path Data="M7,1 L7,13"
-                                  Stroke="#6B5A4A"
-                                  StrokeThickness="1.4"
+                                  Stroke="{StaticResource Br_6B5A4A}"
+                                  StrokeThickness="{StaticResource Num_1p4__2}"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"/>
                             <Path Data="M1,7 L13,7"
-                                  Stroke="#6B5A4A"
-                                  StrokeThickness="1.4"
+                                  Stroke="{StaticResource Br_6B5A4A}"
+                                  StrokeThickness="{StaticResource Num_1p4__2}"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"/>
                         </Grid>
@@ -487,8 +484,8 @@
                             IsEnabled="False">
                         <Grid Width="14" Height="14">
                             <Path Data="M3,2 L11,7 L3,12"
-                                  Stroke="#6B5A4A"
-                                  StrokeThickness="1.4"
+                                  Stroke="{StaticResource Br_6B5A4A}"
+                                  StrokeThickness="{StaticResource Num_1p4__2}"
                                   StrokeStartLineCap="Round"
                                   StrokeEndLineCap="Round"
                                   StrokeLineJoin="Round"
@@ -521,10 +518,10 @@
                             <Border x:Name="AttachmentListHost"
                                     Grid.Column="0"
                                     Padding="4,2"
-                                    CornerRadius="3"
-                                    BorderBrush="#ECE8E0"
+                                    CornerRadius="{StaticResource CR_3__10}"
+                                    BorderBrush="{StaticResource Br_ECE8E0}"
                                     BorderThickness="1"
-                                    Background="#FCFAF8"
+                                    Background="{StaticResource Br_FCFAF8}"
                                     Visibility="Collapsed">
                                 <ScrollViewer x:Name="AttachmentScroll"
                                               HorizontalScrollBarVisibility="Hidden"
@@ -543,10 +540,10 @@
 
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border CornerRadius="3"
-                                                        BorderBrush="#ECE8E0"
+                                                <Border CornerRadius="{StaticResource CR_3__10}"
+                                                        BorderBrush="{StaticResource Br_ECE8E0}"
                                                         BorderThickness="1"
-                                                        Background="#FFFFFF"
+                                                        Background="{StaticResource Br_FFFFFF}"
                                                         Padding="8,4"
                                                         Margin="0,0,6,0"
                                                         Tag="{Binding}"
@@ -560,14 +557,14 @@
 
                                                         <TextBlock Text="{Binding KindGlyph}"
                                                                    FontSize="10"
-                                                                   Foreground="#70695C"
+                                                                   Foreground="{StaticResource Br_70695C}"
                                                                    Margin="0,0,6,0"
                                                                    VerticalAlignment="Center"/>
 
                                                         <TextBlock Grid.Column="1"
                                                                    Text="{Binding FileName}"
                                                                    FontSize="10"
-                                                                   Foreground="#38342E"
+                                                                   Foreground="{StaticResource Br_38342E}"
                                                                    VerticalAlignment="Center"
                                                                    MaxWidth="240"
                                                                    TextTrimming="CharacterEllipsis"
@@ -582,7 +579,7 @@
                                                                 Margin="0,-1,0,0">
                                                             <TextBlock Text="×"
                                                                        FontSize="10"
-                                                                       Foreground="#C14141"
+                                                                       Foreground="{StaticResource Br_C14141}"
                                                                        VerticalAlignment="Center"/>
                                                         </Button>
                                                     </Grid>
@@ -623,14 +620,14 @@
                                             <TextBlock Text="{Binding DisplayName}"
                                                        VerticalAlignment="Center"/>
                                             <!-- Multi-Model v1：成本層級徽章 -->
-                                            <Border Background="#F7F1E8"
-                                                    CornerRadius="3"
+                                            <Border Background="{StaticResource Br_F7F1E8}"
+                                                    CornerRadius="{StaticResource CR_3__6}"
                                                     Padding="5,1,5,1"
                                                     Margin="6,0,0,0"
                                                     VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding CostTierLabel}"
                                                            FontSize="9.5"
-                                                           Foreground="#81796A"
+                                                           Foreground="{StaticResource Br_81796A}"
                                                            VerticalAlignment="Center"/>
                                             </Border>
                                         </StackPanel>
@@ -642,12 +639,12 @@
 
                     <Border VerticalAlignment="Bottom"
                             Height="1"
-                            Background="#E6DDCE"
+                            Background="{StaticResource Br_E6DDCE}"
                             Margin="20,0,20,0"/>
                 </Grid>
             </Border>
 
-            <Border Grid.Row="1" Background="#00FFFFFF" Padding="0,0,0,24">
+            <Border Grid.Row="1" Background="{StaticResource Br_00FFFFFF}" Padding="0,0,0,24">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="*"/>
@@ -674,7 +671,7 @@
                                     <RotateTransform x:Name="BottomLoadingSpinnerRotate"
                                                      Angle="0"/>
                                 </Canvas.RenderTransform>
-                                <Path Stroke="#6D665A"
+                                <Path Stroke="{StaticResource Br_6D665A}"
                                       StrokeThickness="5"
                                       StrokeStartLineCap="Round"
                                       StrokeEndLineCap="Round"
@@ -685,7 +682,7 @@
                         <TextBlock x:Name="BottomLoadingText"
                                    Text="{local:Tr 'AI 正在生成…'}"
                                    FontSize="15"
-                                   Foreground="#514C43"
+                                   Foreground="{StaticResource Br_514C43}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
 
@@ -728,10 +725,10 @@
                     <Border x:Name="OutputImageHost"
                             Margin="20,4,20,10"
                             HorizontalAlignment="Left"
-                            CornerRadius="3"
+                            CornerRadius="{StaticResource CR_3__8}"
                             Cursor="Hand"
                             ClipToBounds="True"
-                            Background="#F5F3EF"
+                            Background="{StaticResource Br_F5F3EF__FFF2F2F2}"
                             ToolTip="{local:Tr '點擊預覽'}"
                             Visibility="Collapsed"
                             MouseLeftButtonDown="OutputImage_MouseLeftButtonDown">
@@ -765,11 +762,11 @@
                                         <StackPanel Orientation="Horizontal">
                                             <TextBlock Text="{Binding CategoryLabel}"
                                                        FontSize="14"
-                                                       Foreground="#A9A193"
+                                                       Foreground="{StaticResource Br_A9A193}"
                                                        VerticalAlignment="Center"/>
                                             <TextBlock Text="{Binding FileName}"
                                                        FontSize="14"
-                                                       Foreground="#99743C"
+                                                       Foreground="{StaticResource Br_99743C}"
                                                        TextDecorations="Underline"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/>
@@ -800,7 +797,7 @@
                                    FontSize="12.5"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center"
-                                   Foreground="#A9A193"/>
+                                   Foreground="{StaticResource Br_A9A193}"/>
 
                         <!-- 2026-07-04：失敗重跑鈕已移除——右鍵選單即可重跑（「重新生成答案」同樣在右鍵選單）。 -->
                     </Grid>
@@ -812,6 +809,7 @@
         <Thumb x:Name="ThumbTL"
                Width="20"
                Height="20"
+               Template="{StaticResource ConnectorRingTemplate}"
                Cursor="Hand"
                ToolTip="{local:Tr '往空白處拖＝新增一個下游節點&#10;拖到另一個節點上＝把那個節點接成下游（兩條以上接到同一個節點就是匯流，它會等所有上游都跑完才開始）'}"
                Canvas.Left="10"
@@ -819,27 +817,13 @@
                DragStarted="Corner_DragStarted"
                DragDelta="Corner_DragDelta"
                DragCompleted="Corner_DragCompleted">
-            <Thumb.Template>
-                <ControlTemplate TargetType="Thumb">
-                    <!-- 透明底維持原本 20x20 的可點範圍，看得到的只是一個細環 -->
-                    <Grid Background="Transparent">
-                        <Ellipse x:Name="Ring" Width="9" Height="9"
-                                 Fill="#FFFDF9" Stroke="#9C7A54" StrokeThickness="1.25"/>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Ring" Property="Fill" Value="#9C7A54"/>
-                            <Setter TargetName="Ring" Property="Width" Value="11"/>
-                            <Setter TargetName="Ring" Property="Height" Value="11"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Thumb.Template>
+               
         </Thumb>
 
         <Thumb x:Name="ThumbTR"
                Width="20"
                Height="20"
+               Template="{StaticResource ConnectorRingTemplate}"
                Cursor="Hand"
                ToolTip="{local:Tr '往空白處拖＝新增一個下游節點&#10;拖到另一個節點上＝把那個節點接成下游（兩條以上接到同一個節點就是匯流，它會等所有上游都跑完才開始）'}"
                Canvas.Top="10"
@@ -847,70 +831,29 @@
                DragStarted="Corner_DragStarted"
                DragDelta="Corner_DragDelta"
                DragCompleted="Corner_DragCompleted">
-            <Thumb.Template>
-                <ControlTemplate TargetType="Thumb">
-                    <!-- 透明底維持原本 20x20 的可點範圍，看得到的只是一個細環 -->
-                    <Grid Background="Transparent">
-                        <Ellipse x:Name="Ring" Width="9" Height="9"
-                                 Fill="#FFFDF9" Stroke="#9C7A54" StrokeThickness="1.25"/>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Ring" Property="Fill" Value="#9C7A54"/>
-                            <Setter TargetName="Ring" Property="Width" Value="11"/>
-                            <Setter TargetName="Ring" Property="Height" Value="11"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Thumb.Template>
+               
         </Thumb>
 
         <Thumb x:Name="ThumbBL"
                Width="10"
                Height="10"
+               Template="{StaticResource ConnectorDotTemplate}"
                Cursor="SizeNWSE"
                DragDelta="ResizeThumb_DragDelta"
                Canvas.Left="5"
                Canvas.Top="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BottomOffsetConverter}, ConverterParameter=15}">
-            <Thumb.Template>
-                <ControlTemplate TargetType="Thumb">
-                    <!-- 透明底維持原本 10x10 的可拖範圍 -->
-                    <Grid Background="Transparent">
-                        <Ellipse x:Name="Dot" Width="4" Height="4" Fill="#C4B6A1"/>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Dot" Property="Fill" Value="#2A2019"/>
-                            <Setter TargetName="Dot" Property="Width" Value="6"/>
-                            <Setter TargetName="Dot" Property="Height" Value="6"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Thumb.Template>
+               
         </Thumb>
 
         <Thumb x:Name="ThumbBR"
                Width="10"
                Height="10"
+               Template="{StaticResource ConnectorDotTemplate}"
                Cursor="SizeNWSE"
                DragDelta="ResizeThumb_DragDelta"
                Canvas.Left="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource RightOffsetConverter}, ConverterParameter=15}"
                Canvas.Top="{Binding ActualHeight, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BottomOffsetConverter}, ConverterParameter=15}">
-            <Thumb.Template>
-                <ControlTemplate TargetType="Thumb">
-                    <!-- 透明底維持原本 10x10 的可拖範圍 -->
-                    <Grid Background="Transparent">
-                        <Ellipse x:Name="Dot" Width="4" Height="4" Fill="#C4B6A1"/>
-                    </Grid>
-                    <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True">
-                            <Setter TargetName="Dot" Property="Fill" Value="#2A2019"/>
-                            <Setter TargetName="Dot" Property="Width" Value="6"/>
-                            <Setter TargetName="Dot" Property="Height" Value="6"/>
-                        </Trigger>
-                    </ControlTemplate.Triggers>
-                </ControlTemplate>
-            </Thumb.Template>
+               
         </Thumb>
     </Canvas>
 </UserControl>

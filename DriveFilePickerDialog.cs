@@ -38,13 +38,13 @@ namespace Cat5201
 
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(ThemeColors.Rgb(0xFF, 0xFD, 0xF9, 0xFFFFFF)),
+                BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(ThemeColors.Pick(1, 0)),
+                CornerRadius = new CornerRadius(ThemeColors.Pick(4, 16)),
                 Padding = new Thickness(20, 18, 20, 16),
                 Margin = new Thickness(14),
-                Effect = new DropShadowEffect { Color = Color.FromRgb(0x2A, 0x20, 0x19), Opacity = 0.15, BlurRadius = 24, ShadowDepth = 4 },
+                Effect = new DropShadowEffect { Color = ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x000000), Opacity = ThemeColors.Pick(0.15, 0.18), BlurRadius = 24, ShadowDepth = 4 },
             };
             card.MouseLeftButtonDown += (_, e) => { if (e.ButtonState == MouseButtonState.Pressed) { try { DragMove(); } catch { } } };
 
@@ -52,17 +52,17 @@ namespace Cat5201
             root.Children.Add(new TextBlock
             {
                 Text = UiLanguage.P("☁️ 從 Google Drive 選擇附件", "☁️ Choose attachments from Google Drive"),
-                FontSize = 19,
-                FontWeight = FontWeights.Normal,
-                FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18)),
+                FontSize = ThemeColors.Pick(19, 15),
+                FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.Bold),
+                FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x20, 0x1D, 0x18, 0x1A1A1E)),
                 Margin = new Thickness(0, 0, 0, 4),
             });
             root.Children.Add(new TextBlock
             {
                 Text = UiLanguage.P("最近的檔案（此程式可見範圍）。Google 文件／試算表／簡報會自動轉成文字或 CSV 當輸入。", "Recent files (those this app can see). Google Docs/Sheets/Slides are converted to text or CSV automatically."),
                 FontSize = 11.5,
-                Foreground = new SolidColorBrush(Color.FromRgb(0xA7, 0x9F, 0x91)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0xA7, 0x9F, 0x91, 0x9A9A9E)),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10),
             });
@@ -76,7 +76,7 @@ namespace Cat5201
                 {
                     Text = UiLanguage.P("（Drive 裡沒有此程式可見的檔案）", "(No files in Drive that this app can see)"),
                     FontSize = 12.5,
-                    Foreground = new SolidColorBrush(Color.FromRgb(0xA7, 0x9F, 0x91)),
+                    Foreground = new SolidColorBrush(ThemeColors.Rgb(0xA7, 0x9F, 0x91, 0x9A9A9E)),
                     Margin = new Thickness(2, 8, 0, 8),
                 });
             }
@@ -99,8 +99,8 @@ namespace Cat5201
                     Margin = new Thickness(2, 3, 0, 3),
                     IsEnabled = usable,
                     Foreground = new SolidColorBrush(usable
-                        ? Color.FromRgb(0x38, 0x34, 0x2E)
-                        : Color.FromRgb(0xBA, 0xB4, 0xAA)),
+                        ? ThemeColors.Rgb(0x38, 0x34, 0x2E, 0x333333)
+                        : ThemeColors.Rgb(0xBA, 0xB4, 0xAA, 0xB0B0B4)),
                 };
                 _boxes.Add(cb);
                 list.Children.Add(cb);
@@ -116,13 +116,13 @@ namespace Cat5201
                 Margin = new Thickness(0, 14, 0, 0),
             };
 
-            var cancel = MakePill(UiLanguage.P("取消", "Cancel"), Color.FromRgb(0xF5, 0xF3, 0xEF), Color.FromRgb(0x4B, 0x46, 0x3D));
+            var cancel = MakePill(UiLanguage.P("取消", "Cancel"), ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), ThemeColors.Rgb(0x4B, 0x46, 0x3D, 0x444444));
             cancel.IsCancel = true;
             cancel.Margin = new Thickness(0, 0, 8, 0);
             cancel.Click += (_, __) => { DialogResult = false; Close(); };
             btnRow.Children.Add(cancel);
 
-            var ok = MakePill(UiLanguage.P("附加所選檔案", "Attach selected files"), Color.FromRgb(0x2A, 0x20, 0x19), Colors.White);
+            var ok = MakePill(UiLanguage.P("附加所選檔案", "Attach selected files"), ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111), Colors.White);
             ok.IsDefault = true;
             ok.Click += (_, __) =>
             {
@@ -162,8 +162,8 @@ namespace Cat5201
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background")
             { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(2));
-            border.SetValue(Border.PaddingProperty, new Thickness(18, 0, 18, 0));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(2, 9)));
+            border.SetValue(Border.PaddingProperty, new Thickness(ThemeColors.Pick(18, 0), 0, ThemeColors.Pick(18, 0), 0));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
             presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);

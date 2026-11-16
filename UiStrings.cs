@@ -60,6 +60,12 @@ namespace Cat5201
             ["語言"] = "Language",
             ["介面顯示的語言。AI 的回答一律跟著你提問的語言。"] =
                 "The language of the interface. AI answers always follow the language you ask in.",
+            ["介面風格"] = "Appearance",
+            ["整個介面的色調與形狀。"] = "The overall colors and shapes of the interface.",
+            ["奶油"] = "Cream",
+            ["侘寂"] = "Wabi-sabi",
+            ["原始"] = "Original",
+            ["重新啟動後生效"] = "Takes effect after restarting",
             ["記憶與偏好"] = "Memory & preferences",
             ["記住"] = "Remember",
             ["當前記憶"] = "Current memories",

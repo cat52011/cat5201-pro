@@ -54,23 +54,23 @@ namespace Cat5201
             SizeToContent = SizeToContent.Height;
             MaxHeight = 640;
 
-            var ink = new SolidColorBrush(Color.FromRgb(0x20, 0x1D, 0x18));
-            var muted = new SolidColorBrush(Color.FromRgb(0x9A, 0x90, 0x80));
-            var hairline = new SolidColorBrush(Color.FromRgb(0xF1, 0xEE, 0xE9));
+            var ink = new SolidColorBrush(ThemeColors.Rgb(0x20, 0x1D, 0x18, 0x1A1A1E));
+            var muted = new SolidColorBrush(ThemeColors.Rgb(0x9A, 0x90, 0x80, 0x8A8A90));
+            var hairline = new SolidColorBrush(ThemeColors.Rgb(0xF1, 0xEE, 0xE9, 0xECECEE));
 
             var card = new Border
             {
-                Background = new SolidColorBrush(Color.FromRgb(0xFF, 0xFD, 0xF9)),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xE0, 0xD6, 0xC6)),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(4),
+                Background = new SolidColorBrush(ThemeColors.Rgb(0xFF, 0xFD, 0xF9, 0xFFFFFF)),
+                BorderBrush = new SolidColorBrush(ThemeColors.Rgb(0xE0, 0xD6, 0xC6)),
+                BorderThickness = new Thickness(ThemeColors.Pick(1, 0)),
+                CornerRadius = new CornerRadius(ThemeColors.Pick(4, 14)),
                 Padding = new Thickness(24, 22, 24, 18),
                 Margin = new Thickness(14), // 留空間給陰影
                 SnapsToDevicePixels = true,
                 Effect = new DropShadowEffect
                 {
-                    Color = Color.FromRgb(0x2A, 0x20, 0x19),
-                    Opacity = 0.15,
+                    Color = ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x000000),
+                    Opacity = ThemeColors.Pick(0.15, 0.16),
                     BlurRadius = 28,
                     ShadowDepth = 5,
                 },
@@ -89,9 +89,9 @@ namespace Cat5201
             root.Children.Add(new TextBlock
             {
                 Text = budget == null ? UiLanguage.P("要產生這些檔案嗎？", "Generate these files?") : UiLanguage.P("這次會超過今日花費上限", "This will go over today's spending limit"),
-                FontSize = 19,
-                FontWeight = FontWeights.Normal,
-                FontFamily = new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"),
+                FontSize = ThemeColors.Pick(19, 16),
+                FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.Bold),
+                FontFamily = ThemeColors.Pick(new System.Windows.Media.FontFamily("Noto Serif TC, Georgia, PMingLiU"), SystemFonts.MessageFontFamily),
                 Foreground = ink,
                 Margin = new Thickness(0, 0, 0, 14),
             });
@@ -198,8 +198,8 @@ namespace Cat5201
             {
                 root.Children.Add(new Border
                 {
-                    Background = new SolidColorBrush(Color.FromRgb(0xFD, 0xF4, 0xE7)),
-                    CornerRadius = new CornerRadius(3),
+                    Background = new SolidColorBrush(ThemeColors.Rgb(0xFD, 0xF4, 0xE7, 0xFFF4E5)),
+                    CornerRadius = new CornerRadius(ThemeColors.Pick(3, 9)),
                     Padding = new Thickness(13, 10, 13, 10),
                     Margin = new Thickness(0, 14, 0, 0),
                     Child = new TextBlock
@@ -210,7 +210,7 @@ namespace Cat5201
                             UiLanguage.P("仍要產生的話，這一次會放行超過上限；之後的任務照常受限制。", "If you still generate, this one run is allowed past the limit; later tasks are limited as usual."),
                         FontSize = 11.5,
                         LineHeight = 18,
-                        Foreground = new SolidColorBrush(Color.FromRgb(0x82, 0x4A, 0x08)),
+                        Foreground = new SolidColorBrush(ThemeColors.Rgb(0x82, 0x4A, 0x08, 0x8A4B00)),
                         TextWrapping = TextWrapping.Wrap,
                     },
                 });
@@ -229,7 +229,7 @@ namespace Cat5201
             var countdownText = new TextBlock
             {
                 FontSize = 11.5,
-                Foreground = new SolidColorBrush(Color.FromRgb(0x9C, 0x7A, 0x54)),
+                Foreground = new SolidColorBrush(ThemeColors.Rgb(0x9C, 0x7A, 0x54, 0x3B54FF)),
                 Margin = new Thickness(0, 4, 0, 0),
                 Visibility = autoConfirmSeconds > 0 ? Visibility.Visible : Visibility.Collapsed,
             };
@@ -242,7 +242,7 @@ namespace Cat5201
                 Margin = new Thickness(0, 16, 0, 0),
             };
 
-            var noBtn = MakePillButton(UiLanguage.P("不產生", "Don't generate"), bg: Color.FromRgb(0xF5, 0xF3, 0xEF), fg: Color.FromRgb(0x4B, 0x46, 0x3D));
+            var noBtn = MakePillButton(UiLanguage.P("不產生", "Don't generate"), bg: ThemeColors.Rgb(0xF5, 0xF3, 0xEF, 0xF1F1F3), fg: ThemeColors.Rgb(0x4B, 0x46, 0x3D, 0x444444));
             noBtn.IsCancel = true;
             noBtn.Margin = new Thickness(0, 0, 8, 0);
             noBtn.Click += (_, __) => { DialogResult = false; Close(); };
@@ -250,7 +250,7 @@ namespace Cat5201
 
             var yesBtn = MakePillButton(
                 budget == null ? UiLanguage.P("產生", "Generate") : UiLanguage.P("仍要產生", "Generate anyway"),
-                bg: Color.FromRgb(0x2A, 0x20, 0x19),
+                bg: ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111),
                 fg: Colors.White);
             yesBtn.IsDefault = true;
             yesBtn.Click += (_, __) => { DialogResult = true; Close(); };
@@ -308,8 +308,8 @@ namespace Cat5201
             IReadOnlyList<(string Value, string Caption)> options, string selected, Brush ink, Action<string> onSelect)
         {
             var panel = new WrapPanel();
-            var selectedBg = new SolidColorBrush(Color.FromRgb(0x2A, 0x20, 0x19));
-            var idleBorder = new SolidColorBrush(Color.FromRgb(0xE9, 0xE4, 0xDB));
+            var selectedBg = new SolidColorBrush(ThemeColors.Rgb(0x2A, 0x20, 0x19, 0x111111));
+            var idleBorder = new SolidColorBrush(ThemeColors.Rgb(0xE9, 0xE4, 0xDB, 0xE0E0E4));
             var buttons = new List<(Button Button, string Value)>();
 
             void Paint(string value)
@@ -342,7 +342,7 @@ namespace Cat5201
                 border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding("BorderBrush") { RelativeSource = parent });
                 border.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding("BorderThickness") { RelativeSource = parent });
                 border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = parent });
-                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+                border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(3, 8)));
                 var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
                 presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
                 presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);
@@ -382,7 +382,7 @@ namespace Cat5201
             var template = new ControlTemplate(typeof(Button));
             var border = new FrameworkElementFactory(typeof(Border));
             border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(3));
+            border.SetValue(Border.CornerRadiusProperty, new CornerRadius(ThemeColors.Pick(3, 9)));
             var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
             presenter.SetValue(HorizontalAlignmentProperty, HorizontalAlignment.Center);
             presenter.SetValue(VerticalAlignmentProperty, VerticalAlignment.Center);

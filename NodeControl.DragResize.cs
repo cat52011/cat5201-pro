@@ -42,22 +42,22 @@ namespace Cat5201
                 Topmost = true;
                 WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-                Width = 552;    // 含四周 16px 的陰影留白
-                Height = 252;
+                Width = ThemeColors.Pick(552, 520);    // 含四周 16px 的陰影留白（原始主題沒有陰影、不留白）
+                Height = ThemeColors.Pick(252, 220);
 
                 var bg = TryGetBrush("NodeMenuBg", Colors.White);
-                var border = TryGetBrush("NodeMenuBorder", (Color)ColorConverter.ConvertFromString("#DBD7D1")!);
-                var text = TryGetBrush("NodeMenuText", (Color)ColorConverter.ConvertFromString("#26231E")!);
+                var border = TryGetBrush("NodeMenuBorder", (Color)ColorConverter.ConvertFromString(ThemeColors.Hex("#DBD7D1", "#D6D6D6"))!);
+                var text = TryGetBrush("NodeMenuText", (Color)ColorConverter.ConvertFromString(ThemeColors.Hex("#26231E", "#222222"))!);
 
                 var outer = new Border
                 {
                     Background = bg,
                     BorderBrush = border,
                     BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(4),
-                    Padding = new Thickness(26, 22, 22, 20),
-                    Margin = new Thickness(16),
-                    Effect = DialogChrome.CardShadow(),
+                    CornerRadius = new CornerRadius(ThemeColors.Pick(4, 16)),
+                    Padding = ThemeColors.Pick(new Thickness(26, 22, 22, 20), new Thickness(18)),
+                    Margin = ThemeColors.Pick(new Thickness(16), new Thickness(0)),
+                    Effect = ThemeColors.IsOriginal ? null : DialogChrome.CardShadow(),
                     SnapsToDevicePixels = true
                 };
 
@@ -80,8 +80,9 @@ namespace Cat5201
                 {
                     Text = title,
                     Foreground = text,
-                    FontSize = 18,
-                    FontFamily = new FontFamily(DialogChrome.SerifFamily),
+                    FontSize = ThemeColors.Pick(18, 13),
+                    FontWeight = ThemeColors.Pick(FontWeights.Normal, FontWeights.SemiBold),
+                    FontFamily = ThemeColors.Pick(new FontFamily(DialogChrome.SerifFamily), SystemFonts.MessageFontFamily),
                     Margin = new Thickness(0, 0, 0, 10)
                 };
                 Grid.SetRow(titleText, 0);
@@ -98,8 +99,8 @@ namespace Cat5201
                 _valueText = new TextBlock
                 {
                     Foreground = text,
-                    FontSize = 26,
-                    FontFamily = new FontFamily(DialogChrome.SerifFamily),
+                    FontSize = ThemeColors.Pick(26, 14),
+                    FontFamily = ThemeColors.Pick(new FontFamily(DialogChrome.SerifFamily), SystemFonts.MessageFontFamily),
                     Text = ((int)Math.Round(initialValue)).ToString(CultureInfo.InvariantCulture),
                     Margin = new Thickness(0, 0, 0, 10),
                     HorizontalAlignment = HorizontalAlignment.Left
@@ -136,7 +137,7 @@ namespace Cat5201
                     Margin = new Thickness(0, 12, 0, 0)
                 };
 
-                var cancel = DialogChrome.Secondary(UiLanguage.P("取消", "Cancel"));
+                var cancel = ThemeColors.IsOriginal ? CreateDialogButton(UiLanguage.P("取消", "Cancel"), text) : DialogChrome.Secondary(UiLanguage.P("取消", "Cancel"));
                 cancel.IsCancel = true;
                 cancel.Margin = new Thickness(0, 0, 8, 0);
                 cancel.Click += (_, __) =>
@@ -145,7 +146,7 @@ namespace Cat5201
                     Close();
                 };
 
-                var ok = DialogChrome.Primary(UiLanguage.P("確定", "OK"));
+                var ok = ThemeColors.IsOriginal ? CreateDialogButton(UiLanguage.P("確定", "OK"), text) : DialogChrome.Primary(UiLanguage.P("確定", "OK"));
                 ok.IsDefault = true;
                 ok.Click += (_, __) =>
                 {
@@ -272,9 +273,9 @@ namespace Cat5201
 
             _tempPath = new Path
             {
-                Stroke = new SolidColorBrush(Color.FromRgb(0xA8, 0x9A, 0x86)),
-                StrokeThickness = 1.6,
-                StrokeDashArray = new DoubleCollection { 5, 4 },
+                Stroke = new SolidColorBrush(ThemeColors.Rgb(0xA8, 0x9A, 0x86, 0x696969)),
+                StrokeThickness = ThemeColors.Pick(1.6, 3),
+                StrokeDashArray = new DoubleCollection { ThemeColors.Pick(5, 4), 4 },
                 IsHitTestVisible = false
             };
 
@@ -309,8 +310,8 @@ namespace Cat5201
             bool overTarget = _parent != null &&
                               _parent.CanConnectNodes(this, _parent.FindNodeAtCanvasPoint(current, this));
             _tempPath.Stroke = overTarget
-                ? (Brush)new BrushConverter().ConvertFromString("#9C7A54")!
-                : new SolidColorBrush(Color.FromRgb(0xA8, 0x9A, 0x86));
+                ? (Brush)new BrushConverter().ConvertFromString(ThemeColors.Hex("#9C7A54", "#5B6CFF"))!
+                : new SolidColorBrush(ThemeColors.Rgb(0xA8, 0x9A, 0x86, 0x696969));
         }
 
         private void Corner_DragCompleted(object sender, DragCompletedEventArgs e)

@@ -22,7 +22,7 @@ namespace Cat5201
             public string DisplayName { get; init; } = "";
 
             private string _amount = "";
-            private string _dot = "#D4D0C9";
+            private string _dot = ThemeColors.Hex("#D4D0C9", "#C9CDD4");
             private string _tip = "";
 
             /// <summary>顯示用剩餘金額（有填儲值才有數字，否則顯示本月花費）。</summary>
@@ -198,11 +198,11 @@ namespace Cat5201
                     or ApiHealthChecker.HealthState.InvalidKey
                     or ApiHealthChecker.HealthState.Offline)
             {
-                return "#D0584F";
+                return ThemeColors.Hex("#D0584F", "#E2483D");
             }
 
             double ratio = topUp > 0 ? left / topUp : 1;
-            return ratio <= 0.15 ? "#D0584F" : ratio <= 0.35 ? "#DEA147" : "#458D6A";
+            return ratio <= 0.15 ? ThemeColors.Hex("#D0584F", "#E2483D") : ratio <= 0.35 ? ThemeColors.Hex("#DEA147", "#E8A33D") : ThemeColors.Hex("#458D6A", "#2FA36B");
         }
 
         /// <summary>點面板＝打開完整的 API 狀態頁（填儲值金額、重新檢查都在那裡）。</summary>

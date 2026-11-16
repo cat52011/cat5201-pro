@@ -31,7 +31,10 @@ namespace Cat5201
 
             UseInvariantNumberFormat();
 
-            AppLog.Info("App", $"啟動 v{typeof(App).Assembly.GetName().Version}");
+            // 介面風格：主題字典必須在 MainWindow 載入之前合併（XAML 用 StaticResource）。自己讀偏好檔，換風格重新啟動後生效。
+            InterfaceThemes.ApplyFromPreferences(this);
+
+            AppLog.Info("App", $"啟動 v{typeof(App).Assembly.GetName().Version} 介面風格 {InterfaceThemes.Current}");
             base.OnStartup(e);
         }
 

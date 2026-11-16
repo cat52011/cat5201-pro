@@ -55,8 +55,8 @@ namespace Cat5201
                 MappingMode = BrushMappingMode.RelativeToBoundingBox,
                 RelativeTransform = _shift,
             };
-            var baseColor = Color.FromRgb(0x6B, 0x5A, 0x4A);
-            var glow = Color.FromRgb(0xD9, 0xC3, 0xA0);
+            var baseColor = ThemeColors.Rgb(0x6B, 0x5A, 0x4A, 0x5F6368);
+            var glow = ThemeColors.Rgb(0xD9, 0xC3, 0xA0, 0xD6D9DD);
             brush.GradientStops.Add(new GradientStop(baseColor, 0.0));
             brush.GradientStops.Add(new GradientStop(baseColor, 0.38));
             brush.GradientStops.Add(new GradientStop(glow, 0.5));
